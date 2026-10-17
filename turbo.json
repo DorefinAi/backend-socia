@@ -1,0 +1,17 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "test": {
+      "outputs": [],
+      "cache": false,
+      "passThroughEnv": ["TEST_DATABASE_URL", "PLAYWRIGHT_BROWSERS_PATH"]
+    },
+    "typecheck": {
+      "outputs": []
+    }
+  }
+}

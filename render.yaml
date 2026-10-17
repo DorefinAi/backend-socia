@@ -1,0 +1,145 @@
+# Render topology from the backend architecture doc §4. One repo, one build, several services.
+# "sync: false" values are entered in the Render dashboard when the Blueprint is created.
+
+envVarGroups:
+  - name: socia-shared
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ORG_ID
+        sync: false
+      - key: SECRET_KEY # openssl rand -base64 32
+        sync: false
+      - key: S3_ENDPOINT # https://<account>.r2.cloudflarestorage.com
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: X_MODE # fake until the X app and tokens are ready, then api
+        value: fake
+      - key: X_USERNAME
+        sync: false
+      - key: X_CONSUMER_KEY
+        sync: false
+      - key: X_CONSUMER_SECRET
+        sync: false
+      - key: X_ACCESS_TOKEN
+        sync: false
+      - key: X_ACCESS_TOKEN_SECRET
+        sync: false
+
+services:
+  - type: web
+    name: socia-api
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    preDeployCommand: pnpm db:migrate
+    startCommand: node apps/api/dist/index.js
+    healthCheckPath: /healthz
+    envVars:
+      - fromGroup: socia-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: socia-db, property: connectionString }
+      - key: CORS_ORIGINS # https://digital.<domain>
+        sync: false
+
+  # Singleton: one FTP watermark. Also runs convert + compose (pure, fast).
+  - type: worker
+    name: socia-ingest
+    runtime: node
+    region: singapore
+    plan: starter
+    numInstances: 1
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: node apps/worker/dist/index.js ingest pipeline
+    envVars:
+      - fromGroup: socia-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: socia-db, property: connectionString }
+      - key: FTP_HOST
+        sync: false
+      - key: FTP_PORT
+        value: "21"
+      - key: FTP_USER
+        sync: false
+      - key: FTP_PASSWORD
+        sync: false
+      - key: FTP_SECURE
+        value: "false"
+      - key: FTP_ROOT
+        sync: false
+      - key: FTP_DEPTH
+        value: "2"
+
+  # Chromium needs the Playwright image; ~250 MB per warm page, so 2 GB for a pool of 3.
+  - type: worker
+    name: socia-render
+    runtime: docker
+    region: singapore
+    plan: standard
+    dockerfilePath: ./apps/worker/Dockerfile
+    dockerContext: .
+    envVars:
+      - fromGroup: socia-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: socia-db, property: connectionString }
+      - key: RENDER_POOL
+        value: "3"
+
+  - type: worker
+    name: socia-publish
+    runtime: node
+    region: singapore
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: node apps/worker/dist/index.js publish maintenance
+    envVars:
+      - fromGroup: socia-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: socia-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: socia-kv, property: connectionString }
+
+  - type: cron
+    name: socia-cron-metrics
+    runtime: node
+    region: singapore
+    schedule: "0 */6 * * *"
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: node apps/worker/dist/index.js --once metrics
+    envVars:
+      - fromGroup: socia-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: socia-db, property: connectionString }
+
+  # 02:00 IST
+  - type: cron
+    name: socia-cron-handles
+    runtime: node
+    region: singapore
+    schedule: "30 20 * * *"
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: node apps/worker/dist/index.js --once handles
+    envVars:
+      - fromGroup: socia-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: socia-db, property: connectionString }
+      - key: WIKIDATA_USER_AGENT # Socia/0.1 (handle directory seed; contact: <email>)
+        sync: false
+
+  - type: keyvalue
+    name: socia-kv
+    region: singapore
+    plan: starter
+    ipAllowList: []
+
+databases:
+  - name: socia-db
+    region: singapore
+    plan: basic-256mb
+    postgresMajorVersion: "16"

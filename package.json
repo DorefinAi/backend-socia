@@ -1,0 +1,23 @@
+{
+  "name": "socia-backend",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.23.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test --concurrency=1",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @socia/db generate",
+    "db:migrate": "pnpm --filter @socia/db migrate"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "tsx": "4.23.15",
+    "turbo": "2.11.9",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}

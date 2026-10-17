@@ -1,0 +1,30 @@
+{
+  "name": "@socia/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1152.0",
+    "@aws-sdk/s3-request-presigner": "3.1152.0",
+    "@fontsource/noto-sans-devanagari": "5.3.0",
+    "@socia/core": "workspace:*",
+    "@socia/db": "workspace:*",
+    "@socia/providers": "workspace:*",
+    "basic-ftp": "6.2.3",
+    "drizzle-orm": "0.45.4",
+    "ioredis": "5.11.1",
+    "pg": "8.23.1",
+    "pino": "9.14.0",
+    "playwright": "1.56.1"
+  },
+  "devDependencies": {
+    "tsup": "8.5.1"
+  }
+}

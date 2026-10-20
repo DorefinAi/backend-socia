@@ -1,0 +1,1 @@
+ALTER TABLE "post_drafts" ADD COLUMN "render_attempts" integer DEFAULT 0 NOT NULL;

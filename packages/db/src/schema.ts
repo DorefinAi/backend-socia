@@ -164,6 +164,8 @@ export const postDrafts = pgTable(
     cardKey: text("card_key"),
     cardFontPx: integer("card_font_px"),
     renderError: text("render_error"),
+    /** Failed renders in a row; at the limit a new draft goes to render_failed instead of retrying forever */
+    renderAttempts: integer("render_attempts").notNull().default(0),
     /** A render worker holds the draft until then; stops two workers drawing the same card */
     renderLeaseUntil: timestamp("render_lease_until", { withTimezone: true }),
     /** Optimistic concurrency: a stale version gets 409 */

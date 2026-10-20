@@ -1,35 +1,36 @@
-// The X card, 1080×1080. PLACEHOLDER LAYOUT: the client supplies the real template, logo and
-// licensed font (spec §11 Q4 and Q11). When it arrives, rebuild it here once; the variable slot is
-// .headline inside the fixed .headline-box, and everything else is static.
+// The X card, 1080×1080. PLACEHOLDER LAYOUT: the client supplies the real template and logo
+// (spec §11 Q4 and Q11); the font is the client's Mangal. When the template arrives, rebuild it
+// here once; the variable slot is .headline inside the fixed .headline-box, and everything else is static.
 //
 // Fonts are inlined as data URIs. Nothing is fetched at render time: a slow CDN would mean a
 // wrong-sized card.
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export const CARD_SIZE = 1080;
 export const FONT_MIN_PX = 28;
 export const FONT_MAX_PX = 96;
 
-const require = createRequire(import.meta.url);
+// apps/worker/fonts, reached from src/card/ under tsx and from dist/ once bundled
+const FONT_DIR = [new URL("../../fonts/", import.meta.url), new URL("../fonts/", import.meta.url)]
+  .map((u) => fileURLToPath(u))
+  .find((dir) => existsSync(dir + "mangal.ttf"));
 
 function fontDataUri(file: string): string {
-  const path = require.resolve(`@fontsource/noto-sans-devanagari/files/${file}`);
-  return `data:font/woff2;base64,${readFileSync(path).toString("base64")}`;
+  if (!FONT_DIR) throw new Error("card fonts not found: expected apps/worker/fonts/mangal.ttf");
+  return `data:font/ttf;base64,${readFileSync(FONT_DIR + file).toString("base64")}`;
 }
 
 let fontCss: string | null = null;
 
-/** Noto Sans Devanagari 700, Devanagari and Latin subsets, with the ranges fontsource uses. */
+/** Mangal: regular for the band and footer, bold for the headline. Covers Devanagari and Latin. */
 export function cardFontCss(): string {
   fontCss ??= `
+@font-face { font-family: "Card"; font-weight: 400; font-display: block;
+  src: url(${fontDataUri("mangal.ttf")}) format("truetype"); }
 @font-face { font-family: "Card"; font-weight: 700; font-display: block;
-  src: url(${fontDataUri("noto-sans-devanagari-devanagari-700-normal.woff2")}) format("woff2");
-  unicode-range: U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B09; }
-@font-face { font-family: "Card"; font-weight: 700; font-display: block;
-  src: url(${fontDataUri("noto-sans-devanagari-latin-700-normal.woff2")}) format("woff2");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }`;
+  src: url(${fontDataUri("mangalb.ttf")}) format("truetype"); }`;
   return fontCss;
 }
 

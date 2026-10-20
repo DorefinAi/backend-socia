@@ -129,7 +129,11 @@ export interface XApiConfig {
   username: string;
   baseUrl?: string;
   fetch?: typeof fetch;
+  /** Per call; a hung connection would otherwise hold the publish loop for minutes */
+  timeoutMs?: number;
 }
+
+const X_TIMEOUT_MS = 30_000;
 
 export class XApiClient implements XClient {
   readonly mode = "api" as const;
@@ -154,7 +158,15 @@ export class XApiClient implements XClient {
       body = init.form;
     }
 
-    const res = await this.http(url, { method, headers, body });
+    const timeoutMs = this.cfg.timeoutMs ?? X_TIMEOUT_MS;
+    let res: Response;
+    try {
+      res = await this.http(url, { method, headers, body, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+      // Retryable: before posting again, the publish stage looks for the post among recent ones
+      if ((e as Error)?.name === "TimeoutError") throw new XApiError(0, `X ${method} ${url.pathname} did not answer within ${timeoutMs / 1000} s`, true);
+      throw e;
+    }
     if (res.status === 429) {
       const reset = Number(res.headers.get("x-rate-limit-reset"));
       throw new XRateLimited(Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000) : new Date(Date.now() + 60_000));

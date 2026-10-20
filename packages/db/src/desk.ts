@@ -331,10 +331,14 @@ export async function retryFailed(db: Db, actor: Actor, draftId: string) {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
     const status = move(draft, "retry");
+    // The same daily cap as approveDraft: a failed post did not count, so its retry must fit under the cap
+    const cap = await capUsage(tx, actor.orgId, draft.platform);
+    if (cap.used >= cap.cap) throw new DeskError("cap_full", `Today's X cap of ${cap.cap} posts is used up.`, { ...cap });
     const [job] = await tx.insert(publishJobs).values({ orgId: actor.orgId, draftId, kind: "post", createdBy: actor.id }).returning();
     await tx.update(postDrafts).set({ status, updatedAt: sql`now()` }).where(eq(postDrafts.id, draftId));
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "post.retry", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { status, jobId: job!.id } });
     await notify(tx, actor.orgId, { type: "post.queued", draftId, jobId: job!.id, sendAt: job!.nextAttemptAt.toISOString() });
+    await notify(tx, actor.orgId, { type: "cap.changed", platform: draft.platform, used: cap.used + 1, cap: cap.cap });
     return job!;
   });
 }

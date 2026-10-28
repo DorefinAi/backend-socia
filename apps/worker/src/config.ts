@@ -1,6 +1,10 @@
 // Every setting comes from the environment (Render dashboard in production, .env locally).
 
-import { FakeXClient, FolderSource, FtpSource, LocalStorage, OAuth1Auth, S3Storage, XApiClient, type FileSource, type Storage, type XClient } from "@socia/providers";
+import {
+  FakeXClient, FolderFootage, FolderSource, FtpFootage, FtpSource, LocalStorage, OAuth1Auth, S3Storage, XApiClient,
+  type FileSource, type FootageSource, type Storage, type XClient,
+} from "@socia/providers";
+import type { MediaSettings } from "./stages/samvadia";
 
 export const ROLES = ["ingest", "pipeline", "render", "publish", "maintenance", "metrics", "handles"] as const;
 export type Role = (typeof ROLES)[number];
@@ -16,8 +20,13 @@ function num(name: string, fallback: number): number {
   return v ? Number(v) : fallback;
 }
 
+export const SOURCE_MODES = ["samvadia", "folder", "ftp"] as const;
+export type SourceMode = (typeof SOURCE_MODES)[number];
+
 export interface WorkerConfig {
   databaseUrl: string;
+  /** Where stories come from: Samvadia's database (+ FTP footage), or text files in a folder / on the FTP */
+  sourceMode: SourceMode;
   orgId: string;
   roles: Role[];
   pollSeconds: number;
@@ -33,6 +42,7 @@ export function loadConfig(argvRoles?: string[]): WorkerConfig {
   if (bad.length || !roles.length) throw new Error(`WORKER_ROLES must list some of: ${ROLES.join(", ")} (got "${roles.join(",")}")`);
   return {
     databaseUrl: need("DATABASE_URL"),
+    sourceMode: sourceMode(),
     orgId: need("ORG_ID"),
     roles: roles as Role[],
     pollSeconds: num("FTP_POLL_SECONDS", 5),
@@ -41,6 +51,43 @@ export function loadConfig(argvRoles?: string[]): WorkerConfig {
     redisUrl: process.env.REDIS_URL ?? null,
     wikidataUserAgent: process.env.WIKIDATA_USER_AGENT ?? "Socia/0.1 (handle directory seed; contact: tech@dorefin.ai)",
   };
+}
+
+/** SOURCE_MODE, or the old behaviour when it is unset: SOURCE_DIR means folder, otherwise FTP. */
+export function sourceMode(): SourceMode {
+  const v = process.env.SOURCE_MODE?.trim().toLowerCase();
+  if (!v) return process.env.SOURCE_DIR ? "folder" : "ftp";
+  if (!SOURCE_MODES.includes(v as SourceMode)) throw new Error(`SOURCE_MODE must be one of ${SOURCE_MODES.join(", ")} (got "${v}")`);
+  return v as SourceMode;
+}
+
+export interface SamvadiaConfig {
+  databaseUrl: string;
+  media: MediaSettings;
+  rescanMs: number;
+  backfillHours: number;
+}
+
+export function samvadiaConfig(): SamvadiaConfig {
+  const types = (process.env.MEDIA_TYPES ?? "jpg,jpeg,png,webp,mp4,mov").split(",").map((t) => t.trim().toLowerCase().replace(/^\./, "")).filter(Boolean);
+  return {
+    databaseUrl: need("SAMVADIA_DATABASE_URL"),
+    media: { types, maxBytes: Math.round(num("MEDIA_MAX_MB", 25) * 1024 * 1024), video: process.env.MEDIA_VIDEO === "true" },
+    rescanMs: num("MEDIA_RESCAN_SECONDS", 60) * 1000,
+    backfillHours: num("SAMVADIA_BACKFILL_HOURS", 24),
+  };
+}
+
+/** Footage folders: FOOTAGE_DIR (a local copy of the FTP layout, development) or the newsroom FTP, read only. */
+export function makeFootage(): FootageSource {
+  if (process.env.FOOTAGE_DIR) return new FolderFootage(process.env.FOOTAGE_DIR);
+  return new FtpFootage({
+    host: need("FTP_HOST"),
+    port: num("FTP_PORT", 21),
+    user: need("FTP_USER"),
+    password: need("FTP_PASSWORD"),
+    secure: process.env.FTP_SECURE === "true",
+  });
 }
 
 export function makeStorage(): Storage {
@@ -56,8 +103,8 @@ export function makeStorage(): Storage {
   });
 }
 
-export function makeSource(): FileSource {
-  if (process.env.SOURCE_DIR) return new FolderSource(process.env.SOURCE_DIR, num("FTP_DEPTH", 2));
+export function makeSource(mode: SourceMode = sourceMode()): FileSource {
+  if (mode === "folder") return new FolderSource(need("SOURCE_DIR"), num("FTP_DEPTH", 2));
   return new FtpSource({
     host: need("FTP_HOST"),
     port: num("FTP_PORT", 21),

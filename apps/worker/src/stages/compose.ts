@@ -57,7 +57,7 @@ export class Dictionaries {
 export async function composeNext(db: Db, dictionaries: Dictionaries, log: Logger): Promise<boolean> {
   return withNextStory(db, "converted", async (tx, story) => {
     const { composer } = await dictionaries.composer();
-    const content = await composer.compose({ headline: story.headline ?? "", body: story.body ?? "" }, "x");
+    const content = await composer.compose({ headline: story.headline ?? "", body: story.body ?? "", place: story.district }, "x");
 
     const [draft] = await tx
       .insert(postDrafts)

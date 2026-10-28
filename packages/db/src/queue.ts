@@ -50,7 +50,7 @@ export async function recordPlatformPost(db: Db, jobId: string, platformPostId: 
   await db.update(publishJobs).set({ platformPostId, permalink, updatedAt: sql`now()` }).where(eq(publishJobs.id, jobId));
 }
 
-export async function completePost(db: Db, job: PublishJob, result: { platformPostId: string; permalink: string; text: string }) {
+export async function completePost(db: Db, job: PublishJob, result: { platformPostId: string; permalink: string; text: string; cardKey?: string | null }) {
   await db.transaction(async (tx) => {
     await tx
       .update(publishJobs)
@@ -63,7 +63,7 @@ export async function completePost(db: Db, job: PublishJob, result: { platformPo
       .returning();
     const [post] = await tx
       .insert(publishedPosts)
-      .values({ orgId: job.orgId, draftId: job.draftId, platform: draft!.platform, platformPostId: result.platformPostId, permalink: result.permalink, text: result.text, publishedBy: job.createdBy })
+      .values({ orgId: job.orgId, draftId: job.draftId, platform: draft!.platform, platformPostId: result.platformPostId, permalink: result.permalink, text: result.text, publishedBy: job.createdBy, cardKey: result.cardKey ?? null })
       .onConflictDoNothing()
       .returning();
     await audit(tx, { orgId: job.orgId, actorId: job.createdBy, action: "post.published", entityType: "publish_job", entityId: job.id, after: { ...result, attempts: job.attempts } });

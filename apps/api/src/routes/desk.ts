@@ -1,18 +1,36 @@
 // The X console: queue, draft, claim, edit, approve, undo, reject, recall.
 
-import { REJECT_REASONS, assemblePostText, checkXPost, X_LIMIT } from "@socia/core";
+import { DRAFT_STATUSES, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, X_LIMIT } from "@socia/core";
 import {
-  approveDraft, capUsage, claimDraft, extendClaim, postDrafts, postMetrics, publishedPosts, rejectDraft, releaseDraft,
-  requestRecall, restoreDraft, retryFailed, stories, undoPost, updateDraft, users, type Actor,
+  approveDraft, assets, capUsage, claimDraft, clearCustomCard, extendClaim, markPosted, postDrafts, postMetrics, publishedPosts,
+  rejectDraft, releaseDraft, requestRecall, restoreDraft, retryFailed, setCustomCard, stories, undoPost, updateDraft, users, type Actor,
 } from "@socia/db";
-import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
+import { and, count, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { HttpError, guard, requireAct, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
 import { cardUrl, draftView } from "../views";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
+
+/** X takes images up to 5 MB */
+export const CARD_MAX_BYTES = 5 * 1024 * 1024;
+const CARD_MIN_PX = 300;
+const CARD_MAX_PX = 4096;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Width and height from the IHDR chunk, which must come straight after the signature. Null if not a PNG. */
+export function pngSize(buf: Buffer): { width: number; height: number } | null | "no_header" {
+  if (buf.length < 8 || !buf.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
+  if (buf.length < 24 || buf.toString("latin1", 12, 16) !== "IHDR") return "no_header";
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+/** A post's address on X; the id is the last path part. Query and fragment (?s=20) are allowed. */
+export const X_PERMALINK = /^https:\/\/(www\.)?(x|twitter)\.com\/\w{1,15}\/status\/(\d{5,25})(?:[/?#]\S*)?$/;
+
+const VersionQuery = Type.Object({ version: Type.Integer() });
 
 const QUEUE_VIEWS = {
   inbox: ["ready", "claimed"],
@@ -57,13 +75,18 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           status: postDrafts.status,
           version: postDrafts.version,
           bodyText: postDrafts.bodyText,
-          cardKey: postDrafts.cardKey,
+          cardKey: sql<string | null>`coalesce(${postDrafts.customCardKey}, ${postDrafts.cardKey})`,
           claimedBy: postDrafts.claimedBy,
           claimExpiresAt: postDrafts.claimExpiresAt,
           holder: users.name,
           rejectReason: postDrafts.rejectReason,
           createdAt: postDrafts.createdAt,
           slug: stories.slug,
+          source: stories.source,
+          district: stories.district,
+          mediaState: stories.mediaState,
+          images: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'image')`,
+          videos: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'video')`,
           headline: stories.headline,
           receivedAt: stories.createdAt,
           lowConfidence: sql<boolean>`coalesce(${stories.conversionConfidence} < 0.97, false)`,
@@ -97,6 +120,10 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               headline: r.headline,
               bodyText: r.bodyText,
               receivedAt: r.receivedAt,
+              createdAt: r.createdAt,
+              source: r.source,
+              district: r.district,
+              media: { images: r.images, videos: r.videos, state: r.mediaState },
               cardUrl: await cardUrl(storage, r.cardKey),
               claim: held ? { userId: r.claimedBy, name: r.holder, until: r.claimExpiresAt, mine: r.claimedBy === user.id } : null,
               rejectReason: r.rejectReason,
@@ -148,6 +175,53 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const { version, ...patch } = req.body;
       await updateDraft(db, actor(user), req.params.id, version, patch);
       return view(user, req.params.id);
+    },
+  );
+
+  // ─── Custom card ───────────────────────────────────────────────────────────
+  // The X desk edits the card in the browser and sends the PNG as the raw body. The parser for
+  // image/png lives only in this child scope, so no other route accepts an image body.
+  await app.register(async (scope) => {
+    const cards = scope.withTypeProvider<TypeBoxTypeProvider>();
+    cards.addContentTypeParser("image/png", { parseAs: "buffer", bodyLimit: CARD_MAX_BYTES }, (_req, body, done) => done(null, body));
+
+    cards.put("/drafts/:id/card", { bodyLimit: CARD_MAX_BYTES, schema: { params: Id, querystring: VersionQuery } }, async (req) => {
+      const { user } = guard(req);
+      requireAct(user);
+      const body = req.body as unknown;
+      if (!Buffer.isBuffer(body)) throw new HttpError(415, "unsupported_type", "Send the card as a PNG image (content-type: image/png).");
+      if (body.length > CARD_MAX_BYTES) throw new HttpError(413, "too_large", "The card is over 5 MB, the most X accepts.");
+      const size = pngSize(body);
+      if (size === null) throw new HttpError(415, "unsupported_type", "This file is not a PNG image.");
+      if (size === "no_header") throw new HttpError(400, "invalid", "This PNG has no image header.");
+      const { width, height } = size;
+      if ([width, height].some((n) => n < CARD_MIN_PX || n > CARD_MAX_PX)) {
+        throw new HttpError(400, "invalid", `The card must be ${CARD_MIN_PX} to ${CARD_MAX_PX} pixels on each side; this one is ${width}x${height}.`);
+      }
+      await setCustomCard(db, actor(user), req.params.id, req.query.version, { bytes: body.length, width, height }, (key) => storage.put(key, body, "image/png"));
+      return view(user, req.params.id);
+    });
+
+    cards.delete("/drafts/:id/card", { schema: { params: Id, querystring: VersionQuery } }, async (req) => {
+      const { user } = guard(req);
+      requireAct(user);
+      await clearCustomCard(db, actor(user), req.params.id, req.query.version);
+      return view(user, req.params.id);
+    });
+  });
+
+  /** The operator posted on X by hand (e.g. X was down for the API): record it as published. */
+  app.post(
+    "/drafts/:id/mark-posted",
+    { schema: { params: Id, body: Type.Object({ version: Type.Integer(), permalink: Type.String({ maxLength: 500 }) }) } },
+    async (req) => {
+      const { user } = guard(req);
+      requireAct(user);
+      const permalink = req.body.permalink.trim();
+      const match = X_PERMALINK.exec(permalink);
+      if (!match) throw new HttpError(400, "invalid", "Paste the post's link from X, like https://x.com/<account>/status/<number>.");
+      const post = await markPosted(db, actor(user), req.params.id, req.body.version, { platformPostId: match[3]!, permalink });
+      return { postId: post.id, permalink: post.permalink };
     },
   );
 
@@ -209,6 +283,27 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.get("/caps", async (req) => ({ x: await capUsage(db, guard(req).user.orgId) }));
 
+  /** Tab badges and dashboard tiles: drafts per status and per queue view, posts today, the cap. */
+  app.get("/x/counts", async (req) => {
+    const { user } = guard(req);
+    const rows = await db
+      .select({
+        status: sql<string>`CASE WHEN ${postDrafts.status} = 'claimed' AND (${postDrafts.claimExpiresAt} IS NULL OR ${postDrafts.claimExpiresAt} <= now()) THEN 'ready' ELSE ${postDrafts.status} END`,
+        n: count(),
+      })
+      .from(postDrafts)
+      .where(and(eq(postDrafts.orgId, user.orgId), eq(postDrafts.platform, "x")))
+      .groupBy(sql`1`);
+    const byStatus = Object.fromEntries(DRAFT_STATUSES.map((s) => [s, 0])) as Record<string, number>;
+    for (const r of rows) byStatus[r.status] = (byStatus[r.status] ?? 0) + Number(r.n);
+    const byView = Object.fromEntries(Object.entries(QUEUE_VIEWS).map(([v, statuses]) => [v, statuses.reduce((a, s) => a + (byStatus[s] ?? 0), 0)]));
+    const [today] = await db
+      .select({ n: count() })
+      .from(publishedPosts)
+      .where(and(eq(publishedPosts.orgId, user.orgId), eq(publishedPosts.platform, "x"), gte(publishedPosts.publishedAt, istDayStart(new Date()))));
+    return { byStatus, byView, publishedToday: Number(today?.n ?? 0), cap: await capUsage(db, user.orgId) };
+  });
+
   // ─── Published ─────────────────────────────────────────────────────────────
 
   app.get(
@@ -232,16 +327,22 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
         .select({
           p: publishedPosts,
           by: users.name,
+          // The card that went out; rows from before it was recorded fall back to the draft's rendered card
+          cardKey: sql<string | null>`coalesce(${publishedPosts.cardKey}, ${postDrafts.cardKey})`,
+          headline: stories.headline,
+          slug: stories.slug,
           m: { postId: latest.postId, impressions: latest.impressions, likes: latest.likes, comments: latest.comments, shares: latest.shares, fetchedAt: latest.fetchedAt },
         })
         .from(publishedPosts)
         .leftJoin(users, eq(users.id, publishedPosts.publishedBy))
         .leftJoin(latest, eq(latest.postId, publishedPosts.id))
+        .leftJoin(postDrafts, eq(postDrafts.id, publishedPosts.draftId))
+        .leftJoin(stories, eq(stories.id, postDrafts.storyId))
         .where(and(eq(publishedPosts.orgId, user.orgId), req.query.before ? lt(publishedPosts.publishedAt, new Date(req.query.before)) : undefined))
         .orderBy(desc(publishedPosts.publishedAt))
         .limit(req.query.limit ?? 50);
       return {
-        items: rows.map(({ p, by, m }) => ({
+        items: await Promise.all(rows.map(async ({ p, by, m, cardKey, headline, slug }) => ({
           id: p.id,
           draftId: p.draftId,
           platform: p.platform,
@@ -251,7 +352,11 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           publishedBy: by,
           recalled: p.recalledAt ? { at: p.recalledAt, reason: p.recallReason } : null,
           metrics: m?.postId ? { impressions: m.impressions, likes: m.likes, comments: m.comments, shares: m.shares, at: m.fetchedAt } : null,
-        })),
+          cardUrl: await cardUrl(storage, cardKey),
+          headline,
+          slug,
+          manual: p.manual,
+        }))),
       };
     },
   );

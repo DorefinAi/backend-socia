@@ -91,12 +91,38 @@ export const STORY_STATUSES = ["ingested", "converted", "composed", "failed", "a
 export type StoryStatus = (typeof STORY_STATUSES)[number];
 export const MEDIA_STATES = ["awaiting", "attached", "none"] as const;
 
+/** Where a story's text came from: a file on the share/folder, or an approved story in Samvadia. */
+export const STORY_SOURCES = ["file", "samvadia"] as const;
+export type StorySource = (typeof STORY_SOURCES)[number];
+
+/** What Samvadia told us about a story; shown on the draft, never edited here. */
+export interface StoryExternal {
+  storyId: string;
+  itemId: string;
+  version: number;
+  kind: string;
+  guid: string;
+  title: string;
+  reporter: string | null;
+  districtCode: string | null;
+  publishedAt: string;
+  footagePath: string | null;
+  footageStatus: string | null;
+}
+
 export const stories = pgTable(
   "stories",
   {
     id: id(),
     orgId: orgId(),
-    fileId: uuid("file_id").notNull().references(() => ingestedFiles.id),
+    /** The text file; null for a story that came from Samvadia's database */
+    fileId: uuid("file_id").references(() => ingestedFiles.id),
+    source: text("source").$type<StorySource>().notNull().default("file"),
+    /** Samvadia: "<story id>:v<version>", the dedupe key; null for files */
+    externalId: text("external_id"),
+    external: jsonb("external").$type<StoryExternal>(),
+    /** District or city, for hashtags (Samvadia gives it; files do not) */
+    district: text("district"),
     slug: text("slug").notNull(),
     status: text("status").$type<StoryStatus>().notNull().default("ingested"),
     /** The file as decoded, before Kruti Dev conversion, shown beside a low-confidence conversion */
@@ -116,25 +142,41 @@ export const stories = pgTable(
   (t) => [
     index("stories_status_idx").on(t.status, t.createdAt),
     index("stories_slug_idx").on(t.orgId, t.slug, t.createdAt),
+    uniqueIndex("stories_external_key").on(t.orgId, t.source, t.externalId).where(sql`${t.externalId} IS NOT NULL`),
+    index("stories_source_recent_idx").on(t.source, t.createdAt),
   ],
 );
+
+/** Why a footage file was recorded but not copied into storage. */
+export const MEDIA_SKIP_REASONS = ["video_off", "too_big"] as const;
 
 export const assets = pgTable(
   "assets",
   {
     id: id(),
     orgId: orgId(),
-    fileId: uuid("file_id").notNull().references(() => ingestedFiles.id),
+    /** The ingested file; null for footage copied (or only recorded) straight from the FTP story folder */
+    fileId: uuid("file_id").references(() => ingestedFiles.id),
     storyId: uuid("story_id").references(() => stories.id),
     kind: text("kind").notNull(),
     slug: text("slug").notNull(),
     seq: integer("seq"),
-    storageKey: text("storage_key").notNull(),
-    /** "auto" by slug, or "manual" from the attach picker */
+    /** Null when the file was recorded but not copied (see skipReason) */
+    storageKey: text("storage_key"),
+    /** "auto" by slug, "manual" from the attach picker, "footage" from the story's FTP folder */
     attachedBy: text("attached_by"),
+    /** Footage only: where it is on the FTP, its name and size there */
+    sourcePath: text("source_path"),
+    fileName: text("file_name"),
+    bytes: bigint("bytes", { mode: "number" }),
+    skipReason: text("skip_reason").$type<(typeof MEDIA_SKIP_REASONS)[number]>(),
     createdAt: createdAt(),
   },
-  (t) => [index("assets_slug_idx").on(t.orgId, t.slug, t.createdAt), index("assets_story_idx").on(t.storyId)],
+  (t) => [
+    index("assets_slug_idx").on(t.orgId, t.slug, t.createdAt),
+    index("assets_story_idx").on(t.storyId),
+    uniqueIndex("assets_story_source_path_key").on(t.storyId, t.sourcePath).where(sql`${t.sourcePath} IS NOT NULL`),
+  ],
 );
 
 // ─── Drafts and publishing ───────────────────────────────────────────────────
@@ -162,6 +204,8 @@ export const postDrafts = pgTable(
     cardRev: integer("card_rev").notNull().default(1),
     cardRenderedRev: integer("card_rendered_rev").notNull().default(0),
     cardKey: text("card_key"),
+    /** An operator-made card (edited in the browser). When set it is the card that gets posted. */
+    customCardKey: text("custom_card_key"),
     cardFontPx: integer("card_font_px"),
     renderError: text("render_error"),
     /** Failed renders in a row; at the limit a new draft goes to render_failed instead of retrying forever */
@@ -225,6 +269,10 @@ export const publishedPosts = pgTable(
     recalledAt: timestamp("recalled_at", { withTimezone: true }),
     recalledBy: uuid("recalled_by").references(() => users.id),
     recallReason: text("recall_reason"),
+    /** The card image that went out with the post; null for rows from before it was recorded */
+    cardKey: text("card_key"),
+    /** Posted by hand on X and recorded by the operator, not sent by the worker */
+    manual: boolean("manual").notNull().default(false),
   },
   (t) => [
     uniqueIndex("published_posts_platform_id_key").on(t.platform, t.platformPostId),

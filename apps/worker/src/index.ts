@@ -1,14 +1,17 @@
 // One worker binary, several Render services. WORKER_ROLES picks what this instance does:
-//   socia-ingest   WORKER_ROLES=ingest,pipeline   (singleton: one FTP watermark)
+//   socia-ingest   WORKER_ROLES=ingest,pipeline   (singleton: one FTP watermark / Samvadia cursor;
+//                  SOURCE_MODE=samvadia|folder|ftp picks where stories come from)
 //   socia-render   WORKER_ROLES=render            (Docker, Playwright image)
 //   socia-publish  WORKER_ROLES=publish,maintenance
 //   crons          node dist/index.js --once metrics | --once handles
 
-import { createDb } from "@socia/db";
+import { SamvadiaReader, createDb, recordIngestPoll } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
 import { CardRenderer } from "./card/renderer";
-import { loadConfig, makeSource, makeStorage, makeXClient } from "./config";
+import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, samvadiaConfig } from "./config";
+
+import { SamvadiaIngest } from "./stages/samvadia";
 import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
 import { convertNext } from "./stages/convert";
@@ -41,11 +44,35 @@ async function main(): Promise<void> {
   const cleanups: (() => Promise<void>)[] = [];
   const storage = cfg.roles.some((r) => ["ingest", "pipeline", "render", "publish"].includes(r)) ? makeStorage() : null;
 
-  if (cfg.roles.includes("ingest")) {
-    const source = makeSource();
+  if (cfg.roles.includes("ingest") && cfg.sourceMode === "samvadia") {
+    const sc = samvadiaConfig();
+    const reader = new SamvadiaReader(sc.databaseUrl);
+    const footage = makeFootage();
+    cleanups.push(() => reader.close(), () => footage.close());
+    const ingest = new SamvadiaIngest({ db, storage: storage!, reader, footage, orgId: cfg.orgId, log, media: sc.media, rescanMs: sc.rescanMs, backfillHours: sc.backfillHours });
+    log.info({ footage: footage.kind, media: sc.media, rescanSeconds: sc.rescanMs / 1000 }, "ingest: Samvadia approved stories + FTP footage (read only)");
+    loops.start({ name: "ingest", idleMs: cfg.pollSeconds * 1000, log, tick: async () => (await ingest.poll(), false) });
+  } else if (cfg.roles.includes("ingest")) {
+    const source = makeSource(cfg.sourceMode);
     cleanups.push(() => source.close());
     const ingest = new Ingest({ db, storage: storage!, source, orgId: cfg.orgId, log });
-    loops.start({ name: "ingest", idleMs: cfg.pollSeconds * 1000, log, tick: async () => (await ingest.scan(), false) });
+    const mode = cfg.sourceMode;
+    log.info({ mode }, "ingest: text files from the share");
+    loops.start({
+      name: "ingest",
+      idleMs: cfg.pollSeconds * 1000,
+      log,
+      tick: async () => {
+        try {
+          const taken = await ingest.scan();
+          await recordIngestPoll(db, cfg.orgId, { mode, taken, cursor: null });
+        } catch (err) {
+          await recordIngestPoll(db, cfg.orgId, { mode, taken: 0, error: String((err as Error)?.message ?? err).slice(0, 500), cursor: null }).catch(() => undefined);
+          throw err;
+        }
+        return false;
+      },
+    });
   }
 
   if (cfg.roles.includes("pipeline")) {

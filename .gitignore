@@ -5,3 +5,6 @@ dist/
 *.log
 coverage/
 .local/
+# local runs: test logins and a filled-in live env never go to git
+local.credentials.md
+.env.live

@@ -17,7 +17,11 @@ export type SociaEvent =
   | { type: "post.sent"; draftId: string; postId: string; permalink: string }
   | { type: "post.failed"; draftId: string; jobId: string; error: string; final: boolean }
   | { type: "post.recalled"; draftId: string; postId: string }
-  | { type: "cap.changed"; platform: string; used: number; cap: number };
+  | { type: "cap.changed"; platform: string; used: number; cap: number }
+  /** Footage landed on a story that already had media or a draft (late media) */
+  | { type: "media.attached"; storyId: string; draftIds: string[]; count: number }
+  /** A poll that ingested something or failed; the dashboard refetches /ingest/status */
+  | { type: "ingest.status"; ok: boolean; at: string };
 
 export type SociaEventEnvelope = SociaEvent & { orgId: string; platform?: string };
 

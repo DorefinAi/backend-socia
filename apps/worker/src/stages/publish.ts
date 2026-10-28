@@ -4,7 +4,7 @@
 // job comes back with the id (just verify and finish) or without it (look for the post first).
 
 import { checkXPost } from "@socia/core";
-import { claimPublishJobs, completeDelete, completePost, failAttempt, postDrafts, postText, recordPlatformPost, releaseJobs, type Db, type PublishJob } from "@socia/db";
+import { claimPublishJobs, completeDelete, completePost, failAttempt, postDrafts, postText, postedCardKey, recordPlatformPost, releaseJobs, type Db, type PublishJob } from "@socia/db";
 import { XApiError, XRateLimited, type Storage, type XClient } from "@socia/providers";
 import { eq } from "drizzle-orm";
 import type { Logger } from "pino";
@@ -59,6 +59,8 @@ export class Publisher {
     const [draft] = await db.select().from(postDrafts).where(eq(postDrafts.id, job.draftId));
     if (!draft) throw new Error(`Draft ${job.draftId} is gone`);
     const text = postText(draft);
+    // The operator's edited card when there is one, else the rendered card
+    const cardKey = postedCardKey(draft);
 
     // The API checked this at approve; check again, the text is what actually goes out
     const check = checkXPost(text);
@@ -83,15 +85,15 @@ export class Publisher {
         await failAttempt(db, job, "Waiting for the X rate window", { rateLimited: true, retryAt: take.retryAt });
         return;
       }
-      if (!draft.cardKey) throw new Error("The draft has no card");
-      const mediaId = await x.uploadImage(await storage.get(draft.cardKey));
+      if (!cardKey) throw new Error("The draft has no card");
+      const mediaId = await x.uploadImage(await storage.get(cardKey));
       postId = (await x.createPost(text, [mediaId])).id;
       await recordPlatformPost(db, job.id, postId, x.permalink(postId));
     }
 
     const live = await x.getPost(postId).catch(() => null);
     if (!live) log.warn({ jobId: job.id, postId }, "posted, but X did not return the post on verify");
-    await completePost(db, job, { platformPostId: postId, permalink: x.permalink(postId), text });
+    await completePost(db, job, { platformPostId: postId, permalink: x.permalink(postId), text, cardKey });
     log.info({ jobId: job.id, draftId: job.draftId, postId, mode: x.mode }, "posted");
   }
 

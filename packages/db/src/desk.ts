@@ -5,6 +5,7 @@ import {
   LEASE_SECONDS, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus,
   type DraftAction, type DraftStatus, type RejectReason,
 } from "@socia/core";
+import { randomUUID } from "node:crypto";
 import { and, count, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { audit } from "./audit";
 import type { Db, Executor } from "./client";
@@ -20,11 +21,11 @@ export interface Actor {
 
 export type DeskErrorCode =
   | "not_found" | "held_by_other" | "lease_lost" | "stale_version" | "invalid_state"
-  | "card_not_ready" | "post_invalid" | "cap_full" | "too_late" | "bad_mention";
+  | "card_not_ready" | "post_invalid" | "cap_full" | "too_late" | "bad_mention" | "duplicate_post";
 
 const HTTP_STATUS: Record<DeskErrorCode, number> = {
   not_found: 404, held_by_other: 409, lease_lost: 409, stale_version: 409, invalid_state: 409,
-  card_not_ready: 409, post_invalid: 422, cap_full: 429, too_late: 409, bad_mention: 422,
+  card_not_ready: 409, post_invalid: 422, cap_full: 429, too_late: 409, bad_mention: 422, duplicate_post: 409,
 };
 
 export class DeskError extends Error {
@@ -181,6 +182,66 @@ export async function updateDraft(db: Db, actor: Actor, draftId: string, version
   });
 }
 
+// ─── Custom card ─────────────────────────────────────────────────────────────
+
+/** The card that goes out with the post: the operator's own if set, else the rendered one. */
+export function postedCardKey(draft: Pick<Draft, "cardKey" | "customCardKey">): string | null {
+  return draft.customCardKey ?? draft.cardKey;
+}
+
+/** Checks shared by the card changes: same version, a live hold, still claimed. */
+function requireEditable(draft: Draft, actor: Actor, version: number): void {
+  if (draft.version !== version) throw new DeskError("stale_version", "Someone else saved this draft after you opened it.", { current: draft });
+  requireLease(draft, actor);
+  if (draft.status !== "claimed") throw new DeskError("invalid_state", `A ${draft.status} draft cannot be changed this way.`, { status: draft.status });
+}
+
+export interface CustomCard {
+  bytes: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Use the operator's edited card (a PNG made in the browser) in place of the rendered one. The
+ * file is stored only after every check passes, under a new key each time, so a link to an
+ * earlier card never shows the new one. Editing the headline later does not clear it.
+ */
+export async function setCustomCard(
+  db: Db, actor: Actor, draftId: string, version: number, card: CustomCard, store: (key: string) => Promise<void>,
+): Promise<Draft> {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    requireEditable(draft, actor, version);
+    const key = `cards/${draftId}/custom-${randomUUID()}.png`;
+    await store(key);
+    const [updated] = await tx
+      .update(postDrafts)
+      .set({ customCardKey: key, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      .where(eq(postDrafts.id, draftId))
+      .returning();
+    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.card_uploaded", entityType: "post_draft", entityId: draftId, before: { key: draft.customCardKey }, after: { key, ...card } });
+    await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
+    return updated!;
+  });
+}
+
+/** Back to the rendered card. The old file stays in storage (the audit log points at it). */
+export async function clearCustomCard(db: Db, actor: Actor, draftId: string, version: number): Promise<Draft> {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    requireEditable(draft, actor, version);
+    const [updated] = await tx
+      .update(postDrafts)
+      .set({ customCardKey: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      .where(eq(postDrafts.id, draftId))
+      .returning();
+    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.card_reset", entityType: "post_draft", entityId: draftId, before: { key: draft.customCardKey }, after: { key: null } });
+    await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
+    return updated!;
+  });
+}
+
 function pickEditable(d: Draft) {
   return { bodyText: d.bodyText, cardHeadline: d.cardHeadline, hashtags: d.hashtags, mentions: d.mentions, version: d.version };
 }
@@ -242,7 +303,8 @@ export async function approveDraft(db: Db, actor: Actor, draftId: string, versio
     requireLease(draft, actor);
     const status = move(draft, "approve");
 
-    if (draft.cardRenderedRev !== draft.cardRev || !draft.cardKey) {
+    // An operator's own card does not wait for the rendered one to catch up with an edit
+    if (!draft.customCardKey && (draft.cardRenderedRev !== draft.cardRev || !draft.cardKey)) {
       throw new DeskError("card_not_ready", "The card is still being drawn with your last change. Try again in a second.");
     }
     const check = checkXPost(postText(draft));
@@ -323,6 +385,38 @@ export async function restoreDraft(db: Db, actor: Actor, draftId: string): Promi
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.restore", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { status } });
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status, version: updated!.version });
     return updated!;
+  });
+}
+
+/**
+ * The operator posted on X by hand and records it here. The post already exists, so the daily cap
+ * is not checked (it still counts); the post row is what makes it show as published.
+ */
+export async function markPosted(db: Db, actor: Actor, draftId: string, version: number, post: { platformPostId: string; permalink: string }) {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    if (draft.version !== version) throw new DeskError("stale_version", "Someone else saved this draft after you opened it.", { current: draft });
+    requireLease(draft, actor);
+    const status = move(draft, "mark_posted");
+    const cardKey = postedCardKey(draft);
+
+    // The unique (platform, platform_post_id) index decides: a second record of the same post is refused
+    const [row] = await tx
+      .insert(publishedPosts)
+      .values({ orgId: actor.orgId, draftId, platform: draft.platform, platformPostId: post.platformPostId, permalink: post.permalink, text: postText(draft), publishedBy: actor.id, cardKey, manual: true })
+      .onConflictDoNothing()
+      .returning();
+    if (!row) throw new DeskError("duplicate_post", "This X post is already recorded on the desk.", { platformPostId: post.platformPostId });
+
+    await tx
+      .update(postDrafts)
+      .set({ status, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      .where(eq(postDrafts.id, draftId));
+    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.mark_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { permalink: post.permalink, cardKey } });
+    await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row.id, permalink: post.permalink });
+    const cap = await capUsage(tx, actor.orgId, draft.platform);
+    await notify(tx, actor.orgId, { type: "cap.changed", platform: draft.platform, used: cap.used, cap: cap.cap });
+    return row;
   });
 }
 

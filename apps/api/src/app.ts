@@ -15,6 +15,7 @@ import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { deskRoutes } from "./routes/desk";
 import { libraryRoutes } from "./routes/library";
+import { statusRoutes } from "./routes/status";
 
 export interface AppDeps {
   db: Db;
@@ -22,7 +23,10 @@ export interface AppDeps {
   config: ApiConfig;
 }
 
-const CONTENT_TYPES: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".txt": "text/plain; charset=utf-8" };
+const CONTENT_TYPES: Record<string, string> = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".txt": "text/plain; charset=utf-8",
+  ".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/mp4", ".mkv": "video/x-matroska",
+};
 
 export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logger"] = true) {
   const app = Fastify({ logger, trustProxy: true }).withTypeProvider<TypeBoxTypeProvider>();
@@ -46,6 +50,9 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
     if (err instanceof HttpError) return reply.status(err.status).send({ error: err.code, message: err.message });
     const e = err as { validation?: unknown; statusCode?: number; message: string };
     if (e.validation) return reply.status(400).send({ error: "invalid", message: e.message });
+    // Body parser refusals (only the card upload takes a non-JSON body)
+    if (e.statusCode === 413) return reply.status(413).send({ error: "too_large", message: "The upload is over 5 MB, the most X accepts." });
+    if (e.statusCode === 415) return reply.status(415).send({ error: "unsupported_type", message: "This content type is not accepted here." });
     if (e.statusCode && e.statusCode < 500) return reply.status(e.statusCode).send({ error: "bad_request", message: e.message });
     req.log.error({ err }, "unhandled error");
     return reply.status(500).send({ error: "server", message: "Something went wrong on our side. Try again in a moment." });
@@ -71,5 +78,6 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   await app.register(deskRoutes, deps);
   await app.register(libraryRoutes, deps);
   await app.register(adminRoutes, deps);
+  await app.register(statusRoutes, deps);
   return app;
 }

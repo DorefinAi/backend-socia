@@ -75,6 +75,17 @@ services:
         sync: false
       - key: FTP_DEPTH
         value: "2"
+      # Stories from Samvadia's database (read-only login), footage from the FTP folder Samvadia names
+      - key: SOURCE_MODE
+        value: samvadia
+      - key: SAMVADIA_DATABASE_URL
+        sync: false
+      - key: MEDIA_TYPES
+        value: jpg,jpeg,png,webp,mp4,mov
+      - key: MEDIA_MAX_MB
+        value: "25"
+      - key: MEDIA_VIDEO
+        value: "false"
 
   # Chromium needs the Playwright image; ~250 MB per warm page, so 2 GB for a pool of 3.
   - type: worker

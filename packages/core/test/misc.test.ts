@@ -57,7 +57,7 @@ describe("draft states", () => {
   });
 
   it("lists what a claimed draft can do", () => {
-    expect(draftActionsFrom("claimed").sort()).toEqual(["approve", "claim", "reject", "release"]);
+    expect(draftActionsFrom("claimed").sort()).toEqual(["approve", "claim", "mark_posted", "reject", "release"]);
   });
 });
 

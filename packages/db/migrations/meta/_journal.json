@@ -15,6 +15,20 @@
       "when": 1792486890235,
       "tag": "0001_render_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793093000773,
+      "tag": "0002_samvadia_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793096171984,
+      "tag": "0003_custom_card",
+      "breakpoints": true
     }
   ]
 }

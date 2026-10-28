@@ -16,6 +16,13 @@ export function convertText(bytes: Uint8Array) {
 
 export async function convertNext(db: Db, storage: Storage, log: Logger): Promise<boolean> {
   return withNextStory(db, "ingested", async (tx, story) => {
+    // Samvadia stories arrive as Unicode text and skip this stage (status "converted"); a story with no
+    // file here is a bug, so park it where the desk can see it rather than loop on it.
+    if (!story.fileId) {
+      await tx.update(stories).set({ status: "failed", lastError: "No text file to convert", updatedAt: sql`now()` }).where(eq(stories.id, story.id));
+      log.error({ storyId: story.id }, "story has no text file; marked failed");
+      return;
+    }
     const [file] = await tx.select().from(ingestedFiles).where(eq(ingestedFiles.id, story.fileId));
     const result = convertText(await storage.get(file!.storageKey));
     const { parsed } = result;

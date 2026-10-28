@@ -84,6 +84,8 @@ export type ComposeMethod = "rules" | "llm";
 export interface StoryForCompose {
   headline: string;
   body: string;
+  /** District or city the source already knows (Samvadia); matched for hashtags only, never posted as text */
+  place?: string | null;
 }
 
 export interface DraftContent {
@@ -114,7 +116,8 @@ export class RuleComposer implements Composer {
 
   async compose(story: StoryForCompose): Promise<DraftContent> {
     const text = `${story.headline}\n${story.body}`;
-    const hashtags = selectHashtags(text, this.deps.hashtags, this.deps.hashtagConfig);
+    // The known place goes last, so a city named in the text still ranks first at equal priority
+    const hashtags = selectHashtags(story.place ? `${text}\n${story.place}` : text, this.deps.hashtags, this.deps.hashtagConfig);
     const mentionSuggestions = suggestMentions(text, this.deps.handles, this.deps.maxMentions ?? 2);
     // Leave room for every suggestion, so accepting them never pushes the post over the limit
     const budget = bodyBudget(hashtags, mentionSuggestions.map((m) => m.handle));

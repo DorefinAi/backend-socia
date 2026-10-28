@@ -20,7 +20,9 @@ export type DraftAction =
   | "claim" | "release"
   | "approve" | "undo"
   | "start_publish" | "published" | "retry_later" | "give_up" | "retry"
-  | "reject" | "restore" | "recall";
+  | "reject" | "restore" | "recall"
+  /** The operator posted by hand on X and records the permalink */
+  | "mark_posted";
 
 const DRAFT_MOVES: Record<DraftAction, [DraftStatus[], DraftStatus]> = {
   rendered: [["rendering"], "ready"],
@@ -38,6 +40,7 @@ const DRAFT_MOVES: Record<DraftAction, [DraftStatus[], DraftStatus]> = {
   reject: [["claimed"], "rejected"],
   restore: [["rejected"], "ready"],
   recall: [["published"], "recalled"],
+  mark_posted: [["claimed"], "published"],
 };
 
 /** The status after the action, or null when the action is not allowed from here. */

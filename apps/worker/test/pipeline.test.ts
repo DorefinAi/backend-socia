@@ -122,4 +122,40 @@ describe("sameText", () => {
     expect(done!.platformPostId).toBe(id);
     expect(x.posts.size).toBe(1);
   }, 30_000);
+
+  it("posts the operator's own card, and records which card went out", async () => {
+    const store = new LocalStorage(join(dir, "store"), "http://localhost/dev-files");
+    const auto = Buffer.from("auto card");
+    const custom = Buffer.from("custom card");
+    await store.put("cards/auto-2.png", auto, "image/png");
+    await store.put("cards/x/custom-1.png", custom, "image/png");
+
+    const [story] = await h.db.insert(stories).values({ orgId, slug: "custom_card", status: "composed", headline: "अपना कार्ड", body: "" }).returning();
+    const [op] = await h.db.insert(users).values({ orgId, name: "Op", email: "op2@test", passwordHash: "x", role: "operator" }).returning();
+    // the rendered card is behind an edit (not ready), but the operator's card is set
+    const [draft] = await h.db
+      .insert(postDrafts)
+      .values({ orgId, storyId: story!.id, status: "ready", bodyText: "अपना कार्ड", cardHeadline: "अपना कार्ड", composeVersion: "t", cardRev: 2, cardRenderedRev: 1, cardKey: "cards/auto-2.png", customCardKey: "cards/x/custom-1.png" })
+      .returning();
+    const actor = { id: op!.id, orgId, name: "Op", role: "operator" as const };
+    const claimed = await claimDraft(h.db, actor, draft!.id);
+    const { job } = await approveDraft(h.db, actor, draft!.id, claimed.version);
+    await h.db.update(publishJobs).set({ nextAttemptAt: sql`now()` }).where(eq(publishJobs.id, job.id));
+
+    const uploads: Buffer[] = [];
+    class RecordingX extends FakeXClient {
+      override async uploadImage(png?: Uint8Array): Promise<string> {
+        uploads.push(Buffer.from(png!));
+        return super.uploadImage();
+      }
+    }
+    const x = new RecordingX("1stIndiaNews");
+    const publisher = new Publisher({ db: h.db, storage: store, x, bucket: new MemoryBucket(10, 60), account: "1stIndiaNews", log, active: () => true });
+    expect(await publisher.tick()).toBe(true);
+
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]!.equals(custom)).toBe(true);
+    const [post] = await h.db.select().from(publishedPosts).where(eq(publishedPosts.draftId, draft!.id));
+    expect(post).toMatchObject({ cardKey: "cards/x/custom-1.png", manual: false });
+  }, 30_000);
 });

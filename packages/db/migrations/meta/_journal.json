@@ -57,6 +57,13 @@
       "when": 1793248936753,
       "tag": "0007_analytics_watch_clusters",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793253463848,
+      "tag": "0008_drop_post_analytics",
+      "breakpoints": true
     }
   ]
 }

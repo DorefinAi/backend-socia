@@ -1,18 +1,17 @@
-// Web Scraper v2 (stories, districts, keyword watches) and post analytics (desk numbers, platform
-// numbers), handoff/scraper-analytics-contract.md. Needs TEST_DATABASE_URL (the database is wiped).
+// Web Scraper v2 (stories, districts, keyword watches), handoff/scraper-analytics-contract.md §A.
+// Needs TEST_DATABASE_URL (the database is wiped).
 
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TrendRow } from "@socia/core";
-import { assets, auditLog, createDb, orgs, postDrafts, postMetrics, publishedPosts, runMigrations, saveTrendRun, stories, users, type DbHandle } from "@socia/db";
+import { createDb, orgs, runMigrations, saveTrendRun, users, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { hashPassword } from "../src/auth";
 import type { ApiConfig } from "../src/config";
-import { analyticsRange } from "../src/routes/analytics";
 
 const URL = process.env.TEST_DATABASE_URL;
 const now = Date.now();
@@ -23,16 +22,7 @@ const row = (r: Partial<TrendRow> & Pick<TrendRow, "title" | "rank" | "clusterId
   district: null, volume: "", growth: "", shares: "", publishedAt: ago(2), imageUrl: null, imageSource: null, headline: r.title, summary: "", alert: null, sources: [], score: 0, ...r,
 });
 
-describe("analyticsRange", () => {
-  it("defaults to the last 7 days; refuses an empty or reversed period and more than 92 days", () => {
-    const at = new Date("2026-10-29T00:00:00Z");
-    expect(analyticsRange({}, at)).toEqual({ from: new Date("2026-10-22T00:00:00Z"), to: at });
-    expect(() => analyticsRange({ from: "2026-10-29T00:00:00Z", to: "2026-10-28T00:00:00Z" })).toThrow(/before its end/);
-    expect(() => analyticsRange({ from: "2026-06-01T00:00:00Z", to: "2026-10-01T00:00:00Z" })).toThrow(/92 days/);
-  });
-});
-
-(URL ? describe : describe.skip)("Web Scraper v2 and analytics API", () => {
+(URL ? describe : describe.skip)("Web Scraper v2 API", () => {
   let h: DbHandle;
   let app: Awaited<ReturnType<typeof buildApp>>;
   let orgId = "";
@@ -159,109 +149,6 @@ describe("analyticsRange", () => {
       expect((await call(who.op, "POST", "/me/trend-watches", { keyword: "fifty" })).status).toBe(201);
       expect(await call(who.op, "POST", "/me/trend-watches", { keyword: "one more" })).toMatchObject({ status: 409, body: { error: "watch_limit" } });
       expect((await call(who.op, "POST", "/me/trend-watches", { keyword: "FIFTY" })).status).toBe(200);
-    });
-  });
-
-  describe("analytics", () => {
-    // Three IST days: 20, 21 and 22 Oct 2026
-    const from = "2026-10-19T18:30:00.000Z";
-    const to = "2026-10-22T18:30:00.000Z";
-    const q = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-    const postIds: Record<string, string> = {};
-
-    beforeAll(async () => {
-      const story = async (key: string, createdAt: string, district: string | null, category: string | null) => {
-        const [s] = await h.db.insert(stories).values({
-          orgId, source: "samvadia", externalId: key, slug: key, status: "composed", headline: `Headline ${key}`, body: "", district, createdAt: new Date(createdAt),
-          external: category ? { storyId: key, itemId: key, version: 1, kind: "story", guid: key, title: key, reporter: null, districtCode: null, publishedAt: createdAt, footagePath: null, footageStatus: null, category } : null,
-        }).returning();
-        const [d] = await h.db.insert(postDrafts).values({
-          orgId, storyId: s!.id, status: "ready", bodyText: key, cardHeadline: key, hashtags: key === "A" ? ["#Jaipur", "#Politics"] : ["#Jaipur"], composeVersion: "t",
-        }).returning();
-        return { story: s!, draft: d! };
-      };
-      const a = await story("A", "2026-10-20T04:00:00Z", "Jaipur", "Politics");
-      const b = await story("B", "2026-10-21T10:00:00Z", "Kota", "Crime");
-      const c = await story("C", "2026-10-21T20:00:00Z", null, null);
-      await story("D", "2026-10-10T04:00:00Z", "Ajmer", "Politics"); // before the period
-      await h.db.insert(assets).values({ orgId, storyId: c.story.id, kind: "video", slug: "C", attachedBy: "footage", storageKey: "footage/c.mp4" });
-      const audit = (draftId: string, actorId: string, action: string, at: string, after: Record<string, unknown> = {}) =>
-        ({ orgId, actorId, action, entityType: "post_draft", entityId: draftId, after, at: new Date(at) });
-      await h.db.insert(auditLog).values([
-        audit(a.draft.id, who.ed.id, "draft.approve", "2026-10-20T05:00:00Z"),
-        audit(b.draft.id, who.ed.id, "draft.reject", "2026-10-21T10:30:00Z", { reason: "duplicate" }),
-        audit(c.draft.id, who.op.id, "draft.mark_posted", "2026-10-21T21:00:00Z"),
-      ]);
-      const posts = await h.db.insert(publishedPosts).values([
-        { orgId, draftId: a.draft.id, platform: "x", platformPostId: "1001", permalink: "https://x.com/f/status/1001", text: "A", publishedAt: new Date("2026-10-20T05:12:00Z"), publishedBy: who.ed.id },
-        { orgId, draftId: c.draft.id, platform: "x", platformPostId: "1003", permalink: "https://x.com/f/status/1003", text: "C", publishedAt: new Date("2026-10-21T21:00:00Z"), publishedBy: who.op.id, manual: true },
-      ]).returning();
-      postIds.A = posts[0]!.id;
-      postIds.C = posts[1]!.id;
-      const m = (postId: string, ageBucket: "1h" | "24h", capturedAt: string, impressions: number, likes: number, reposts: number, replies: number, quotes: number) =>
-        ({ orgId, postId, platform: "x", ageBucket, capturedAt: new Date(capturedAt), impressions, likes, reposts, replies, quotes, bookmarks: 1, raw: { source: "fake" } });
-      await h.db.insert(postMetrics).values([
-        m(postIds.A, "1h", "2026-10-20T06:12:00Z", 1000, 50, 10, 5, 5),
-        m(postIds.A, "24h", "2026-10-21T05:12:00Z", 2000, 100, 20, 10, 10),
-        m(postIds.C, "1h", "2026-10-21T22:00:00Z", 500, 5, 0, 0, 0),
-      ]);
-    });
-
-    it("desk: received, approved, posted, rejected, approve-to-post median, per IST day and hour, districts, reasons, editors", async () => {
-      const res = await call(who.ed, "GET", `/analytics/desk?${q}`);
-      expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ from, to });
-      expect(res.body.totals).toEqual({ received: 3, approved: 2, posted: 2, rejected: 1, medianApproveToPostMin: 12 });
-      expect(res.body.perDay).toEqual([
-        { day: "2026-10-20", received: 1, posted: 1, rejected: 0 },
-        { day: "2026-10-21", received: 1, posted: 0, rejected: 1 },
-        { day: "2026-10-22", received: 1, posted: 1, rejected: 0 },
-      ]);
-      expect(res.body.byHour).toHaveLength(24);
-      expect(res.body.byHour.filter((x: { posted: number }) => x.posted)).toEqual([{ hour: 2, posted: 1 }, { hour: 10, posted: 1 }]);
-      expect(res.body.byDistrict).toEqual(expect.arrayContaining([{ district: "Jaipur", posted: 1 }, { district: null, posted: 1 }]));
-      expect(res.body.byCategory).toEqual(expect.arrayContaining([{ category: "Politics", posted: 1 }, { category: null, posted: 1 }]));
-      expect(res.body.rejectReasons).toEqual([{ reason: "duplicate", count: 1 }]);
-      expect(res.body.byEditor).toEqual([
-        { userId: who.ed.id, name: "Ed", approved: 1, posted: 1, rejected: 1 },
-        { userId: who.op.id, name: "Op", approved: 1, posted: 1, rejected: 0 },
-      ]);
-    });
-
-    it("editors and admins only; the period is checked", async () => {
-      expect((await call(who.op, "GET", `/analytics/desk?${q}`)).status).toBe(403);
-      expect((await call(who.viewer, "GET", "/analytics/posts")).status).toBe(403);
-      expect((await call(null, "GET", "/analytics/insights")).status).toBe(401);
-      expect((await call(who.ed, "GET", `/analytics/desk?from=${encodeURIComponent(to)}&to=${encodeURIComponent(from)}`)).status).toBe(400);
-      expect((await call(who.ed, "GET", "/analytics/desk?from=2026-01-01T00:00:00Z&to=2026-10-01T00:00:00Z")).status).toBe(400);
-      expect((await call(who.ed, "GET", "/analytics/desk")).body.perDay.length).toBeGreaterThanOrEqual(7);
-    });
-
-    it("posts: latest numbers per post, sorted, with the story's headline, district, hashtags and footage; sample data says fake", async () => {
-      const res = await call(who.ed, "GET", `/analytics/posts?${q}&sort=engagement`);
-      expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ total: 2, modes: { x: "fake", facebook: "fake", instagram: "fake", youtube: "fake" } });
-      const [first, second] = res.body.items;
-      expect(first).toMatchObject({
-        id: postIds.A, platform: "x", permalink: "https://x.com/f/status/1001", headline: "Headline A", district: "Jaipur", category: "Politics", hashtags: ["#Jaipur", "#Politics"],
-        hasFootage: false, mode: "fake", postedAt: "2026-10-20T05:12:00.000Z",
-        metrics: { ageBucket: "24h", impressions: 2000, likes: 100, reposts: 20, replies: 10, quotes: 10, engagementRate: 0.07 },
-      });
-      expect(second).toMatchObject({ id: postIds.C, hasFootage: true, metrics: { engagementRate: 0.01 } });
-      expect((await call(who.ed, "GET", `/analytics/posts?${q}&sort=impressions&limit=1&platform=x`)).body).toMatchObject({ mode: "fake", items: [{ id: postIds.A }] });
-      expect((await call(who.ed, "GET", `/analytics/posts?${q}&platform=facebook`)).body).toMatchObject({ total: 0, items: [], mode: "fake" });
-      expect((await call(who.ed, "GET", `/analytics/posts?${q}&sort=views`)).status).toBe(400);
-    });
-
-    it("insights: hashtags, districts, categories, best hours and footage vs not, by mean engagement rate", async () => {
-      const res = await call(who.ed, "GET", `/analytics/insights?${q}`);
-      expect(res.status).toBe(200);
-      expect(res.body.topHashtags[0]).toEqual({ tag: "#Jaipur", posts: 2, avgEngagement: 0.04 });
-      expect(res.body.topHashtags).toContainEqual({ tag: "#Politics", posts: 1, avgEngagement: 0.07 });
-      expect(res.body.byDistrict).toEqual(expect.arrayContaining([{ district: "Jaipur", posts: 1, avgEngagement: 0.07 }, { district: null, posts: 1, avgEngagement: 0.01 }]));
-      expect(res.body.byHour.find((x: { hour: number }) => x.hour === 10)).toEqual({ hour: 10, posts: 1, avgEngagement: 0.07 });
-      expect(res.body.footageVsNot).toEqual({ withFootage: { posts: 1, avgEngagement: 0.01 }, without: { posts: 1, avgEngagement: 0.07 } });
-      expect(res.body.modes.x).toBe("fake");
     });
   });
 });

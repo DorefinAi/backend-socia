@@ -8,15 +8,6 @@
 
 import { createHmac, randomBytes } from "node:crypto";
 
-export interface XMetrics {
-  impressions: number | null;
-  likes: number;
-  replies: number;
-  reposts: number;
-  quotes: number;
-  bookmarks: number;
-}
-
 export interface XPostSummary {
   id: string;
   text: string;
@@ -31,8 +22,6 @@ export interface XClient {
   deletePost(id: string): Promise<void>;
   /** The account's own posts since a time; used to reconcile a job whose worker died mid-post */
   recentPosts(since: Date): Promise<XPostSummary[]>;
-  /** Up to 100 ids per call */
-  metrics(ids: string[]): Promise<Record<string, XMetrics>>;
   permalink(id: string): string;
 }
 
@@ -229,21 +218,6 @@ export class XApiClient implements XClient {
     return (res.data ?? []).map((t) => ({ id: t.id, text: t.text, createdAt: t.created_at ?? null }));
   }
 
-  async metrics(ids: string[]): Promise<Record<string, XMetrics>> {
-    if (!ids.length) return {};
-    if (ids.length > 100) throw new Error("X returns metrics for at most 100 posts per call");
-    type PM = { impression_count?: number; like_count: number; reply_count: number; retweet_count: number; quote_count: number; bookmark_count?: number };
-    const res = await this.call<{ data?: { id: string; public_metrics: PM }[] }>("GET", "/2/tweets", {
-      query: { ids: ids.join(","), "tweet.fields": "public_metrics" },
-    });
-    const out: Record<string, XMetrics> = {};
-    for (const t of res.data ?? []) {
-      const m = t.public_metrics;
-      out[t.id] = { impressions: m.impression_count ?? null, likes: m.like_count, replies: m.reply_count, reposts: m.retweet_count, quotes: m.quote_count, bookmarks: m.bookmark_count ?? 0 };
-    }
-    return out;
-  }
-
   permalink(id: string): string {
     return `https://x.com/${this.cfg.username}/status/${id}`;
   }
@@ -279,10 +253,6 @@ export class FakeXClient implements XClient {
 
   async recentPosts(since: Date): Promise<XPostSummary[]> {
     return [...this.posts.values()].filter((p) => new Date(p.createdAt!) >= since);
-  }
-
-  async metrics(ids: string[]): Promise<Record<string, XMetrics>> {
-    return Object.fromEntries(ids.map((id) => [id, { impressions: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, bookmarks: 0 }]));
   }
 
   permalink(id: string): string {

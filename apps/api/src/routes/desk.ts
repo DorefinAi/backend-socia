@@ -2,7 +2,7 @@
 
 import { DRAFT_STATUSES, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, X_LIMIT } from "@socia/core";
 import {
-  approveDraft, assets, capUsage, claimDraft, clearCustomCard, extendClaim, markPosted, postDrafts, postMetrics, publishedPosts,
+  approveDraft, assets, capUsage, claimDraft, clearCustomCard, extendClaim, markPosted, postDrafts, publishedPosts,
   rejectDraft, releaseDraft, requestRecall, restoreDraft, retryFailed, setCustomCard, stories, undoPost, updateDraft, users, type Actor,
 } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
@@ -336,18 +336,6 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     { schema: { querystring: Type.Object({ before: Type.Optional(Type.String({ format: "date-time" })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })) }) } },
     async (req) => {
       const { user } = guard(req);
-      const latest = db
-        .selectDistinctOn([postMetrics.postId], {
-          postId: postMetrics.postId,
-          impressions: postMetrics.impressions,
-          likes: postMetrics.likes,
-          comments: postMetrics.comments,
-          shares: postMetrics.shares,
-          fetchedAt: postMetrics.fetchedAt,
-        })
-        .from(postMetrics)
-        .orderBy(postMetrics.postId, desc(postMetrics.fetchedAt))
-        .as("latest");
       const rows = await db
         .select({
           p: publishedPosts,
@@ -356,18 +344,16 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           cardKey: sql<string | null>`coalesce(${publishedPosts.cardKey}, ${postDrafts.cardKey})`,
           headline: stories.headline,
           slug: stories.slug,
-          m: { postId: latest.postId, impressions: latest.impressions, likes: latest.likes, comments: latest.comments, shares: latest.shares, fetchedAt: latest.fetchedAt },
         })
         .from(publishedPosts)
         .leftJoin(users, eq(users.id, publishedPosts.publishedBy))
-        .leftJoin(latest, eq(latest.postId, publishedPosts.id))
         .leftJoin(postDrafts, eq(postDrafts.id, publishedPosts.draftId))
         .leftJoin(stories, eq(stories.id, postDrafts.storyId))
         .where(and(eq(publishedPosts.orgId, user.orgId), req.query.before ? lt(publishedPosts.publishedAt, new Date(req.query.before)) : undefined))
         .orderBy(desc(publishedPosts.publishedAt))
         .limit(req.query.limit ?? 50);
       return {
-        items: await Promise.all(rows.map(async ({ p, by, m, cardKey, headline, slug }) => ({
+        items: await Promise.all(rows.map(async ({ p, by, cardKey, headline, slug }) => ({
           id: p.id,
           draftId: p.draftId,
           platform: p.platform,
@@ -376,7 +362,6 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           publishedAt: p.publishedAt,
           publishedBy: by,
           recalled: p.recalledAt ? { at: p.recalledAt, reason: p.recallReason } : null,
-          metrics: m?.postId ? { impressions: m.impressions, likes: m.likes, comments: m.comments, shares: m.shares, at: m.fetchedAt } : null,
           cardUrl: await cardUrl(storage, cardKey),
           headline,
           slug,

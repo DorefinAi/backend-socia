@@ -15,7 +15,7 @@
     "local:migrate": "node --env-file=.env --import tsx packages/db/scripts/migrate.ts",
     "local:dev": "node --env-file=.env --import tsx apps/api/scripts/local-dev.ts",
     "local:api": "node --env-file=.env --import tsx apps/api/src/index.ts",
-    "local:worker": "node --env-file=.env --import tsx apps/worker/src/index.ts ingest pipeline render publish maintenance trends metrics"
+    "local:worker": "node --env-file=.env --import tsx apps/worker/src/index.ts ingest pipeline render publish maintenance trends"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

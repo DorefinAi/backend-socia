@@ -21,7 +21,7 @@ Phase 1 is **deterministic only**: no LLM, no GPU, no image-generation API. It c
 | Operator | Claims a 5-minute lease, edits (a stale version gets 409), then approves, rejects or leaves | `packages/db/src/desk.ts`, `apps/api/src/routes/desk.ts` |
 | Outbox | Approve writes the publish job in the same transaction, set to run 10 s later. Undo cancels it if no worker has taken it yet | `desk.ts` `approveDraft`, `undoPost` |
 | Publish | Takes a rate token, gets the card, uploads media, creates the post, records the id, verifies, then marks success. Retries with backoff and gives up after 5 attempts | `apps/worker/src/stages/publish.ts`, `packages/db/src/queue.ts` |
-| Recall, metrics | Recall deletes on X and is logged with its reason. Metrics are pulled every 6 h in batches of 100 | `stages/publish.ts`, `stages/crons.ts` |
+| Recall | Recall deletes on X and is logged with its reason. Post numbers are not tracked here (the digital dashboard covers them) | `stages/publish.ts` |
 
 What an operator does in a shift:
 
@@ -32,7 +32,7 @@ What an operator does in a shift:
 ```
 apps/api          Fastify API + Socket.IO. Writes rows only: never calls X, never renders.
 apps/worker       One binary, roles chosen per Render service: ingest, pipeline, render, publish,
-                  maintenance, and the metrics / handles crons.
+                  maintenance, trends, and the handles cron.
 packages/core     Every pure function: Kruti Dev, parse, slug, compose, hashtags, mentions,
                   states, caps, card fit, TOTP. Unit tested; the API uses it for live checks.
 packages/db       Drizzle schema + migrations, desk operations (claim, approve, undo, recall),
@@ -99,7 +99,7 @@ Every request sends cookies (`credentials: "include"`). Every POST, PATCH and DE
 | Draft | `GET /drafts/:id` · `POST /drafts/:id/claim` (409 names who holds it) · `POST /drafts/:id/heartbeat` every 60 s · `POST /drafts/:id/release` |
 | Edit | `PATCH /drafts/:id {version, bodyText?, cardHeadline?, hashtags?, mentions?}` (409 on a stale version, with the current copy) · `POST /x/check` for the live counter |
 | Decide | `POST /drafts/:id/approve {version}` → `{jobId, sendAt}` · `POST /jobs/:id/undo` · `POST /drafts/:id/reject {reason, note?}` · `POST /drafts/:id/restore` · `POST /drafts/:id/retry` |
-| Published | `GET /posts?before=` (with metrics and card) · `POST /posts/:id/recall {reason}` |
+| Published | `GET /posts?before=` (with card) · `POST /posts/:id/recall {reason}` |
 | Dashboard | `GET /x/counts` (per state and view, posts today, cap) · `GET /ingest/status` (last poll, errors, cursor, today's intake) |
 | Library | `GET/POST/PATCH/DELETE /hashtag-rules` · `GET /handles?q=` (the @ picker) · `POST/PATCH/DELETE /handles` · `GET /handles/staging` · `POST /handles/staging/:id/promote` · `.../dismiss` |
 | Admin | `GET/POST/PATCH /users` · `GET /audit?entityType=&entityId=` |
@@ -136,7 +136,6 @@ Not needed for go-live: `local.credentials.md`, `samvadia-seed`, `samvadia-late`
 | `socia-ingest` | Background Worker | Singleton; also runs convert and compose |
 | `socia-render` | Background Worker | Docker, on the Playwright image |
 | `socia-publish` | Background Worker | Also runs housekeeping |
-| `socia-cron-metrics` | Cron Job | Every 6 h |
 | `socia-cron-handles` | Cron Job | 02:00 IST |
 | `socia-db` | Postgres | |
 | `socia-kv` | Key Value | X token bucket |

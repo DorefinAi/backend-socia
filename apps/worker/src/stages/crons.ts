@@ -1,4 +1,4 @@
-// Scheduled work: housekeeping every 30 s, handles nightly. Post numbers: stages/metrics.ts (role "metrics").
+// Scheduled work: housekeeping every 30 s, handles nightly.
 
 import { expireMediaWaits, handleDirectoryStaging, releaseExpiredClaims, reviveExpiredJobs, setKv, type Db } from "@socia/db";
 import { WIKIDATA_QUERIES, fetchWikidataHandles } from "@socia/providers";

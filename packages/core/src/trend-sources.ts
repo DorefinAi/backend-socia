@@ -69,12 +69,15 @@ export interface FeedConfig {
 /**
  * Publisher feeds that answered on 28 Oct 2026, plus the Rajasthan feeds found on 29 Oct 2026 (Patrika's
  * state and city feeds on cms.patrika.com, News18 Rajasthan, TV9 Bharatvarsh Rajasthan, ABP Live
- * Rajasthan). Zee Rajasthan (403), ETV Bharat (404/410), First India's site and Dainik Navjyoti (no feed;
- * DNS failure) did not; see handoff/scraper-analytics-contract.md.
+ * Rajasthan), and Dainik Navajyoti and Amar Ujala's Jaipur feed found later on 29 Oct 2026 (Navajyoti's
+ * domain is dainiknavajyoti.com, without the second "a"). Zee Rajasthan (403), ETV Bharat (404/410/empty)
+ * and First India's site (no feed) did not; see handoff/scraper-analytics-contract.md.
  */
 export const DEFAULT_FEEDS: FeedConfig[] = [
   { name: "Dainik Bhaskar", url: "https://www.bhaskar.com/rss-v1--category-1740.xml", rajasthan: true },
   { name: "Amar Ujala", url: "https://www.amarujala.com/rss/rajasthan.xml", rajasthan: true },
+  { name: "Amar Ujala Jaipur", url: "https://www.amarujala.com/rss/jaipur.xml", rajasthan: true },
+  { name: "Dainik Navajyoti", url: "https://dainiknavajyoti.com/rss", rajasthan: true },
   { name: "Rajasthan Patrika", url: "https://cms.patrika.com/googlefeed/blog/location/rajasthan-news", rajasthan: true },
   { name: "Patrika Jaipur", url: "https://cms.patrika.com/googlefeed/blog/location/jaipur-news", rajasthan: true },
   { name: "Patrika Jodhpur", url: "https://cms.patrika.com/googlefeed/blog/location/jodhpur-news", rajasthan: true },

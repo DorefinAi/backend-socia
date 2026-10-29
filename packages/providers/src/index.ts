@@ -7,4 +7,3 @@ export * from "./x";
 export * from "./wikidata";
 export * from "./secrets";
 export * from "./web";
-export * from "./metrics";

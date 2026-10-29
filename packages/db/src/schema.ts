@@ -178,7 +178,7 @@ export const stories = pgTable(
     index("stories_slug_idx").on(t.orgId, t.slug, t.createdAt),
     uniqueIndex("stories_external_key").on(t.orgId, t.source, t.externalId).where(sql`${t.externalId} IS NOT NULL`),
     index("stories_source_recent_idx").on(t.source, t.createdAt),
-    // Desk analytics: stories received per day
+    // Stories of an org in a period (status counts, pairing)
     index("stories_org_created_idx").on(t.orgId, t.createdAt),
   ],
 );
@@ -313,45 +313,6 @@ export const publishedPosts = pgTable(
   (t) => [
     uniqueIndex("published_posts_platform_id_key").on(t.platform, t.platformPostId),
     index("published_posts_day_idx").on(t.orgId, t.platform, t.publishedAt),
-  ],
-);
-
-/** When a post's numbers are captured, by its age: each once */
-export const METRIC_AGE_BUCKETS = ["1h", "6h", "24h", "3d", "7d"] as const;
-export type MetricAgeBucket = (typeof METRIC_AGE_BUCKETS)[number];
-
-/**
- * A post's numbers on its platform at an age bucket (worker role "metrics"). Rows from before 0007 have
- * no bucket (the old 6-hourly X pull). comments / shares / saves are the old names, still filled
- * (= replies, reposts + quotes, bookmarks) for GET /posts.
- */
-export const postMetrics = pgTable(
-  "post_metrics",
-  {
-    id: bigserial("id", { mode: "number" }).primaryKey(),
-    orgId: uuid("org_id").notNull().references(() => orgs.id),
-    postId: uuid("post_id").notNull().references(() => publishedPosts.id),
-    platform: text("platform").notNull().default("x"),
-    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
-    ageBucket: text("age_bucket").$type<MetricAgeBucket>(),
-    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
-    impressions: integer("impressions"),
-    likes: integer("likes"),
-    reposts: integer("reposts"),
-    replies: integer("replies"),
-    quotes: integer("quotes"),
-    bookmarks: integer("bookmarks"),
-    comments: integer("comments"),
-    shares: integer("shares"),
-    saves: integer("saves"),
-    videoViews: integer("video_views"),
-    /** The provider's answer; { source: "fake" } for made-up numbers */
-    raw: jsonb("raw").$type<Record<string, unknown>>(),
-  },
-  (t) => [
-    index("post_metrics_post_idx").on(t.postId, t.fetchedAt),
-    uniqueIndex("post_metrics_post_bucket_key").on(t.postId, t.ageBucket),
-    check("post_metrics_age_bucket_check", sql`${t.ageBucket} IS NULL OR ${t.ageBucket} IN ('1h', '6h', '24h', '3d', '7d')`),
   ],
 );
 
@@ -563,8 +524,6 @@ export const auditLog = pgTable(
   },
   (t) => [
     index("audit_log_entity_idx").on(t.entityType, t.entityId, t.at),
-    // Desk analytics: approvals, rejections and manual posts per period
-    index("audit_log_action_idx").on(t.orgId, t.action, t.at),
   ],
 );
 

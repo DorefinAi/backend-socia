@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import type { MediaSettings } from "./stages/samvadia";
 import type { TrendsSettings } from "./stages/trends";
 
-export const ROLES = ["ingest", "pipeline", "render", "publish", "maintenance", "metrics", "handles", "trends"] as const;
+export const ROLES = ["ingest", "pipeline", "render", "publish", "maintenance", "handles", "trends"] as const;
 export type Role = (typeof ROLES)[number];
 
 function need(name: string): string {
@@ -101,11 +101,6 @@ export function trendsConfig(): TrendsSettings & { userAgent: string } {
     ogMaxPerRun: num("TRENDS_OG_MAX_PER_RUN", 30),
     userAgent: process.env.TRENDS_USER_AGENT ?? TRENDS_USER_AGENT,
   };
-}
-
-/** How often the metrics role looks for posts with a bucket due (METRICS_POLL_SECONDS, default 300, at least 60) */
-export function metricsPollMs(): number {
-  return Math.max(60, num("METRICS_POLL_SECONDS", 300)) * 1000;
 }
 
 /** The channels whose public feeds are read (no key). Edited without a code change; read again every run. */

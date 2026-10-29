@@ -116,18 +116,6 @@ services:
       - key: REDIS_URL
         fromService: { type: keyvalue, name: socia-kv, property: connectionString }
 
-  - type: cron
-    name: socia-cron-metrics
-    runtime: node
-    region: singapore
-    schedule: "0 */6 * * *"
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
-    startCommand: node apps/worker/dist/index.js --once metrics
-    envVars:
-      - fromGroup: socia-shared
-      - key: DATABASE_URL
-        fromDatabase: { name: socia-db, property: connectionString }
-
   # 02:00 IST
   - type: cron
     name: socia-cron-handles

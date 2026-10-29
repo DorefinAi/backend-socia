@@ -26,6 +26,8 @@ describe("the Rajasthan feeds added on 29 Oct 2026", () => {
     ["news18-rajasthan.xml", "News18 Rajasthan"],
     ["tv9-rajasthan.xml", "TV9 Bharatvarsh Rajasthan"],
     ["abp-rajasthan.xml", "ABP Live Rajasthan"],
+    ["navajyoti.xml", "Dainik Navajyoti"],
+    ["amarujala-jaipur.xml", "Amar Ujala Jaipur"],
   ] as const;
 
   it.each(feeds)("%s parses: titles, https links, dates, plain-text summaries", (file, name) => {
@@ -48,8 +50,8 @@ describe("the Rajasthan feeds added on 29 Oct 2026", () => {
 
   it("are in the default list, Rajasthan feeds all", () => {
     const names = DEFAULT_FEEDS.map((f) => f.name);
-    expect(names).toEqual(expect.arrayContaining(["Rajasthan Patrika", "Patrika Jaipur", "News18 Rajasthan", "TV9 Bharatvarsh Rajasthan", "ABP Live Rajasthan"]));
-    expect(DEFAULT_FEEDS.filter((f) => /patrika|news18|tv9|abplive/.test(f.url)).every((f) => f.rajasthan && f.url.startsWith("https://"))).toBe(true);
+    expect(names).toEqual(expect.arrayContaining(["Rajasthan Patrika", "Patrika Jaipur", "News18 Rajasthan", "TV9 Bharatvarsh Rajasthan", "ABP Live Rajasthan", "Dainik Navajyoti", "Amar Ujala Jaipur"]));
+    expect(DEFAULT_FEEDS.filter((f) => /patrika|news18|tv9|abplive|navajyoti|amarujala/.test(f.url)).every((f) => f.rajasthan && f.url.startsWith("https://"))).toBe(true);
     expect(new Set(DEFAULT_FEEDS.map((f) => f.url)).size).toBe(DEFAULT_FEEDS.length);
   });
 });

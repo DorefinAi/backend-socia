@@ -13,4 +13,3 @@ export * from "./samvadia";
 export * from "./card-template";
 export * from "./composer";
 export * from "./trends";
-export * from "./analytics";

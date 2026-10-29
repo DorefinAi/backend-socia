@@ -52,14 +52,31 @@ export function totpCode(secret: string, at: Date, step = 30, digits = 6): strin
   return code.toString().padStart(digits, "0");
 }
 
-/** Accepts the code for now and one step either side, for clock drift. */
-export function verifyTotp(secret: string, code: string, at: Date, window = 1): boolean {
+/** The 30 s time step (counter) of an instant */
+export function totpStep(at: Date, step = 30): number {
+  return Math.floor(at.getTime() / 1000 / step);
+}
+
+/**
+ * The time step the code belongs to (now or one step either side, for clock drift), or null when it matches
+ * none. Callers must record the step and refuse any code whose step is not newer than the last accepted one
+ * (no replay); `verifyTotp` alone does not do that.
+ */
+export function matchTotpStep(secret: string, code: string, at: Date, window = 1): number | null {
   const given = Buffer.from(code.replace(/\s/g, ""));
+  const now = totpStep(at);
+  let matched: number | null = null;
+  // Every step is checked (no early return); the newest match wins
   for (let i = -window; i <= window; i++) {
-    const expected = Buffer.from(totpCode(secret, new Date(at.getTime() + i * 30_000)));
-    if (expected.length === given.length && timingSafeEqual(expected, given)) return true;
+    const expected = Buffer.from(totpCode(secret, new Date((now + i) * 30_000)));
+    if (expected.length === given.length && timingSafeEqual(expected, given)) matched = now + i;
   }
-  return false;
+  return matched;
+}
+
+/** Accepts the code for now and one step either side, for clock drift. Does not guard against replay. */
+export function verifyTotp(secret: string, code: string, at: Date, window = 1): boolean {
+  return matchTotpStep(secret, code, at, window) !== null;
 }
 
 export function totpUri(secret: string, account: string, issuer = "Socia"): string {

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { totpCode } from "@socia/core";
 import { createDb, ingestedFiles, orgs, postDrafts, runMigrations, stories, users, type DbHandle } from "@socia/db";
 import { LocalStorage, encryptSecret } from "@socia/providers";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { io as connect } from "socket.io-client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
@@ -44,6 +44,15 @@ interface Client {
       headers: { ...(client && { cookie: client.cookie }), ...(client && csrf && { "x-csrf": client.csrf }) },
     });
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null, headers: res.headers };
+  }
+
+  /**
+   * The current code, unused: each code works once (replay guard), and in real life these sign-ins would be
+   * at least one 30 s step apart, so the user's last used step is cleared first.
+   */
+  async function freshCode(email: string, secret: string): Promise<string> {
+    await h.db.update(users).set({ totpLastStep: null }).where(eq(users.email, email));
+    return totpCode(secret, new Date());
   }
 
   async function login(email: string): Promise<Client & { next: string }> {
@@ -109,11 +118,11 @@ interface Client {
 
   it("runs the operator path, with one holder per draft", async () => {
     const priya = await login("priya@test");
-    await call(priya, "POST", "/auth/totp", { code: totpCode((await priyaSecret()), new Date()) });
+    await call(priya, "POST", "/auth/totp", { code: await freshCode("priya@test", await priyaSecret()) });
 
     const amit = await login("amit@test");
     expect(amit.next).toBe("totp");
-    expect((await call(amit, "POST", "/auth/totp", { code: totpCode(AMIT_TOTP, new Date()) })).status).toBe(200);
+    expect((await call(amit, "POST", "/auth/totp", { code: await freshCode("amit@test", AMIT_TOTP) })).status).toBe(200);
 
     expect((await call(priya, "POST", `/drafts/${draftId}/claim`, undefined, false)).body.error).toBe("csrf");
     const claimed = await call(priya, "POST", `/drafts/${draftId}/claim`);
@@ -144,12 +153,12 @@ interface Client {
 
   it("keeps the library to editors", async () => {
     const priya = await login("priya@test");
-    await call(priya, "POST", "/auth/totp", { code: totpCode((await priyaSecret()), new Date()) });
+    await call(priya, "POST", "/auth/totp", { code: await freshCode("priya@test", await priyaSecret()) });
     const rule = { matchType: "city", name: "जयपुर", aliases: ["Jaipur"], hashtagLatin: "Jaipur", hashtagDevanagari: "जयपुर", priority: 5 };
     expect((await call(priya, "POST", "/hashtag-rules", rule)).status).toBe(403);
 
     const editor = await login("editor@test");
-    await call(editor, "POST", "/auth/totp", { code: totpCode(AMIT_TOTP, new Date()) });
+    await call(editor, "POST", "/auth/totp", { code: await freshCode("editor@test", AMIT_TOTP) });
     expect((await call(editor, "POST", "/hashtag-rules", rule)).status).toBe(200);
     const handle = await call(editor, "POST", "/handles", { entityName: "जयपुर विकास प्राधिकरण", aliases: ["JDA"], handle: "@JDAJaipur", priority: 1 });
     expect(handle.body.handle).toBe("JDAJaipur");
@@ -159,9 +168,9 @@ interface Client {
 
   it("pushes a claim to other operators' screens", async () => {
     const amit = await login("amit@test");
-    await call(amit, "POST", "/auth/totp", { code: totpCode(AMIT_TOTP, new Date()) });
+    await call(amit, "POST", "/auth/totp", { code: await freshCode("amit@test", AMIT_TOTP) });
     const priya = await login("priya@test");
-    await call(priya, "POST", "/auth/totp", { code: totpCode((await priyaSecret()), new Date()) });
+    await call(priya, "POST", "/auth/totp", { code: await freshCode("priya@test", await priyaSecret()) });
 
     await app.listen({ port: 0, host: "127.0.0.1" });
     const stop = attachRealtime(app.server, { db: h.db, databaseUrl: URL!, corsOrigins: config.corsOrigins, log: app.log });

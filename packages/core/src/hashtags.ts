@@ -18,7 +18,18 @@ export interface HashtagRule {
   hashtagLatin: string;
   hashtagDevanagari: string | null;
   priority: number;
+  /**
+   * The rule does not fire from a sentence that also has one of these (whole words, folded), so the accident
+   * rule skips "बड़ा हादसा टल गया". It still fires from any other sentence of the text that names it.
+   */
+  negativePhrases?: string[];
 }
+
+/** Averted / narrowly escaped: the negative phrases of the accident topic rule (seed and migration 0012) */
+export const AVERTED_PHRASES: readonly string[] = [
+  "टल", "टला", "टली", "टले", "होने से बचा", "होने से बची", "होने से बचे", "होने से बच गया", "होने से बच गई",
+  "बाल-बाल बचा", "बाल-बाल बची", "बाल-बाल बचे", "averted", "narrowly escaped", "narrowly avoided", "near miss",
+];
 
 export interface HashtagConfig {
   /** Whether city tags come out as #जयपुर or #Jaipur (spec §11 Q3, still open) */
@@ -46,14 +57,31 @@ export function asHashtag(tag: string): string {
   return bare ? `#${bare}` : "";
 }
 
+/** Sentence ends, Devanagari and Latin; fold() would turn them into spaces, so split first */
+const SENTENCE_END = /[।॥.!?\n]+/u;
+
+/**
+ * gazetteer.find, minus rules whose every naming sentence also has one of the rule's negative phrases.
+ * Rules without negative phrases are untouched (one find over the whole text, as before).
+ */
+function findRules(text: string, gazetteer: HashtagGazetteer): ReturnType<HashtagGazetteer["find"]> {
+  const found = gazetteer.find(text);
+  if (!found.some((m) => m.entry.data.negativePhrases?.length)) return found;
+  const sentences = text.split(SENTENCE_END).map((s) => ({ folded: ` ${fold(s)} `, ids: new Set(gazetteer.find(s).map((m) => m.entry.id)) }));
+  return found.filter((m) => {
+    const negatives = (m.entry.data.negativePhrases ?? []).map((p) => fold(p)).filter(Boolean);
+    if (!negatives.length) return true;
+    return sentences.some((s) => s.ids.has(m.entry.id) && !negatives.some((p) => s.folded.includes(` ${p} `)));
+  });
+}
+
 function pick(rule: HashtagRule, script: HashtagScript): string {
   return asHashtag(script === "devanagari" && rule.hashtagDevanagari ? rule.hashtagDevanagari : rule.hashtagLatin);
 }
 
 /** Matched tags by priority, then the fixed tags; duplicates dropped, capped at cfg.max. */
 export function selectHashtags(text: string, gazetteer: HashtagGazetteer, cfg: HashtagConfig): string[] {
-  const matched = gazetteer
-    .find(text)
+  const matched = findRules(text, gazetteer)
     .sort((a, b) => b.entry.priority - a.entry.priority || a.start - b.start)
     .map((m) => pick(m.entry.data, cfg.script));
 
@@ -92,8 +120,7 @@ export function districtHashtag(place: string, gazetteer: HashtagGazetteer): str
  * anything in `exclude`. No topic matched and no fixed tag: FALLBACK_TOPIC_TAG (one brand tag, never two).
  */
 export function selectTagLine(text: string, gazetteer: HashtagGazetteer, cfg: HashtagConfig, exclude: string[] = []): string[] {
-  const topics = gazetteer
-    .find(text)
+  const topics = findRules(text, gazetteer)
     .filter((m) => !PLACE_TYPES.has(m.entry.data.matchType))
     .sort((a, b) => b.entry.priority - a.entry.priority || a.start - b.start)
     .map((m) => pick(m.entry.data, cfg.script));

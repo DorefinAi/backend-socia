@@ -23,6 +23,8 @@ const RuleBody = Type.Object({
   hashtagLatin: Tag,
   hashtagDevanagari: Type.Optional(Type.Union([Tag, Type.Null()])),
   priority: Type.Integer({ minimum: 0, maximum: 1000 }),
+  /** The rule does not fire from a sentence that also has one of these (e.g. "टल गया" on the accident rule) */
+  negativePhrases: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 120 }), { maxItems: 30 })),
 }, { additionalProperties: false });
 
 const HandleBody = Type.Object({
@@ -46,6 +48,7 @@ const ruleFields = (b: RuleFields) => ({
   ...(b.hashtagLatin !== undefined && { hashtagLatin: b.hashtagLatin }),
   ...(b.hashtagDevanagari !== undefined && { hashtagDevanagari: b.hashtagDevanagari }),
   ...(b.priority !== undefined && { priority: b.priority }),
+  ...(b.negativePhrases !== undefined && { negativePhrases: b.negativePhrases }),
 });
 
 /** Only the columns a client may set on a handle */
@@ -72,7 +75,7 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
     const b = req.body;
     const [row] = await db
       .insert(hashtagRules)
-      .values({ orgId: user.orgId, matchType: b.matchType, name: b.name, aliases: b.aliases, hashtagLatin: b.hashtagLatin, hashtagDevanagari: b.hashtagDevanagari ?? null, priority: b.priority })
+      .values({ orgId: user.orgId, matchType: b.matchType, name: b.name, aliases: b.aliases, hashtagLatin: b.hashtagLatin, hashtagDevanagari: b.hashtagDevanagari ?? null, priority: b.priority, negativePhrases: b.negativePhrases ?? [] })
       .returning();
     await audit(db, { orgId: user.orgId, actorId: user.id, action: "hashtag_rule.create", entityType: "hashtag_rule", entityId: row!.id, after: row });
     return row;

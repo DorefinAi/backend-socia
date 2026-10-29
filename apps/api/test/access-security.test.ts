@@ -9,7 +9,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "@fastify/type-provider-typebox";
-import { newTotpSecret, totpCode, verifyTotp } from "@socia/core";
+import { newTotpSecret, totpCode, totpStep, verifyTotp } from "@socia/core";
 import { createDb, orgs, runMigrations, sessions, users, type DbHandle } from "@socia/db";
 import { LocalStorage, encryptSecret } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
@@ -144,6 +144,15 @@ describe("SlidingLimiter", () => {
       const code = String(i).padStart(6, "0");
       if (!verifyTotp(totpSecret, code, at)) return code;
     }
+  };
+
+  /**
+   * The current code, unused: each code works once (replay guard), and in real life each sign-in here would be
+   * at least one 30 s step apart, so the user's last used step is cleared first.
+   */
+  const freshCode = async (at = new Date()) => {
+    await h.db.update(users).set({ totpLastStep: null }).where(eq(users.id, ids.totp!));
+    return totpCode(totpSecret, at);
   };
 
   beforeAll(async () => {
@@ -405,9 +414,9 @@ describe("SlidingLimiter", () => {
     expect([locked.status, locked.body.error]).toEqual([429, "rate_limited"]);
     expect((await call(half, "GET", "/me")).status).toBe(401);
     // Even the right code is useless on the locked session; a new sign-in works
-    expect((await call(half, "POST", "/auth/totp", { code: totpCode(totpSecret, new Date()) })).status).toBe(401);
+    expect((await call(half, "POST", "/auth/totp", { code: await freshCode() })).status).toBe(401);
     const again = await login("totp@test");
-    expect((await call(again, "POST", "/auth/totp", { code: totpCode(totpSecret, new Date()) })).body).toEqual({ ok: true });
+    expect((await call(again, "POST", "/auth/totp", { code: await freshCode() })).body).toEqual({ ok: true });
     expect((await call(again, "GET", "/me")).body.verified).toBe(true);
   });
 
@@ -415,14 +424,80 @@ describe("SlidingLimiter", () => {
     const limited = await limitedApp({ totpFailuresPerIpAccount: 3 });
     try {
       const ok = await login("totp@test", PASSWORD, limited);
-      for (let i = 0; i < 2; i++) expect((await call(ok, "POST", "/auth/totp", { code: totpCode(totpSecret, new Date()) }, limited)).status).toBe(200);
+      for (let i = 0; i < 2; i++) expect((await call(ok, "POST", "/auth/totp", { code: await freshCode() }, limited)).status).toBe(200);
       const a = await login("totp@test", PASSWORD, limited);
       const b = await login("totp@test", PASSWORD, limited);
       for (const s of [a, a, b]) expect((await call(s, "POST", "/auth/totp", { code: wrongCode() }, limited)).status).toBe(401);
-      expect((await call(b, "POST", "/auth/totp", { code: totpCode(totpSecret, new Date()) }, limited)).body.error).toBe("rate_limited");
+      expect((await call(b, "POST", "/auth/totp", { code: await freshCode() }, limited)).body.error).toBe("rate_limited");
     } finally {
       await limited.close();
     }
+  });
+
+  // ─── TOTP replay: a code works once ─────────────────────────────────────────
+
+  it("refuses a code already used for another sign-in, as a wrong code", async () => {
+    const code = await freshCode();
+    const first = await login("totp@test");
+    expect((await call(first, "POST", "/auth/totp", { code })).body).toEqual({ ok: true });
+    const second = await login("totp@test");
+    const replay = await call(second, "POST", "/auth/totp", { code });
+    expect([replay.status, replay.body.error]).toEqual([401, "bad_code"]);
+    expect((await call(second, "GET", "/me")).body.verified).toBe(false);
+    const [row] = await h.db.select({ step: users.totpLastStep }).from(users).where(eq(users.id, ids.totp!));
+    expect(row!.step).toBeGreaterThanOrEqual(totpStep(new Date()) - 1);
+  });
+
+  it("accepts the next step's code after a used one, and never an older step again", async () => {
+    const now = totpStep(new Date());
+    const s1 = await login("totp@test");
+    expect((await call(s1, "POST", "/auth/totp", { code: await freshCode(new Date(now * 30_000)) })).status).toBe(200);
+    // The next 30 s window (accepted now as one step of drift)
+    const s2 = await login("totp@test");
+    expect((await call(s2, "POST", "/auth/totp", { code: totpCode(totpSecret, new Date((now + 1) * 30_000)) })).status).toBe(200);
+    // Back to the step before it: refused, though still inside the drift window
+    const s3 = await login("totp@test");
+    expect((await call(s3, "POST", "/auth/totp", { code: totpCode(totpSecret, new Date(now * 30_000)) })).body.error).toBe("bad_code");
+  });
+
+  it("lets only one of two concurrent submits of one code win", async () => {
+    const code = await freshCode();
+    const [a, b] = [await login("totp@test"), await login("totp@test")];
+    const results = await Promise.all([call(a, "POST", "/auth/totp", { code }), call(b, "POST", "/auth/totp", { code })]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+  });
+
+  it("counts a replay toward the wrong-code limits", async () => {
+    const limited = await limitedApp({ totpFailuresPerIpAccount: 1 });
+    try {
+      const code = await freshCode();
+      const ok = await login("totp@test", PASSWORD, limited);
+      expect((await call(ok, "POST", "/auth/totp", { code }, limited)).status).toBe(200);
+      const again = await login("totp@test", PASSWORD, limited);
+      expect((await call(again, "POST", "/auth/totp", { code }, limited)).body.error).toBe("bad_code");
+      // The one allowed failure is spent: even a fresh right code is throttled now
+      const throttled = await call(again, "POST", "/auth/totp", { code: await freshCode() }, limited);
+      expect([throttled.status, throttled.body.error]).toEqual([429, "rate_limited"]);
+    } finally {
+      await limited.close();
+    }
+  });
+
+  it("refuses a replayed code on /auth/totp/enable", async () => {
+    const [u] = await h.db.insert(users).values({ orgId, name: "Enabler", email: "enable@test", passwordHash: await hashPassword(PASSWORD), role: "viewer" }).returning();
+    const s = await login("enable@test");
+    const setup = await call(s, "POST", "/auth/totp/setup");
+    expect(setup.status).toBe(200);
+    const code = totpCode(setup.body.secret, new Date());
+    expect((await call(s, "POST", "/auth/totp/enable", { code })).body).toEqual({ ok: true });
+    // Two-step is on now: the same code cannot finish a new sign-in
+    const next = await login("enable@test");
+    expect(next.body).toMatchObject({ next: "totp" });
+    expect((await call(next, "POST", "/auth/totp", { code })).body.error).toBe("bad_code");
+    // Nor turn two-step back on with it (same secret, its step already used)
+    await h.db.update(users).set({ totpEnabled: false }).where(eq(users.id, u!.id));
+    const half = await login("enable@test");
+    expect((await call(half, "POST", "/auth/totp/enable", { code })).body.error).toBe("bad_code");
   });
 
   // ─── 8. Chunked notifies ─────────────────────────────────────────────────────

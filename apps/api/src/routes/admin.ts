@@ -179,7 +179,7 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
             ...(platforms && { platforms }),
             ...(active !== undefined && { active }),
             ...(passwordHash && { passwordHash }),
-            ...(resetTotp && { totpEnabled: false, totpSecretEnc: null }),
+            ...(resetTotp && { totpEnabled: false, totpSecretEnc: null, totpLastStep: null }),
           };
           const after = Object.keys(fields).length ? (await tx.update(users).set(fields).where(eq(users.id, before.id)).returning())[0]! : before;
           const platformsChanged = !sameSet(before.platforms, after.platforms);

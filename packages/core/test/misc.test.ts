@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   backoffSeconds, capLevel, draftActionsFrom, istDayStart, largestFitting, nextDraftStatus,
-  parseStory, slugParts, totpCode, verifyTotp,
+  matchTotpStep, parseStory, slugParts, totpCode, totpStep, verifyTotp,
 } from "../src";
 
 describe("parseStory", () => {
@@ -96,5 +96,14 @@ describe("TOTP", () => {
     const now = new Date("2026-10-17T10:00:00Z");
     expect(verifyTotp(secret, totpCode(secret, new Date(now.getTime() - 30_000)), now)).toBe(true);
     expect(verifyTotp(secret, totpCode(secret, new Date(now.getTime() - 90_000)), now)).toBe(false);
+  });
+
+  it("names the step a code belongs to, so callers can refuse a replay", () => {
+    const now = new Date("2026-10-17T10:00:10Z");
+    const step = totpStep(now);
+    expect(step).toBe(Math.floor(now.getTime() / 30_000));
+    for (const i of [-1, 0, 1]) expect(matchTotpStep(secret, totpCode(secret, new Date((step + i) * 30_000)), now)).toBe(step + i);
+    expect(matchTotpStep(secret, totpCode(secret, new Date((step - 2) * 30_000)), now)).toBeNull();
+    expect(matchTotpStep(secret, " " + totpCode(secret, now) + " ", now)).toBe(step);
   });
 });

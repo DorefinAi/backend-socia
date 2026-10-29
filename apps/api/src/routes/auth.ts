@@ -1,9 +1,9 @@
-import { PERMISSIONS, PERMISSION_KEYS, newTotpSecret, totpUri, verifyTotp } from "@socia/core";
+import { PERMISSIONS, PERMISSION_KEYS, matchTotpStep, newTotpSecret, totpUri } from "@socia/core";
 import { audit, sessions, users } from "@socia/db";
 import { decryptSecret, encryptSecret } from "@socia/providers";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { randomBytes } from "node:crypto";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { FastifyReply } from "fastify";
 import { accessChanged } from "../access";
 import { COOKIE, HttpError, checkPassword, createSession, guard, hashPassword, legacyAccess, setSessionCookie, type SessionInfo } from "../auth";
@@ -122,13 +122,30 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     },
   );
 
+  /**
+   * Checks a code and claims its time step for the user in one statement: the step must be newer than the last
+   * accepted one, so a code works once (no replay, and of two concurrent submits of one code only one wins).
+   * `extra` columns are set in the same UPDATE. False for a wrong code or a replay alike.
+   */
+  const acceptCode = async (userId: string, secretEnc: string, code: string, extra: { totpEnabled?: true } = {}): Promise<boolean> => {
+    const step = matchTotpStep(decryptSecret(secretEnc, config.secretKey), code, new Date());
+    if (step === null) return false;
+    const claimed = await db
+      .update(users)
+      .set({ totpLastStep: step, ...extra })
+      .where(and(eq(users.id, userId), or(isNull(users.totpLastStep), lt(users.totpLastStep, step))))
+      .returning({ id: users.id });
+    return claimed.length === 1;
+  };
+
   app.post("/auth/totp", { schema: { body: Type.Object({ code: Type.String({ pattern: "^\\s*\\d{6}\\s*$" }) }, { additionalProperties: false }) } }, async (req, reply) => {
     const s = guard(req);
     const wait = totpGate.retryAfter(req.ip, s.user.id);
     if (wait) throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
     const [user] = await db.select().from(users).where(eq(users.id, s.user.id));
     if (!user?.totpEnabled || !user.totpSecretEnc) throw new HttpError(409, "totp_not_set_up", "Set up two-step sign-in first.");
-    if (!verifyTotp(decryptSecret(user.totpSecretEnc, config.secretKey), req.body.code, new Date())) {
+    // A replayed code (its step already used) counts as a wrong one
+    if (!(await acceptCode(user.id, user.totpSecretEnc, req.body.code))) {
       const now = Date.now();
       totpGate.fail(req.ip, s.user.id);
       const n = (totpFailures.get(s.id)?.n ?? 0) + 1;
@@ -152,18 +169,22 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     const s = guard(req);
     if (s.user.totpEnabled) throw new HttpError(409, "totp_already_on", "Two-step sign-in is already on. Ask an admin to reset it.");
     const secret = newTotpSecret();
-    await db.update(users).set({ totpSecretEnc: encryptSecret(secret, config.secretKey) }).where(eq(users.id, s.user.id));
+    // A new secret starts with no used step
+    await db.update(users).set({ totpSecretEnc: encryptSecret(secret, config.secretKey), totpLastStep: null }).where(eq(users.id, s.user.id));
     return { secret, otpauthUri: totpUri(secret, s.user.email) };
   });
 
-  app.post("/auth/totp/enable", { schema: { body: Type.Object({ code: Type.String({ pattern: "^\\s*\\d{6}\\s*$" }) }, { additionalProperties: false }) } }, async (req) => {
+  app.post("/auth/totp/enable", { schema: { body: Type.Object({ code: Type.String({ pattern: "^\\s*\\d{6}\\s*$" }) }, { additionalProperties: false }) } }, async (req, reply) => {
     const s = guard(req);
+    const wait = totpGate.retryAfter(req.ip, s.user.id);
+    if (wait) throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
     const [user] = await db.select().from(users).where(eq(users.id, s.user.id));
     if (!user?.totpSecretEnc) throw new HttpError(409, "totp_not_set_up", "Start setup first.");
-    if (!verifyTotp(decryptSecret(user.totpSecretEnc, config.secretKey), req.body.code, new Date())) {
+    // Turns two-step on in the same UPDATE that claims the code's step; a replayed code counts as a wrong one
+    if (!(await acceptCode(user.id, user.totpSecretEnc, req.body.code, { totpEnabled: true }))) {
+      totpGate.fail(req.ip, s.user.id);
       throw new HttpError(401, "bad_code", "That code is wrong. Check the time on your phone and try again.");
     }
-    await db.update(users).set({ totpEnabled: true }).where(eq(users.id, s.user.id));
     await db.update(sessions).set({ verified: true }).where(eq(sessions.id, s.id));
     return { ok: true };
   });

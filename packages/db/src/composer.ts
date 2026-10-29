@@ -20,7 +20,7 @@ export async function dictionaryFingerprint(db: Db, orgId: string): Promise<stri
 /** The org's active hashtag rules in the core shape */
 export async function activeHashtagRules(db: Db, orgId: string): Promise<HashtagRule[]> {
   const rules = await db.select().from(hashtagRules).where(and(eq(hashtagRules.orgId, orgId), eq(hashtagRules.active, true)));
-  return rules.map((r) => ({ id: r.id, matchType: r.matchType as MatchType, name: r.name, aliases: r.aliases, hashtagLatin: r.hashtagLatin, hashtagDevanagari: r.hashtagDevanagari, priority: r.priority }));
+  return rules.map((r) => ({ id: r.id, matchType: r.matchType as MatchType, name: r.name, aliases: r.aliases, hashtagLatin: r.hashtagLatin, hashtagDevanagari: r.hashtagDevanagari, priority: r.priority, negativePhrases: r.negativePhrases }));
 }
 
 export async function loadRuleComposer(db: Db, orgId: string, version?: string): Promise<{ composer: RuleComposer; version: string }> {

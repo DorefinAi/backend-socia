@@ -42,6 +42,8 @@ export const users = pgTable(
     /** AES-256-GCM, key from SECRET_KEY */
     totpSecretEnc: text("totp_secret_enc"),
     totpEnabled: boolean("totp_enabled").notNull().default(false),
+    /** Time step (unix seconds / 30) of the last accepted TOTP code; a code at this step or earlier is refused (no replay) */
+    totpLastStep: bigint("totp_last_step", { mode: "number" }),
     /** roles.key in the same org */
     role: text("role").$type<UserRole>().notNull(),
     /** Users of a platform-scoped role (operator) act only on these platforms */
@@ -518,6 +520,8 @@ export const hashtagRules = pgTable(
     hashtagLatin: text("hashtag_latin").notNull(),
     hashtagDevanagari: text("hashtag_devanagari"),
     priority: integer("priority").notNull().default(0),
+    /** The rule does not fire from a sentence that also has one of these (हादसा + "टल गया": an averted accident) */
+    negativePhrases: text("negative_phrases").array().notNull().default(sql`'{}'::text[]`),
     active: boolean("active").notNull().default(true),
     updatedAt: updatedAt(),
   },

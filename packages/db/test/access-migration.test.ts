@@ -35,7 +35,11 @@ const settings = { hashtagScript: "latin" as const, fixedHashtags: [], maxHashta
       { orgId: org!.id, name: "E", email: "e@test", passwordHash: "x", role: "editor" },
     ]);
     // Rollbacks run newest first: the migrator only applies what is newer than the last one it recorded
-    await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0010_draft_rewrite.down.sql"), "utf8"));
+    const journal = JSON.parse(await readFile(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8")) as { entries: { tag: string }[] };
+    const at = journal.entries.findIndex((e) => e.tag === "0009_access_control");
+    for (const later of journal.entries.slice(at + 1).reverse()) {
+      await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", `${later.tag}.down.sql`), "utf8"));
+    }
     expect(await rows(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'post_drafts' AND column_name = 'rewrite'`)).toEqual([]);
     await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0009_access_control.down.sql"), "utf8"));
 

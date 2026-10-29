@@ -17,6 +17,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AVERTED_PHRASES } from "@socia/core";
 import { createDb, hashtagRules, orgs, users, type OrgSettings } from "@socia/db";
 import { and, eq } from "drizzle-orm";
 import pg from "pg";
@@ -423,12 +424,12 @@ const FIXED_HASHTAGS = ["#RajasthanWithFirstIndia"];
 const DEFAULT_SETTINGS: OrgSettings = { hashtagScript: "latin", fixedHashtags: FIXED_HASHTAGS, maxHashtags: 4, dailyCaps: { x: 800 }, headlineWords: 9 };
 
 // Topic tags for the post's tag line (matchType "entity"; places stay "district" and go in line 1)
-const TOPICS: { name: string; aliases: string[]; tag: string; priority: number }[] = [
+const TOPICS: { name: string; aliases: string[]; tag: string; priority: number; negativePhrases?: readonly string[] }[] = [
   { name: "हाईकोर्ट", aliases: ["हाई कोर्ट", "उच्च न्यायालय", "High Court"], tag: "RajasthanHighCourt", priority: 8 },
   { name: "चुनाव", aliases: ["इलेक्शन", "मतदान", "निर्वाचन", "Election"], tag: "RajasthanElection", priority: 7 },
   { name: "पुलिस", aliases: ["चोरी", "अपराध", "गिरफ्तार", "हत्या", "लूट", "Police"], tag: "RajasthanPolice", priority: 6 },
   { name: "मौसम", aliases: ["बारिश", "मानसून", "ओलावृष्टि", "Weather"], tag: "RajasthanWeather", priority: 5 },
-  { name: "हादसा", aliases: ["हादसे", "दुर्घटना", "भिड़ंत", "Accident"], tag: "RoadAccident", priority: 6 },
+  { name: "हादसा", aliases: ["हादसे", "दुर्घटना", "भिड़ंत", "Accident"], tag: "RoadAccident", priority: 6, negativePhrases: AVERTED_PHRASES },
 ];
 
 async function sociaSetup(): Promise<void> {
@@ -468,7 +469,10 @@ async function sociaSetup(): Promise<void> {
     }
     for (const t of TOPICS) {
       const [r] = await db.select().from(hashtagRules).where(and(eq(hashtagRules.orgId, orgId!), eq(hashtagRules.name, t.name)));
-      if (!r) await db.insert(hashtagRules).values({ orgId: orgId!, matchType: "entity", name: t.name, aliases: t.aliases, hashtagLatin: t.tag, hashtagDevanagari: null, priority: t.priority });
+      const negativePhrases = [...(t.negativePhrases ?? [])];
+      if (!r) await db.insert(hashtagRules).values({ orgId: orgId!, matchType: "entity", name: t.name, aliases: t.aliases, hashtagLatin: t.tag, hashtagDevanagari: null, priority: t.priority, negativePhrases });
+      // Older local rows: add the negative phrases unless the desk already set some
+      else if (negativePhrases.length && !r.negativePhrases.length) await db.update(hashtagRules).set({ negativePhrases, updatedAt: new Date() }).where(eq(hashtagRules.id, r.id));
     }
 
     if (logins.some((l) => l.password)) {

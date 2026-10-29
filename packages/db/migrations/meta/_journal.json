@@ -78,6 +78,20 @@
       "when": 1793294825236,
       "tag": "0010_draft_rewrite",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793296973217,
+      "tag": "0011_totp_last_step",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793297121317,
+      "tag": "0012_hashtag_negative_phrases",
+      "breakpoints": true
     }
   ]
 }

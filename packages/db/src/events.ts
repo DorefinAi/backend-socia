@@ -21,7 +21,10 @@ export type SociaEvent =
   /** Footage landed on a story that already had media or a draft (late media) */
   | { type: "media.attached"; storyId: string; draftIds: string[]; count: number }
   /** A poll that ingested something or failed; the dashboard refetches /ingest/status */
-  | { type: "ingest.status"; ok: boolean; at: string };
+  | { type: "ingest.status"; ok: boolean; at: string }
+  /** A user's access changed (role, platforms, deactivation, their role's permissions): their sockets are
+   *  disconnected so they reconnect, re-authenticate and join the right rooms. Never sent to browsers. */
+  | { type: "access.changed"; userIds: string[] };
 
 export type SociaEventEnvelope = SociaEvent & { orgId: string; platform?: string };
 

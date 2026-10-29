@@ -15,3 +15,4 @@ export * from "./totp";
 export * from "./rajasthan";
 export * from "./trends";
 export * from "./trend-sources";
+export * from "./permissions";

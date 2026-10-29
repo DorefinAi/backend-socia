@@ -3,7 +3,7 @@
 
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, check, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid,
+  bigint, bigserial, boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -26,8 +26,10 @@ export const orgs = pgTable("orgs", {
   createdAt: createdAt(),
 });
 
+/** The built-in roles (migration 0009 made roles a table; custom roles are any other key there) */
 export const USER_ROLES = ["operator", "editor", "admin", "viewer"] as const;
-export type UserRole = (typeof USER_ROLES)[number];
+/** A key in roles: one of USER_ROLES or a custom role's slug */
+export type UserRole = string;
 
 export const users = pgTable(
   "users",
@@ -40,16 +42,73 @@ export const users = pgTable(
     /** AES-256-GCM, key from SECRET_KEY */
     totpSecretEnc: text("totp_secret_enc"),
     totpEnabled: boolean("totp_enabled").notNull().default(false),
+    /** roles.key in the same org */
     role: text("role").$type<UserRole>().notNull(),
-    /** Operators see only these platforms */
+    /** Users of a platform-scoped role (operator) act only on these platforms */
     platforms: text("platforms").array().notNull().default(sql`'{x}'::text[]`),
+    /** Inactive users cannot sign in; deactivating deletes their sessions */
     active: boolean("active").notNull().default(true),
     createdAt: createdAt(),
+    /** Last password sign-in; null before migration 0009 or for someone who never signed in */
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("users_email_key").on(t.email),
-    check("users_role_check", sql`${t.role} IN ('operator', 'editor', 'admin', 'viewer')`),
+    index("users_org_role_idx").on(t.orgId, t.role),
+    foreignKey({ name: "users_org_role_fk", columns: [t.orgId, t.role], foreignColumns: [roles.orgId, roles.key] }),
   ],
+);
+
+// ─── Access control (contract: handoff/access-control-contract.md §3) ───────
+
+/** Per org: the 4 built-ins (seeded by a trigger on orgs) and custom roles. */
+export const roles = pgTable(
+  "roles",
+  {
+    orgId: orgId(),
+    /** "admin", "editor", "operator", "viewer", or a custom role's slug ("video-editor") */
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    description: text("description").notNull().default(""),
+    builtIn: boolean("built_in").notNull().default(false),
+    /** Users of the role act only on their own platforms (like operator) */
+    platformScoped: boolean("platform_scoped").notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ name: "roles_pkey", columns: [t.orgId, t.key] }),
+    check("roles_key_check", sql`${t.key} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length(${t.key}) <= 40`),
+    check("roles_label_check", sql`length(${t.label}) BETWEEN 1 AND 40`),
+  ],
+);
+
+/** A role's setting for one permission. No row: the built-in default (built-ins) or not allowed (custom). */
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    orgId: uuid("org_id").notNull(),
+    roleKey: text("role_key").notNull(),
+    permission: text("permission").notNull(),
+    allowed: boolean("allowed").notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "role_permissions_pkey", columns: [t.orgId, t.roleKey, t.permission] }),
+    foreignKey({ name: "role_permissions_role_fk", columns: [t.orgId, t.roleKey], foreignColumns: [roles.orgId, roles.key] }).onDelete("cascade"),
+  ],
+);
+
+/** One user's exception to their role: allow or deny one permission. */
+export const userPermissionOverrides = pgTable(
+  "user_permission_overrides",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    permission: text("permission").notNull(),
+    allowed: boolean("allowed").notNull(),
+    setBy: uuid("set_by").references(() => users.id, { onDelete: "set null" }),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "user_permission_overrides_pkey", columns: [t.userId, t.permission] })],
 );
 
 export const sessions = pgTable("sessions", {
@@ -524,6 +583,8 @@ export const auditLog = pgTable(
   },
   (t) => [
     index("audit_log_entity_idx").on(t.entityType, t.entityId, t.at),
+    // The change history of roles and users (GET /admin/audit), newest first
+    index("audit_log_org_type_idx").on(t.orgId, t.entityType, t.at, t.id),
   ],
 );
 

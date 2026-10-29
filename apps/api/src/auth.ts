@@ -4,7 +4,10 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import { sessions, users, type Db, type UserRole } from "@socia/db";
+import {
+  effectivePermissionSet, isPermissionKey, permissionLabel, rolePermissionSet, type PermissionKey, type PermissionSetting,
+} from "@socia/core";
+import { rolePermissions, roles, sessions, userPermissionOverrides, users, type Db } from "@socia/db";
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
@@ -15,9 +18,20 @@ export interface SessionUser {
   orgId: string;
   name: string;
   email: string;
-  role: UserRole;
+  /** roles.key */
+  role: string;
+  roleLabel: string;
+  /** The role limits its users to their own platforms (operator, or a custom role) */
+  platformScoped: boolean;
   platforms: string[];
   totpEnabled: boolean;
+  active: boolean;
+  createdAt: Date;
+  lastLoginAt: Date | null;
+  /** Effective permissions, resolved once per request (exception, else role) */
+  permissions: ReadonlySet<PermissionKey>;
+  /** This user's exceptions to their role */
+  overrides: { permission: PermissionKey; allowed: boolean }[];
 }
 
 export interface SessionInfo {
@@ -48,18 +62,34 @@ export async function createSession(db: Db, userId: string, verified: boolean, h
 
 export async function loadSession(db: Db, token: string | undefined): Promise<SessionInfo | null> {
   if (!token) return null;
+  // One round trip: the session, its user, the role, the role's stored settings and the user's exceptions
   const [row] = await db
-    .select({ s: sessions, u: users })
+    .select({
+      s: sessions,
+      u: users,
+      roleLabel: roles.label,
+      builtIn: roles.builtIn,
+      platformScoped: roles.platformScoped,
+      roleRows: sql<PermissionSetting[]>`coalesce((SELECT json_agg(json_build_object('permission', ${rolePermissions.permission}, 'allowed', ${rolePermissions.allowed})) FROM ${rolePermissions} WHERE ${rolePermissions.orgId} = ${users.orgId} AND ${rolePermissions.roleKey} = ${users.role}), '[]'::json)`,
+      overrideRows: sql<PermissionSetting[]>`coalesce((SELECT json_agg(json_build_object('permission', ${userPermissionOverrides.permission}, 'allowed', ${userPermissionOverrides.allowed})) FROM ${userPermissionOverrides} WHERE ${userPermissionOverrides.userId} = ${users.id}), '[]'::json)`,
+    })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
+    .innerJoin(roles, and(eq(roles.orgId, users.orgId), eq(roles.key, users.role)))
     .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, sql`now()`), eq(users.active, true)));
   if (!row) return null;
   const { s, u } = row;
+  const overrides = row.overrideRows.filter((o): o is { permission: PermissionKey; allowed: boolean } => isPermissionKey(o.permission));
   return {
     id: s.id,
     csrfToken: s.csrfToken,
     verified: s.verified,
-    user: { id: u.id, orgId: u.orgId, name: u.name, email: u.email, role: u.role, platforms: u.platforms, totpEnabled: u.totpEnabled },
+    user: {
+      id: u.id, orgId: u.orgId, name: u.name, email: u.email, role: u.role, roleLabel: row.roleLabel, platformScoped: row.platformScoped,
+      platforms: u.platforms, totpEnabled: u.totpEnabled, active: u.active, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+      permissions: effectivePermissionSet(rolePermissionSet(u.role, row.builtIn, row.roleRows), overrides),
+      overrides,
+    },
   };
 }
 
@@ -69,7 +99,8 @@ export class HttpError extends Error {
   }
 }
 
-const UNVERIFIED_OK = new Set(["/me", "/auth/totp", "/auth/totp/setup", "/auth/totp/enable", "/auth/logout"]);
+/** Allowed between password and TOTP: method and route */
+const UNVERIFIED_OK = new Set(["GET /me", "POST /auth/totp", "POST /auth/totp/setup", "POST /auth/totp/enable", "POST /auth/logout"]);
 const MUTATING = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
 /** Runs before every route that is not public. */
@@ -77,7 +108,7 @@ export function guard(req: FastifyRequest): SessionInfo {
   const s = req.session;
   if (!s) throw new HttpError(401, "signed_out", "Sign in to continue.");
   const path = req.routeOptions.url ?? req.url;
-  if (!s.verified && !UNVERIFIED_OK.has(path)) {
+  if (!s.verified && !UNVERIFIED_OK.has(`${req.method} ${path}`)) {
     throw new HttpError(403, s.user.totpEnabled ? "totp_required" : "totp_setup_required", s.user.totpEnabled ? "Enter the code from your authenticator app." : "Set up two-step sign-in to continue.");
   }
   if (MUTATING.has(req.method) && req.headers["x-csrf"] !== s.csrfToken) {
@@ -91,28 +122,33 @@ export function setSessionCookie(reply: FastifyReply, token: string, secure: boo
 }
 
 // ─── Permissions ─────────────────────────────────────────────────────────────
-// operator: only their platforms, posts directly (no editor check, so undo and recall exist)
-// editor: any platform, plus hashtag rules and the handle directory
-// admin: everything, plus users and tokens · viewer: read only
+// Every check names a permission key from @socia/core (permissions.ts); the built-in defaults give each
+// role exactly what the old role checks gave it. A platform-scoped role (operator) acts only on the
+// user's own platforms; other roles act on any platform.
 
-export function canAct(user: SessionUser, platform: string): boolean {
-  if (user.role === "viewer") return false;
-  return user.role !== "operator" || user.platforms.includes(platform);
+export const can = (user: SessionUser, key: PermissionKey): boolean => user.permissions.has(key);
+
+/** Throws 403 unless the user has (any one of) the permission(s), on this platform when one is given. */
+export function requirePermission(user: SessionUser, keys: PermissionKey | readonly PermissionKey[], platform?: string): void {
+  const list: readonly PermissionKey[] = typeof keys === "string" ? [keys] : keys;
+  if (!list.some((k) => user.permissions.has(k))) {
+    const names = list.map((k) => `"${permissionLabel(k)}"`).join(" or ");
+    throw new HttpError(403, "forbidden", `You need the ${names} permission to do this. Ask an admin.`);
+  }
+  if (platform !== undefined && user.platformScoped && !user.platforms.includes(platform)) {
+    throw new HttpError(403, "forbidden", "Your role cannot do this on this platform.");
+  }
 }
 
-export function requireAct(user: SessionUser, platform = "x"): void {
-  if (!canAct(user, platform)) throw new HttpError(403, "forbidden", "Your role cannot do this on this platform.");
-}
+/** The platforms whose live events the user receives: their own for a platform-scoped role, else X. */
+export const livePlatforms = (user: SessionUser): string[] => (user.platformScoped ? user.platforms : ["x"]);
 
-export function requireRole(user: SessionUser, ...roles: UserRole[]): void {
-  if (!roles.includes(user.role)) throw new HttpError(403, "forbidden", "Your role cannot do this.");
-}
-
-export function permissions(user: SessionUser) {
+/** The old /me "permissions" object, kept as "access" for clients that still read it. */
+export function legacyAccess(user: SessionUser) {
   return {
-    platforms: user.role === "operator" ? user.platforms : ["x"],
-    canAct: user.role !== "viewer",
-    canEditLibrary: user.role === "editor" || user.role === "admin",
-    canManageUsers: user.role === "admin",
+    platforms: livePlatforms(user),
+    canAct: can(user, "post.publish") || can(user, "draft.edit"),
+    canEditLibrary: can(user, "page.settings"),
+    canManageUsers: can(user, "users.manage"),
   };
 }

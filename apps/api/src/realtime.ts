@@ -7,7 +7,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { Server as HttpServer } from "node:http";
 import pg from "pg";
 import { Server } from "socket.io";
-import { COOKIE, loadSession, permissions, type SessionUser } from "./auth";
+import { COOKIE, livePlatforms, loadSession, type SessionUser } from "./auth";
 
 function readCookie(header: string | undefined, name: string): string | undefined {
   for (const part of (header ?? "").split(";")) {
@@ -31,7 +31,7 @@ export function attachRealtime(server: HttpServer, opts: { db: Db; databaseUrl: 
 
   io.on("connection", (socket) => {
     const user = socket.data.user as SessionUser;
-    for (const platform of permissions(user).platforms) void socket.join(room(user.orgId, platform));
+    for (const platform of livePlatforms(user)) void socket.join(room(user.orgId, platform));
   });
 
   let client: pg.Client | null = null;
@@ -45,6 +45,14 @@ export function attachRealtime(server: HttpServer, opts: { db: Db; databaseUrl: 
       client.on("notification", (msg) => {
         try {
           const { orgId, platform = "x", ...event } = JSON.parse(msg.payload ?? "{}") as SociaEventEnvelope;
+          if (event.type === "access.changed") {
+            const ids = new Set(event.userIds);
+            for (const socket of io.sockets.sockets.values()) {
+              const u = socket.data.user as SessionUser | undefined;
+              if (u && u.orgId === orgId && ids.has(u.id)) socket.disconnect(true);
+            }
+            return;
+          }
           io.to(room(orgId, platform)).emit(event.type, event);
         } catch (err) {
           opts.log.warn({ err }, "bad event payload");

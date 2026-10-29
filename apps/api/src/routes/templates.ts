@@ -8,7 +8,7 @@ import {
 } from "@socia/db";
 import type { Storage } from "@socia/providers";
 import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
-import { COOKIE, HttpError, guard, loadSession, type SessionUser } from "../auth";
+import { COOKIE, HttpError, guard, loadSession, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
 import { SlidingLimiter } from "../limiter";
 import { CARD_MAX_BYTES, pngSize } from "./desk";
@@ -158,6 +158,7 @@ export const templateRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { 
 
   app.patch("/me/card-template", { schema: { querystring: PlatformQuery, body: Type.Object({ layout: Layout }, { additionalProperties: false }) } }, async (req) => {
     const { user } = guard(req);
+    requirePermission(user, "card_template.own");
     const { layout } = req.body;
     if (layout.fontMinPx > layout.fontMaxPx) throw new HttpError(400, "invalid", "fontMinPx cannot be larger than fontMaxPx.");
     for (const [name, r] of [["date", layout.date], ["box", layout.box]] as const) {
@@ -170,6 +171,7 @@ export const templateRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { 
 
   app.delete("/me/card-template", { schema: { querystring: PlatformQuery } }, async (req, reply) => {
     const { user } = guard(req);
+    requirePermission(user, "card_template.own");
     await deleteCardTemplate(db, actor(user), req.query.platform ?? "x", { remove: (key) => storage.delete(key) });
     return reply.status(204).send();
   });
@@ -190,6 +192,7 @@ export const templateRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { 
 
     uploads.put("/me/card-template", { bodyLimit: CARD_MAX_BYTES, schema: { querystring: PlatformQuery } }, async (req) => {
       const { user } = guard(req);
+      requirePermission(user, "card_template.own");
       const body = req.body as unknown;
       if (!Buffer.isBuffer(body) || body.length === 0) throw new HttpError(400, "unsupported_type", "Upload the background as a PNG or JPG image.");
       const image = readImage(body);

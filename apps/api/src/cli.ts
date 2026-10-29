@@ -1,12 +1,14 @@
 // Setup commands, run from a Render shell or locally:
 //   pnpm --filter @socia/api cli create-org --name "1st India News"
 //   pnpm --filter @socia/api cli create-user --org <id> --email a@b.c --name Asha --role admin --password '...'
+//       --role: a built-in (admin, editor, operator, viewer) or a custom role of the org
 //   pnpm --filter @socia/api cli import-hashtags --org <id> --file rules.csv
 //       rules.csv: match_type,name,aliases (| separated),hashtag_latin,hashtag_devanagari,priority
 
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
-import { USER_ROLES, createDb, hashtagRules, orgs, users, type OrgSettings, type UserRole } from "@socia/db";
+import { createDb, hashtagRules, orgs, roles, users, type OrgSettings } from "@socia/db";
+import { eq } from "drizzle-orm";
 import { hashPassword } from "./auth";
 
 const DEFAULT_SETTINGS: OrgSettings = {
@@ -41,10 +43,11 @@ try {
     const [org] = await db.insert(orgs).values({ name: need("name"), settings: DEFAULT_SETTINGS }).returning();
     console.log(`Created org ${org!.name}. Set ORG_ID=${org!.id} on the workers.`);
   } else if (command === "create-user") {
-    const role = need("role") as UserRole;
-    if (!USER_ROLES.includes(role)) throw new Error(`--role must be one of ${USER_ROLES.join(", ")}`);
+    const role = need("role");
+    const known = await db.select({ key: roles.key }).from(roles).where(eq(roles.orgId, need("org")));
+    if (!known.some((r) => r.key === role)) throw new Error(`--role must be one of ${known.map((r) => r.key).join(", ")}`);
     const password = need("password");
-    if (password.length < 10) throw new Error("--password must be at least 10 characters");
+    if (password.length < 12) throw new Error("--password must be at least 12 characters");
     const [user] = await db
       .insert(users)
       .values({ orgId: need("org"), name: need("name"), email: need("email").toLowerCase(), role, platforms: (values.platforms ?? "x").split(","), passwordHash: await hashPassword(password) })

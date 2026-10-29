@@ -7,12 +7,15 @@ import {
 } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { and, count, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import { HttpError, guard, requireAct, type SessionUser } from "../auth";
+import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
 import { cardUrl, draftView, storyLabels } from "../views";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
+
+/** Holding a draft is the first step of every desk action, so any one of them allows a claim. */
+const CLAIM = ["draft.edit", "draft.card", "post.publish", "post.mark_posted", "draft.reject"] as const;
 
 /** X takes images up to 5 MB */
 export const CARD_MAX_BYTES = 5 * 1024 * 1024;
@@ -164,7 +167,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.post("/drafts/:id/claim", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);
-    requireAct(user);
+    requirePermission(user, CLAIM, "x");
     await claimDraft(db, actor(user), req.params.id);
     return view(user, req.params.id);
   });
@@ -196,7 +199,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     },
     async (req) => {
       const { user } = guard(req);
-      requireAct(user);
+      requirePermission(user, "draft.edit", "x");
       const { version, ...patch } = req.body;
       await updateDraft(db, actor(user), req.params.id, version, patch);
       return view(user, req.params.id);
@@ -212,7 +215,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
     cards.put("/drafts/:id/card", { bodyLimit: CARD_MAX_BYTES, schema: { params: Id, querystring: VersionQuery } }, async (req) => {
       const { user } = guard(req);
-      requireAct(user);
+      requirePermission(user, "draft.card", "x");
       const body = req.body as unknown;
       if (!Buffer.isBuffer(body)) throw new HttpError(415, "unsupported_type", "Send the card as a PNG image (content-type: image/png).");
       if (body.length > CARD_MAX_BYTES) throw new HttpError(413, "too_large", "The card is over 5 MB, the most X accepts.");
@@ -229,7 +232,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
     cards.delete("/drafts/:id/card", { schema: { params: Id, querystring: VersionQuery } }, async (req) => {
       const { user } = guard(req);
-      requireAct(user);
+      requirePermission(user, "draft.card", "x");
       await clearCustomCard(db, actor(user), req.params.id, req.query.version);
       return view(user, req.params.id);
     });
@@ -241,7 +244,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     { schema: { params: Id, body: Type.Object({ version: Type.Integer(), permalink: Type.String({ maxLength: 500 }) }) } },
     async (req) => {
       const { user } = guard(req);
-      requireAct(user);
+      requirePermission(user, "post.mark_posted", "x");
       const permalink = req.body.permalink.trim();
       const match = X_PERMALINK.exec(permalink);
       if (!match) throw new HttpError(400, "invalid", "Paste the post's link from X, like https://x.com/<account>/status/<number>.");
@@ -264,14 +267,14 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.post("/drafts/:id/approve", { schema: { params: Id, body: Type.Object({ version: Type.Integer() }) } }, async (req) => {
     const { user } = guard(req);
-    requireAct(user);
+    requirePermission(user, "post.publish", "x");
     const { job } = await approveDraft(db, actor(user), req.params.id, req.body.version);
     return { jobId: job.id, sendAt: job.nextAttemptAt };
   });
 
   app.post("/jobs/:id/undo", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);
-    requireAct(user);
+    requirePermission(user, "post.undo", "x");
     const draft = await undoPost(db, actor(user), req.params.id);
     return view(user, draft.id);
   });
@@ -286,7 +289,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     },
     async (req) => {
       const { user } = guard(req);
-      requireAct(user);
+      requirePermission(user, ["draft.reject", "post.publish"], "x");
       await rejectDraft(db, actor(user), req.params.id, req.body.reason, req.body.note ?? null);
       return { ok: true };
     },
@@ -294,14 +297,14 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.post("/drafts/:id/restore", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);
-    requireAct(user);
+    requirePermission(user, "story.take_in", "x");
     await restoreDraft(db, actor(user), req.params.id);
     return view(user, req.params.id);
   });
 
   app.post("/drafts/:id/retry", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);
-    requireAct(user);
+    requirePermission(user, "post.publish", "x");
     const job = await retryFailed(db, actor(user), req.params.id);
     return { jobId: job.id };
   });
@@ -376,7 +379,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     { schema: { params: Id, body: Type.Object({ reason: Type.String({ minLength: 3, maxLength: 500 }) }) } },
     async (req) => {
       const { user } = guard(req);
-      requireAct(user);
+      requirePermission(user, "post.undo", "x");
       const job = await requestRecall(db, actor(user), req.params.id, req.body.reason);
       return { jobId: job.id };
     },

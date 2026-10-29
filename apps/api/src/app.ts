@@ -61,6 +61,9 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
     if (e.statusCode === 413) return reply.status(413).send({ error: "too_large", message: "The upload is over 5 MB, the most X accepts." });
     if (e.statusCode === 415) return reply.status(415).send({ error: "unsupported_type", message: "This content type is not accepted here." });
     if (e.statusCode && e.statusCode < 500) return reply.status(e.statusCode).send({ error: "bad_request", message: e.message });
+    // A row this change points at was removed meanwhile (e.g. a role deleted while a user is given it)
+    const pgCode = (err as { code?: string }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+    if (pgCode === "23503") return reply.status(409).send({ error: "conflict", message: "Something this change refers to was just changed or removed. Reload and try again." });
     req.log.error({ err }, "unhandled error");
     return reply.status(500).send({ error: "server", message: "Something went wrong on our side. Try again in a moment." });
   });

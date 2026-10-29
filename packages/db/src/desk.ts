@@ -16,7 +16,8 @@ export interface Actor {
   id: string;
   orgId: string;
   name: string;
-  role: "operator" | "editor" | "admin" | "viewer";
+  /** roles.key: a built-in role or a custom one */
+  role: string;
 }
 
 export type DeskErrorCode =

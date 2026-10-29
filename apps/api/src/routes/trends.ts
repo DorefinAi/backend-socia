@@ -16,7 +16,7 @@ import {
 } from "@socia/db";
 import { getText, politeGet, type WebGet } from "@socia/providers";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { HttpError, guard, requireAct, requireRole, type SessionUser } from "../auth";
+import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
 import { SlidingLimiter } from "../limiter";
 
@@ -174,6 +174,7 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
     { schema: { body: Type.Object({ keyword: Type.String({ minLength: 1, maxLength: 80 }) }, { additionalProperties: false }) } },
     async (req, reply) => {
       const { user } = guard(req);
+      requirePermission(user, "trends.watch");
       const keyword = req.body.keyword.replace(/\s+/g, " ").trim();
       if (!keyword || !watchKey(keyword)) throw new HttpError(400, "invalid", "Type a word or name to watch (letters or digits).");
       const added = await addTrendWatch(db, user, keyword);
@@ -184,6 +185,7 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
 
   app.delete("/me/trend-watches/:id", { schema: { params: Id } }, async (req, reply) => {
     const { user } = guard(req);
+    requirePermission(user, "trends.watch");
     if (!(await deleteTrendWatch(db, user.id, req.params.id))) throw new HttpError(404, "not_found", "That keyword is not on your watch list.");
     return reply.status(204).send();
   });
@@ -226,7 +228,7 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
 
   app.post("/trends/refresh", async (req, reply) => {
     const { user } = guard(req);
-    requireRole(user, "editor", "admin");
+    requirePermission(user, "trends.refresh");
     if (!refreshes.take(user.id)) throw new HttpError(429, "rate_limited", `Up to ${REFRESHES_PER_MINUTE} refreshes a minute. The worker is already on it.`);
     await requestTrendRefresh(db, user.orgId, user.id);
     return reply.status(202).send({ queued: true });
@@ -240,7 +242,7 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
       if (!DRAFT_PLATFORMS.includes(req.body.platform)) {
         throw new HttpError(400, "platform_not_supported", `Socia makes drafts for X only; "${req.body.platform}" is filled in on the desk.`);
       }
-      requireAct(user, req.body.platform);
+      requirePermission(user, "trends.draft", req.body.platform);
       const item = await getTrendItem(db, user.orgId, req.params.id);
       if (!item) throw new HttpError(404, "not_found", "This trend is gone (runs are kept for 7 days). Refresh the list.");
       const { composer } = await loadRuleComposer(db, user.orgId);

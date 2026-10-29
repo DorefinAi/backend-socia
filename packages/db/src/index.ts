@@ -10,3 +10,6 @@ export * from "./migrate";
 export * from "./pipeline";
 export * from "./ingest-status";
 export * from "./samvadia";
+export * from "./card-template";
+export * from "./composer";
+export * from "./trends";

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml-stylesheet title="XSL_formatting" type="text/xsl" href="feed.xsl"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>All India: CAP Disaster Alert Feeds</title>
+    <description>CAP Integrated Alert System Warning Updates</description>
+    <language>en</language>
+    <link>https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml</link>
+    <atom:link href="https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml" rel="self" type="application/rss+xml"/>
+    <copyright>public domain</copyright>
+    <pubDate>Fri, 16 Oct 2026 09:04:39 GMT</pubDate>
+    <item>
+      <title>अगले 3 घंटों में बालाघाट, डिंडोरी, मंडला, सिवनी, सीधी और सिंगरौली के कुछ स्थानों पर बिजली कड़कने के साथ मध्यम आंधी-तूफान या मध्यम बारिश होने की संभावना है।</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=1793215064445021</link>
+      <author>controlroom@ndma.gov.in (IMD Bhopal)</author>
+      <guid isPermaLink="false">1793215064445021</guid>
+      <pubDate>Wed, 28 Oct 2026 19:20:52 GMT</pubDate>
+    </item>
+<item>
+      <title>Thunderstorm with Lightning and Light to Moderate Rain is very likely to continue at a few places over Northern Parts of North Tripura for next 2-3 hours.</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=1793215214094015</link>
+      <author>controlroom@ndma.gov.in (IMD Agartala)</author>
+      <guid isPermaLink="false">1793215214094015</guid>
+      <pubDate>Wed, 28 Oct 2026 19:20:15 GMT</pubDate>
+    </item>
+<item>
+      <title>River Rishikulya at Purushottampur in Ganjam district of Odisha continues to flow in above normal flood situation at 12:00 am today.</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=1793213953042012</link>
+      <author>controlroom@ndma.gov.in (CWC)</author>
+      <guid isPermaLink="false">1793213953042012</guid>
+      <pubDate>Wed, 28 Oct 2026 18:59:14 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

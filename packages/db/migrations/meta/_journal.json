@@ -29,6 +29,27 @@
       "when": 1793096171984,
       "tag": "0003_custom_card",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793209085277,
+      "tag": "0004_card_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793214468241,
+      "tag": "0005_web_trends",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793215731843,
+      "tag": "0006_trend_sources",
+      "breakpoints": true
     }
   ]
 }

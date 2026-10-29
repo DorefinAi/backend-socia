@@ -9,7 +9,8 @@
 //   corepack pnpm local:dev samvadia-late    A story approved "now", a late file in an existing folder, and
 //                                            a footage path filled in for a story that had none.
 //   corepack pnpm local:dev socia-setup      Org, an admin and an operator login (local.credentials.md),
-//                                            district hashtag rules; writes ORG_ID into .env.
+//                                            fixed #RajasthanWithFirstIndia, district and topic hashtag rules;
+//                                            writes ORG_ID into .env.
 
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -100,7 +101,8 @@ interface Seed {
   body: string;
   files: string;
   itemKind?: string;
-  priority?: "breaking";
+  /** Samvadia's item priority; "breaking" also makes the feed title "FLASH <slug>". Unset: HIGH below, else normal */
+  priority?: "breaking" | "high";
 }
 
 const SEEDS: Seed[] = [
@@ -125,6 +127,10 @@ const SEEDS: Seed[] = [
   { d: "JPR", subject: "METRO", type: "AV", reporter: "ANKIT", reporterHi: "अंकित जैन", files: "jjpv", priority: "breaking",
     headline: "जयपुर मेट्रो फेज-2 की डीपीआर को मंजूरी, सीतापुरा से अंबाबाड़ी तक बनेगा रूट",
     body: "मुख्यमंत्री भजनलाल शर्मा की अध्यक्षता में हुई बैठक में मेट्रो फेज-2 की डीपीआर को मंजूरी दी गई। करीब 42 किलोमीटर लंबे रूट पर 36 स्टेशन बनाए जाएंगे।" },
+  // First India's own sample post (28 Oct 2026): a long body, so the draft shows the "...." cut
+  { d: "JPR", subject: "HIGHCOURT", type: "AV", reporter: "SONAL", reporterHi: "सोनल गुप्ता", files: "j", priority: "breaking",
+    headline: "राजस्थान हाईकोर्ट का SI भर्ती-2016 को लेकर बड़ा निर्णय",
+    body: "50% आरक्षण सीमा के अनुसार पदों की होगी पुनर्गणना के आदेश, 90 दिन में पदों की पुनर्गणना कर संशोधित सूची जारी करने के आदेश दिए गए हैं। कोर्ट ने कहा कि भर्ती प्रक्रिया में आरक्षण के नियमों का पालन जरूरी है और राज्य सरकार को तय समय में पालना रिपोर्ट पेश करनी होगी। याचिकाकर्ताओं की ओर से वरिष्ठ अधिवक्ता ने पैरवी की।" },
   { d: "JPR", subject: "TRAFFIC", type: "VO", reporter: "ANKIT", reporterHi: "अंकित जैन", files: "jj",
     headline: "दिवाली की खरीदारी में परकोटे में जाम, ट्रैफिक पुलिस ने बदले रूट",
     body: "त्योहारी भीड़ के चलते चारदीवारी के बाजारों में वाहनों का प्रवेश शाम 4 बजे से रात 10 बजे तक बंद रहेगा। पार्किंग के लिए रामनिवास बाग और चौगान स्टेडियम में व्यवस्था की गई है।" },
@@ -182,11 +188,25 @@ const SEEDS: Seed[] = [
   { d: "SKR", subject: "KHATU", type: "AV", reporter: "SANDEEP", reporterHi: "संदीप सैनी", files: "jjv",
     headline: "खाटूश्यामजी में एकादशी पर उमड़े लाखों श्रद्धालु",
     body: "एकादशी पर बाबा श्याम के दर्शन के लिए देशभर से श्रद्धालु पहुंचे। मंदिर कमेटी ने दर्शन के लिए 14 कतारें बनाई और रींगस से पैदल यात्रियों के लिए विशेष इंतजाम किए।" },
+  { d: "SKR", subject: "CHUNAV", type: "AV", reporter: "SANDEEP", reporterHi: "संदीप सैनी", files: "jj",
+    headline: "सीकर में पंचायत चुनाव के लिए मतदान शुरू, सुबह से लगी कतारें",
+    body: "जिले की 42 ग्राम पंचायतों में सरपंच और वार्ड पंच के लिए वोट डाले जा रहे हैं। निर्वाचन विभाग ने संवेदनशील बूथों पर अतिरिक्त जाब्ता लगाया है।" },
   { d: "SKR", subject: "SAINIK", type: "PKG", reporter: "SANDEEP", reporterHi: "संदीप सैनी", files: "jj",
     headline: "सीकर के लाल का पार्थिव शरीर पहुंचा गांव, नम आंखों से दी विदाई",
     body: "",
   },
 ];
+
+// Samvadia's item priority and category, so the desk can colour the dummy stories
+const HIGH = new Set(["CHORI", "BSF", "CHUNAV", "DENGUE", "BARISH"]);
+const CATEGORY: Record<string, string> = {
+  HADSA: "अपराध/Crime", CHORI: "अपराध/Crime", BSF: "अपराध/Crime", TRAFFIC: "अपराध/Crime",
+  HIGHCOURT: "राजनीति/Politics", CHUNAV: "राजनीति/Politics", METRO: "राजनीति/Politics", PRESSNOTE: "राजनीति/Politics",
+  DHAN: "कृषि/Agriculture", CAMEL: "कृषि/Agriculture", SAHARIYA: "कृषि/Agriculture",
+  BARISH: "मौसम/Weather", BHIWADI: "मौसम/Weather",
+  DENGUE: "स्वास्थ्य/Health", SMS: "स्वास्थ्य/Health",
+};
+const itemPriority = (s: Seed) => s.priority ?? (HIGH.has(s.subject) ? "high" : "normal");
 
 const TODAY = new Date();
 const ddmmyy = `${dd(TODAY)}${mm(TODAY)}${yy(TODAY)}`;
@@ -242,7 +262,9 @@ const SCHEMA = `
     kind VARCHAR(16) NOT NULL DEFAULT 'story' CHECK (kind IN ('story', 'press_release', 'day_plan', 'not_a_story')),
     footage_status VARCHAR(16) NOT NULL DEFAULT 'not_checked' CHECK (footage_status IN ('not_checked', 'waiting', 'found', 'not_found', 'manual')),
     footage_path TEXT,
-    footage_files JSONB NOT NULL DEFAULT '[]'::jsonb
+    footage_files JSONB NOT NULL DEFAULT '[]'::jsonb,
+    priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal', 'high', 'breaking')),
+    category TEXT
   );
   CREATE TABLE stories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -267,9 +289,9 @@ async function insertStory(c: pg.Client, root: string, s: Seed, at: Date, opts: 
   const path = s.files === "-" ? null : `${district.folder(TODAY, slug)}/`;
   const files = path ? await writeFootage(root, path, s.files, slug) : [];
   const { rows } = await c.query<{ id: string }>(
-    `INSERT INTO items (headline, body, reporter_slug, district_code, kind, footage_status, footage_path, footage_files)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING id`,
-    [s.headline, s.body, s.reporter, s.d, opts.itemKind ?? "story", path ? "found" : "waiting", path, JSON.stringify(files)],
+    `INSERT INTO items (headline, body, reporter_slug, district_code, kind, footage_status, footage_path, footage_files, priority, category)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) RETURNING id`,
+    [s.headline, s.body, s.reporter, s.d, opts.itemKind ?? "story", path ? "found" : "waiting", path, JSON.stringify(files), itemPriority(s), CATEGORY[s.subject] ?? null],
   );
   const itemId = rows[0]!.id;
   const storyId = randomUUID();
@@ -358,6 +380,8 @@ async function samvadiaSeed(): Promise<void> {
 
     const { rows } = await c.query(`SELECT count(*)::int AS n, count(*) FILTER (WHERE s.kind <> 'kill' AND i.kind IN ('story','press_release'))::int AS takeable FROM stories s JOIN items i ON i.id = s.item_id`);
     console.log(`Dummy Samvadia ready: ${rows[0].n} stories (${rows[0].takeable} that Socia takes), footage under ${footageRoot}`);
+    const mix = await c.query(`SELECT priority, count(*)::int AS n FROM items GROUP BY priority ORDER BY priority`);
+    console.log(`Item priorities: ${mix.rows.map((r) => `${r.priority} ${r.n}`).join(", ")}`);
   } finally {
     await c.end();
   }
@@ -395,7 +419,17 @@ async function samvadiaLate(): Promise<void> {
   }
 }
 
-const DEFAULT_SETTINGS: OrgSettings = { hashtagScript: "latin", fixedHashtags: ["#1stIndiaNews"], maxHashtags: 4, dailyCaps: { x: 800 }, headlineWords: 9 };
+const FIXED_HASHTAGS = ["#RajasthanWithFirstIndia"];
+const DEFAULT_SETTINGS: OrgSettings = { hashtagScript: "latin", fixedHashtags: FIXED_HASHTAGS, maxHashtags: 4, dailyCaps: { x: 800 }, headlineWords: 9 };
+
+// Topic tags for the post's tag line (matchType "entity"; places stay "district" and go in line 1)
+const TOPICS: { name: string; aliases: string[]; tag: string; priority: number }[] = [
+  { name: "हाईकोर्ट", aliases: ["हाई कोर्ट", "उच्च न्यायालय", "High Court"], tag: "RajasthanHighCourt", priority: 8 },
+  { name: "चुनाव", aliases: ["इलेक्शन", "मतदान", "निर्वाचन", "Election"], tag: "RajasthanElection", priority: 7 },
+  { name: "पुलिस", aliases: ["चोरी", "अपराध", "गिरफ्तार", "हत्या", "लूट", "Police"], tag: "RajasthanPolice", priority: 6 },
+  { name: "मौसम", aliases: ["बारिश", "मानसून", "ओलावृष्टि", "Weather"], tag: "RajasthanWeather", priority: 5 },
+  { name: "हादसा", aliases: ["हादसे", "दुर्घटना", "भिड़ंत", "Accident"], tag: "RoadAccident", priority: 6 },
+];
 
 async function sociaSetup(): Promise<void> {
   const url = need("DATABASE_URL");
@@ -410,6 +444,9 @@ async function sociaSetup(): Promise<void> {
       orgId = org!.id;
       await setEnv({ ORG_ID: orgId });
       console.log("Created the org and wrote ORG_ID to .env.");
+    } else if (found.settings.fixedHashtags.join(" ") !== FIXED_HASHTAGS.join(" ")) {
+      await db.update(orgs).set({ settings: { ...found.settings, fixedHashtags: FIXED_HASHTAGS } }).where(eq(orgs.id, found.id));
+      console.log(`Set the org's fixed hashtags to ${FIXED_HASHTAGS.join(" ")}.`);
     }
 
     const logins: { role: "admin" | "operator"; name: string; email: string; password: string | null }[] = [
@@ -429,6 +466,10 @@ async function sociaSetup(): Promise<void> {
       const [r] = await db.select().from(hashtagRules).where(and(eq(hashtagRules.orgId, orgId!), eq(hashtagRules.name, d.hi)));
       if (!r) await db.insert(hashtagRules).values({ orgId: orgId!, matchType: "district", name: d.hi, aliases: [d.name], hashtagLatin: d.name, hashtagDevanagari: d.hi, priority: 5 });
     }
+    for (const t of TOPICS) {
+      const [r] = await db.select().from(hashtagRules).where(and(eq(hashtagRules.orgId, orgId!), eq(hashtagRules.name, t.name)));
+      if (!r) await db.insert(hashtagRules).values({ orgId: orgId!, matchType: "entity", name: t.name, aliases: t.aliases, hashtagLatin: t.tag, hashtagDevanagari: null, priority: t.priority });
+    }
 
     if (logins.some((l) => l.password)) {
       const prev = existsSync(CREDENTIALS_FILE) ? await readFile(CREDENTIALS_FILE, "utf8") : "";
@@ -440,7 +481,7 @@ async function sociaSetup(): Promise<void> {
       );
       console.log(`Wrote the logins to ${CREDENTIALS_FILE}.`);
     }
-    console.log(`Org ready, ${logins.length} logins, ${Object.keys(DISTRICTS).length} district hashtag rules.`);
+    console.log(`Org ready, ${logins.length} logins, ${Object.keys(DISTRICTS).length} district and ${TOPICS.length} topic hashtag rules.`);
   } finally {
     await close();
   }

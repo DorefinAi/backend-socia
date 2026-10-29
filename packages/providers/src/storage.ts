@@ -1,14 +1,16 @@
 // Object storage. Render services have no shared disk, so raw files and card PNGs live here from
 // day one. R2 (or any S3-compatible store) in production; a local folder for development.
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export interface Storage {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
   get(key: string): Promise<Buffer>;
+  /** Removes the object; a key that is not there is not an error */
+  delete(key: string): Promise<void>;
   /** A short-lived link the browser can load, e.g. a card preview */
   url(key: string, seconds?: number): Promise<string>;
 }
@@ -42,6 +44,10 @@ export class S3Storage implements Storage {
     return Buffer.from(await res.Body!.transformToByteArray());
   }
 
+  async delete(key: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.cfg.bucket, Key: key }));
+  }
+
   async url(key: string, seconds = 300): Promise<string> {
     return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.cfg.bucket, Key: key }), { expiresIn: seconds });
   }
@@ -65,6 +71,10 @@ export class LocalStorage implements Storage {
 
   async get(key: string): Promise<Buffer> {
     return readFile(this.path(key));
+  }
+
+  async delete(key: string): Promise<void> {
+    await rm(this.path(key), { force: true });
   }
 
   async url(key: string): Promise<string> {

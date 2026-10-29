@@ -4,9 +4,12 @@ import {
   FakeXClient, FolderFootage, FolderSource, FtpFootage, FtpSource, LocalStorage, OAuth1Auth, S3Storage, XApiClient,
   type FileSource, type FootageSource, type Storage, type XClient,
 } from "@socia/providers";
+import { TRENDS_USER_AGENT, parseFeedList } from "@socia/core";
+import { fileURLToPath } from "node:url";
 import type { MediaSettings } from "./stages/samvadia";
+import type { TrendsSettings } from "./stages/trends";
 
-export const ROLES = ["ingest", "pipeline", "render", "publish", "maintenance", "metrics", "handles"] as const;
+export const ROLES = ["ingest", "pipeline", "render", "publish", "maintenance", "metrics", "handles", "trends"] as const;
 export type Role = (typeof ROLES)[number];
 
 function need(name: string): string {
@@ -77,6 +80,31 @@ export function samvadiaConfig(): SamvadiaConfig {
     backfillHours: num("SAMVADIA_BACKFILL_HOURS", 24),
   };
 }
+
+/** The Web Scraper: free public sources only (Google News and Trends RSS, GDELT, publishers' RSS). */
+export function trendsConfig(): TrendsSettings & { userAgent: string } {
+  const on = (name: string) => process.env[name] !== "false";
+  return {
+    pollMs: Math.max(60, num("TRENDS_POLL_SECONDS", 900)) * 1000,
+    plan: {
+      googleNews: { hi: process.env.TRENDS_GOOGLE_NEWS_HI ?? "राजस्थान", en: process.env.TRENDS_GOOGLE_NEWS_EN ?? "Rajasthan" },
+      googleNewsTop: on("TRENDS_GOOGLE_NEWS_TOP"),
+      bing: process.env.TRENDS_BING_QUERY ?? "Rajasthan",
+      feeds: parseFeedList(process.env.TRENDS_RSS_FEEDS),
+      government: { pib: on("TRENDS_PIB"), sachet: on("TRENDS_SACHET") },
+      geo: process.env.TRENDS_GEO ?? "IN",
+      gdelt: on("TRENDS_GDELT"),
+      reddit: process.env.TRENDS_REDDIT ?? "rajasthan",
+      wikipedia: on("TRENDS_WIKIPEDIA"),
+    },
+    youtubeChannelsFile: process.env.TRENDS_YOUTUBE_CHANNELS_FILE ?? YOUTUBE_CHANNELS_FILE,
+    ogMaxPerRun: num("TRENDS_OG_MAX_PER_RUN", 30),
+    userAgent: process.env.TRENDS_USER_AGENT ?? TRENDS_USER_AGENT,
+  };
+}
+
+/** The channels whose public feeds are read (no key). Edited without a code change; read again every run. */
+export const YOUTUBE_CHANNELS_FILE = fileURLToPath(new URL("../config/youtube-channels.json", import.meta.url));
 
 /** Footage folders: FOOTAGE_DIR (a local copy of the FTP layout, development) or the newsroom FTP, read only. */
 export function makeFootage(): FootageSource {

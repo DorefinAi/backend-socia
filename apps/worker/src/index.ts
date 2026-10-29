@@ -3,13 +3,15 @@
 //                  SOURCE_MODE=samvadia|folder|ftp picks where stories come from)
 //   socia-render   WORKER_ROLES=render            (Docker, Playwright image)
 //   socia-publish  WORKER_ROLES=publish,maintenance
+//   socia-trends   WORKER_ROLES=trends            (singleton: the Web Scraper's free public sources)
 //   crons          node dist/index.js --once metrics | --once handles
 
 import { SamvadiaReader, createDb, recordIngestPoll } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
 import { CardRenderer } from "./card/renderer";
-import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, samvadiaConfig } from "./config";
+import { politeGet } from "@socia/providers";
+import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, samvadiaConfig, trendsConfig } from "./config";
 
 import { SamvadiaIngest } from "./stages/samvadia";
 import { Loops } from "./loop";
@@ -19,6 +21,7 @@ import { housekeeping, pullMetrics, syncHandles } from "./stages/crons";
 import { Ingest } from "./stages/ingest";
 import { Publisher } from "./stages/publish";
 import { renderNext } from "./stages/render";
+import { TrendsJob } from "./stages/trends";
 
 const log = pino({ base: { service: "socia-worker" }, level: process.env.LOG_LEVEL ?? "info" });
 
@@ -97,6 +100,14 @@ async function main(): Promise<void> {
     cleanups.push(() => bucket.close());
     const publisher = new Publisher({ db, storage: storage!, x, bucket, account: process.env.X_USERNAME ?? "default", log, active: () => loops.active });
     loops.start({ name: "publish", idleMs: 1000, log, tick: () => publisher.tick() });
+  }
+
+  if (cfg.roles.includes("trends")) {
+    const settings = trendsConfig();
+    const job = new TrendsJob({ db, orgId: cfg.orgId, get: politeGet(settings.userAgent), settings, log });
+    log.info({ pollSeconds: settings.pollMs / 1000, feeds: settings.plan.feeds.map((f) => f.name), gdelt: settings.plan.gdelt }, "trends: free public sources");
+    // Checks every 5 s whether a run is due or the desk asked for one; a run itself takes a few seconds
+    loops.start({ name: "trends", idleMs: 5000, log, tick: () => job.tick() });
   }
 
   if (cfg.roles.includes("maintenance")) {

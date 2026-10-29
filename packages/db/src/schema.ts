@@ -64,6 +64,36 @@ export const sessions = pgTable("sessions", {
   createdAt: createdAt(),
 });
 
+// ─── Card templates ──────────────────────────────────────────────────────────
+
+/** Where the desk draws on a user's card background. Positions are fractions (0..1) of the image. */
+export interface CardLayout {
+  date: { x: number; y: number; w: number; h: number; color: string; format: string };
+  box: { x: number; y: number; w: number; h: number };
+  headline: { color: string };
+  body: { color: string };
+  fontMinPx: number;
+  fontMaxPx: number;
+}
+
+/** One background per user per platform, uploaded once; the desk draws each card on it in the browser. */
+export const cardTemplates = pgTable(
+  "card_templates",
+  {
+    id: id(),
+    orgId: orgId(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    platform: text("platform").notNull().default("x"),
+    backgroundKey: text("background_key").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    layout: jsonb("layout").$type<CardLayout>().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("card_templates_user_platform_key").on(t.userId, t.platform)],
+);
+
 // ─── Ingest ──────────────────────────────────────────────────────────────────
 
 export const FILE_KINDS = ["text", "image", "video", "other"] as const;
@@ -92,7 +122,8 @@ export type StoryStatus = (typeof STORY_STATUSES)[number];
 export const MEDIA_STATES = ["awaiting", "attached", "none"] as const;
 
 /** Where a story's text came from: a file on the share/folder, or an approved story in Samvadia. */
-export const STORY_SOURCES = ["file", "samvadia"] as const;
+/** file: the shared folder / FTP; samvadia: its database; trend: a Web Scraper item turned into a story */
+export const STORY_SOURCES = ["file", "samvadia", "trend"] as const;
 export type StorySource = (typeof STORY_SOURCES)[number];
 
 /** What Samvadia told us about a story; shown on the draft, never edited here. */
@@ -108,6 +139,9 @@ export interface StoryExternal {
   publishedAt: string;
   footagePath: string | null;
   footageStatus: string | null;
+  /** Samvadia's item priority and category; absent on rows ingested before they were read (= normal / null) */
+  priority?: "normal" | "high" | "breaking";
+  category?: string | null;
 }
 
 export const stories = pgTable(
@@ -294,6 +328,94 @@ export const postMetrics = pgTable(
     videoViews: integer("video_views"),
   },
   (t) => [index("post_metrics_post_idx").on(t.postId, t.fetchedAt)],
+);
+
+// ─── Web trends (the Web Scraper) ────────────────────────────────────────────
+
+/** How one free source did in a run, for the desk's source health line (core's SourceHealth) */
+export interface TrendSourceHealth {
+  name: string;
+  /** News, Publisher RSS, Government, Trends, Volume, Social, YouTube; absent on the first runs */
+  group?: string;
+  ok: boolean;
+  at: string;
+  items: number;
+  itemsLastRun: number;
+  /** Absent on runs stored before it was recorded */
+  lastSuccessAt?: string | null;
+  lastError?: string;
+}
+
+/** A Rajasthan disaster warning (NDMA Sachet, CAP), as stored with a run */
+export interface TrendRunAlert {
+  level: "red" | "orange" | "yellow" | "info";
+  text: string;
+  event: string;
+  severity: string;
+  validFrom: string | null;
+  validUntil: string | null;
+  districts: string[];
+  issuer: string;
+  url: string;
+  source: "NDMA Sachet";
+}
+
+export const TREND_RUN_TRIGGERS = ["schedule", "startup", "manual", "search"] as const;
+
+/** One pull of the sources. The desk reads the newest finished schedule/startup/manual run. */
+export const trendRuns = pgTable(
+  "trend_runs",
+  {
+    id: id(),
+    orgId: orgId(),
+    trigger: text("trigger").$type<(typeof TREND_RUN_TRIGGERS)[number]>().notNull(),
+    /** The search text, for trigger "search" */
+    query: text("query"),
+    sources: jsonb("sources").$type<TrendSourceHealth[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Rajasthan's NDMA Sachet warnings in force at the run */
+    alerts: jsonb("alerts").$type<TrendRunAlert[]>().notNull().default(sql`'[]'::jsonb`),
+    itemCount: integer("item_count").notNull().default(0),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("trend_runs_org_idx").on(t.orgId, t.trigger, t.finishedAt)],
+);
+
+/** A ranked topic, article or hashtag of one run, for one window. Pruned with its run after 7 days. */
+export const trendItems = pgTable(
+  "trend_items",
+  {
+    id: id(),
+    orgId: orgId(),
+    runId: uuid("run_id").notNull().references(() => trendRuns.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    window: text("window").notNull(),
+    rank: integer("rank").notNull(),
+    title: text("title").notNull(),
+    url: text("url").notNull(),
+    platform: text("platform").notNull(),
+    sourceName: text("source_name").notNull(),
+    reasonWhy: text("reason_why").notNull().default(""),
+    superTag: text("super_tag").notNull(),
+    subTag: text("sub_tag").notNull().default(""),
+    district: text("district"),
+    volume: text("volume").notNull().default(""),
+    growth: text("growth").notNull().default(""),
+    shares: text("shares").notNull().default(""),
+    /** A real news headline and its summary: what a draft is made from */
+    headline: text("headline").notNull(),
+    summary: text("summary").notNull().default(""),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    /** The publisher's picture (feed or og:image): preview only, never attached to a post */
+    imageUrl: text("image_url"),
+    imageSource: text("image_source"),
+    /** The article page was read once for og:image; never again for this URL */
+    ogChecked: boolean("og_checked").notNull().default(false),
+    /** The desk's badge: a warning in force for this item's district */
+    alert: jsonb("alert").$type<{ level: "red" | "orange" | "yellow" | "info"; title: string; validUntil?: string }>(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("trend_items_run_idx").on(t.runId, t.type, t.window, t.rank), index("trend_items_url_idx").on(t.url)],
 );
 
 // ─── Dictionaries ────────────────────────────────────────────────────────────

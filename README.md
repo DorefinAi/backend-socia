@@ -16,7 +16,7 @@ Phase 1 is **deterministic only**: no LLM, no GPU, no image-generation API. It c
 | Ingest (files) | `SOURCE_MODE=folder\|ftp`. Polls the share every 5 s. A file is taken once two scans 2 s apart see the same size. The sha256 dedupes re-saves, and the raw bytes are kept in storage | `apps/worker/src/stages/ingest.ts` |
 | Convert + parse | Files only: Kruti Dev → Unicode, then line 1 is the headline and the rest is the body, with a confidence score | `packages/core/src/kruti.ts`, `parse.ts` |
 | Pair | Text and media share a slug. Either can arrive first, a story waits up to 6 h for media, and late media still attaches | `packages/db/src/pipeline.ts` |
-| Compose | Pure rules: cut to about 9 words, keep within X's weighted 280, then city hashtags (also from Samvadia's district) and fixed hashtags. @mentions are suggestions only | `packages/core/src/compose.ts` |
+| Compose | Pure rules, First India's format: `#District: <headline>`, a blank line, the opening of the body cut on a word with `....`, a blank line, then the org's fixed tags and topic tags (or `#FirstIndiaNews` when neither). The whole post stays within X's weighted 280; the body is cut first, the headline last. @mentions are suggestions only | `packages/core/src/compose.ts` |
 | Render | HTML card, auto-fit by binary search in Chromium, PNG to storage. Runs before anyone opens the draft | `apps/worker/src/card/`, `stages/render.ts` |
 | Operator | Claims a 5-minute lease, edits (a stale version gets 409), then approves, rejects or leaves | `packages/db/src/desk.ts`, `apps/api/src/routes/desk.ts` |
 | Outbox | Approve writes the publish job in the same transaction, set to run 10 s later. Undo cancels it if no worker has taken it yet | `desk.ts` `approveDraft`, `undoPost` |

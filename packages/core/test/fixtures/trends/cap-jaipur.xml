@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic, in the shape of a Sachet CAP 1.2 file (FetchXMLFile?identifier=…) as served on 28 Oct 2026 -->
+<cap:alert xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+  <cap:identifier>IN-9000000000000001_1</cap:identifier>
+  <cap:sender>Rajasthan-SDMA</cap:sender>
+  <cap:sent>2026-10-28T21:30:00+05:30</cap:sent>
+  <cap:status>Actual</cap:status>
+  <cap:msgType>Alert</cap:msgType>
+  <cap:scope>Public</cap:scope>
+  <cap:info>
+    <cap:language>en-IN</cap:language>
+    <cap:category>Met</cap:category>
+    <cap:event>Heavy Rain</cap:event>
+    <cap:urgency>Expected</cap:urgency>
+    <cap:severity>Severe</cap:severity>
+    <cap:certainty>Likely</cap:certainty>
+    <cap:effective>2026-10-28T21:30:00+05:30</cap:effective>
+    <cap:onset>2026-10-28T21:30:00+05:30</cap:onset>
+    <cap:expires>2026-10-29T00:30:00+05:30</cap:expires>
+    <cap:headline>Thunderstorm with heavy rain likely at isolated places over Jaipur, Tonk and Sawai Madhopur in the next 3 hours.</cap:headline>
+    <cap:instruction>Please follow SDMA guidelines.</cap:instruction>
+    <cap:area>
+      <cap:areaDesc>3 districts of Rajasthan</cap:areaDesc>
+    </cap:area>
+  </cap:info>
+</cap:alert>

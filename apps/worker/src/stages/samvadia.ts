@@ -17,7 +17,7 @@ import {
 import type { FootageFile, FootageSource, Storage } from "@socia/providers";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Logger } from "pino";
-import { mapStory, type Cursor, type SamvadiaSource, type SamvadiaStory } from "@socia/db";
+import { asCategory, asPriority, mapStory, type Cursor, type SamvadiaSource, type SamvadiaStory } from "@socia/db";
 
 export const CURSOR_KEY = "samvadia.cursor";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -145,6 +145,8 @@ export class SamvadiaIngest {
       publishedAt: new Date(s.publishedAt).toISOString(),
       footagePath: s.footagePath,
       footageStatus: s.footageStatus,
+      priority: asPriority(s.priority),
+      category: asCategory(s.category),
     };
     const failed = !m.headline;
     const [row] = await db
@@ -207,14 +209,17 @@ export class SamvadiaIngest {
     return taken;
   }
 
-  /** Samvadia may find (or change) the footage folder after the story went out. */
+  /** Samvadia may find (or change) the footage folder, the priority or the category after the story went out. */
   private async refreshFootagePaths(recent: Story[]): Promise<void> {
     const byItem = new Map(recent.filter((s) => s.external).map((s) => [s.external!.itemId, s]));
     if (!byItem.size) return;
     for (const info of await this.deps.reader.footageFor([...byItem.keys()])) {
       for (const s of recent.filter((r) => r.external?.itemId === info.itemId)) {
-        if (s.external!.footagePath === info.footagePath && s.external!.footageStatus === info.footageStatus) continue;
-        const external = { ...s.external!, footagePath: info.footagePath, footageStatus: info.footageStatus };
+        const priority = asPriority(info.priority);
+        const category = asCategory(info.category);
+        const was = s.external!;
+        if (was.footagePath === info.footagePath && was.footageStatus === info.footageStatus && asPriority(was.priority) === priority && (was.category ?? null) === category) continue;
+        const external = { ...was, footagePath: info.footagePath, footageStatus: info.footageStatus, priority, category };
         await this.deps.db.update(stories).set({ external, updatedAt: sql`now()` }).where(eq(stories.id, s.id));
         s.external = external;
       }

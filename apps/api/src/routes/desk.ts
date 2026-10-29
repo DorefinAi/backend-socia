@@ -9,7 +9,7 @@ import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "
 import { and, count, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { HttpError, guard, requireAct, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
-import { cardUrl, draftView } from "../views";
+import { cardUrl, draftView, storyLabels } from "../views";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
@@ -25,6 +25,17 @@ export function pngSize(buf: Buffer): { width: number; height: number } | null |
   if (buf.length < 8 || !buf.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
   if (buf.length < 24 || buf.toString("latin1", 12, 16) !== "IHDR") return "no_header";
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** "<ISO time>|<draft id>" (what nextCursor gives) or a bare ISO time; anything else is a 400 */
+export function parseQueueCursor(value: string | undefined): { at: Date; id: string | null } | null {
+  if (!value) return null;
+  const [time, id] = value.split("|");
+  const at = new Date(time ?? "");
+  if (Number.isNaN(at.getTime()) || (id !== undefined && !UUID.test(id))) throw new HttpError(400, "invalid", "This page link is not valid. Reload the list.");
+  return { at, id: id ?? null };
 }
 
 /** A post's address on X; the id is the last path part. Query and fragment (?s=20) are allowed. */
@@ -61,7 +72,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       schema: {
         querystring: Type.Object({
           view: Type.Optional(Type.Union(Object.keys(QUEUE_VIEWS).map((k) => Type.Literal(k)))),
-          before: Type.Optional(Type.String({ format: "date-time" })),
+          /** A nextCursor from the previous page ("<time>|<id>"), or an ISO time (older clients) */
+          before: Type.Optional(Type.String({ maxLength: 80 })),
           limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
         }),
       },
@@ -69,6 +81,10 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     async (req) => {
       const { user } = guard(req);
       const viewName = (req.query.view ?? "inbox") as keyof typeof QUEUE_VIEWS;
+      // Rejected news pages by when it was rejected (its last change); the other views by when the draft was made
+      const sortCol = viewName === "rejected" ? postDrafts.updatedAt : postDrafts.createdAt;
+      const cursor = parseQueueCursor(req.query.before);
+      const limit = req.query.limit ?? 100;
       const rows = await db
         .select({
           id: postDrafts.id,
@@ -80,10 +96,13 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           claimExpiresAt: postDrafts.claimExpiresAt,
           holder: users.name,
           rejectReason: postDrafts.rejectReason,
+          rejectNote: postDrafts.rejectNote,
           createdAt: postDrafts.createdAt,
+          sortAt: sortCol,
           slug: stories.slug,
           source: stories.source,
           district: stories.district,
+          external: stories.external,
           mediaState: stories.mediaState,
           images: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'image')`,
           videos: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'video')`,
@@ -100,15 +119,19 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
             eq(postDrafts.orgId, user.orgId),
             eq(postDrafts.platform, "x"),
             inArray(postDrafts.status, [...QUEUE_VIEWS[viewName]]),
-            req.query.before ? lt(postDrafts.createdAt, new Date(req.query.before)) : undefined,
+            cursor?.id ? sql`(${sortCol}, ${postDrafts.id}) < (${cursor.at.toISOString()}::timestamptz, ${cursor.id}::uuid)` : undefined,
+            cursor && !cursor.id ? lt(sortCol, cursor.at) : undefined,
           ),
         )
-        .orderBy(desc(postDrafts.createdAt))
-        .limit(req.query.limit ?? 100);
+        .orderBy(desc(sortCol), desc(postDrafts.id))
+        .limit(limit);
+      const last = rows.at(-1);
+      const nextCursor = rows.length === limit && last ? `${last.sortAt.toISOString()}|${last.id}` : null;
 
       const now = new Date();
       return {
         cap: await capUsage(db, user.orgId),
+        nextCursor,
         items: await Promise.all(
           rows.map(async (r) => {
             const held = r.status === "claimed" && !!r.claimExpiresAt && r.claimExpiresAt > now;
@@ -123,10 +146,12 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               createdAt: r.createdAt,
               source: r.source,
               district: r.district,
+              ...storyLabels(r.external),
               media: { images: r.images, videos: r.videos, state: r.mediaState },
               cardUrl: await cardUrl(storage, r.cardKey),
               claim: held ? { userId: r.claimedBy, name: r.holder, until: r.claimExpiresAt, mine: r.claimedBy === user.id } : null,
               rejectReason: r.rejectReason,
+              rejectNote: r.rejectNote,
               flags: { lowConfidence: r.lowConfidence, needsReview: r.needsReview },
             };
           }),

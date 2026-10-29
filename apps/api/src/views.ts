@@ -1,12 +1,19 @@
 // What the digital desk receives for a draft: everything one screen needs, nothing more.
 
 import { LOW_CONFIDENCE, X_LIMIT, checkXPost } from "@socia/core";
-import { assets, ingestedFiles, postDrafts, postText, postedCardKey, publishJobs, stories, users, type Db } from "@socia/db";
+import {
+  asCategory, asPriority, assets, ingestedFiles, postDrafts, postText, postedCardKey, publishJobs, stories, users, type Db, type StoryExternal, type StoryPriority,
+} from "@socia/db";
 import type { Storage } from "@socia/providers";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 type Draft = typeof postDrafts.$inferSelect;
 type Story = typeof stories.$inferSelect;
+
+/** Samvadia's priority and category for colouring the desk; shared-folder stories and older rows are normal / null. */
+export function storyLabels(external: StoryExternal | null | undefined): { priority: StoryPriority; category: string | null } {
+  return { priority: asPriority(external?.priority), category: asCategory(external?.category) };
+}
 
 export async function cardUrl(storage: Storage, key: string | null): Promise<string | null> {
   return key ? storage.url(key, 600) : null;
@@ -98,6 +105,7 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
       parseNote: story.parseNote,
       source: story.source,
       district: story.district,
+      ...storyLabels(story.external),
       external: story.external ?? null,
     },
     media: await storyMedia(db, storage, story.id),

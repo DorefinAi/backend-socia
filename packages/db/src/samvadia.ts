@@ -8,8 +8,21 @@ import pg from "pg";
 /** Every Samvadia column Socia reads. The dummy seed creates these and nothing else. */
 export const SAMVADIA_COLUMNS = {
   stories: ["id", "item_id", "version", "kind", "slug", "title", "description", "district", "guid", "state", "published_at"],
-  items: ["id", "headline", "body", "reporter_slug", "district_code", "kind", "footage_status", "footage_path", "footage_files"],
+  items: ["id", "headline", "body", "reporter_slug", "district_code", "kind", "footage_status", "footage_path", "footage_files", "priority", "category"],
 } as const;
+
+/** Samvadia's own priority for an item; anything else it might send reads as "normal" */
+export const STORY_PRIORITIES = ["normal", "high", "breaking"] as const;
+export type StoryPriority = (typeof STORY_PRIORITIES)[number];
+
+export function asPriority(value: unknown): StoryPriority {
+  return (STORY_PRIORITIES as readonly unknown[]).includes(value) ? (value as StoryPriority) : "normal";
+}
+
+/** A trimmed category, or null when Samvadia has none */
+export function asCategory(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 80) : null;
+}
 
 export interface SamvadiaStory {
   id: string;
@@ -30,6 +43,9 @@ export interface SamvadiaStory {
   footageStatus: string | null;
   footagePath: string | null;
   footageFiles: unknown;
+  /** Text in Samvadia: 'normal' | 'high' | 'breaking' */
+  priority: string | null;
+  category: string | null;
 }
 
 export interface Cursor {
@@ -37,17 +53,21 @@ export interface Cursor {
   storyId: string;
 }
 
+/** What Samvadia's desk may still change on an item after the story went out */
 export interface FootageInfo {
   itemId: string;
   footagePath: string | null;
   footageStatus: string | null;
+  priority: string | null;
+  category: string | null;
 }
 
 const STORY_SELECT = `
   SELECT s.id::text AS id, s.item_id::text AS "itemId", s.version, s.kind, s.slug, s.title, s.description, s.district,
          s.guid, s.published_at AS "publishedAt",
          i.headline, i.body, i.reporter_slug AS "reporterSlug", i.district_code AS "districtCode", i.kind AS "itemKind",
-         i.footage_status AS "footageStatus", i.footage_path AS "footagePath", i.footage_files AS "footageFiles"
+         i.footage_status AS "footageStatus", i.footage_path AS "footagePath", i.footage_files AS "footageFiles",
+         i.priority, i.category
     FROM stories s
     JOIN items i ON i.id = s.item_id
    WHERE s.state = 'ready' AND s.published_at IS NOT NULL
@@ -133,7 +153,8 @@ export class SamvadiaReader implements SamvadiaSource {
   async footageFor(itemIds: string[]): Promise<FootageInfo[]> {
     if (!itemIds.length) return [];
     return this.read<FootageInfo>(
-      `SELECT id::text AS "itemId", footage_path AS "footagePath", footage_status AS "footageStatus" FROM items WHERE id = ANY($1::uuid[])`,
+      `SELECT id::text AS "itemId", footage_path AS "footagePath", footage_status AS "footageStatus", priority, category
+         FROM items WHERE id = ANY($1::uuid[])`,
       [itemIds],
     );
   }

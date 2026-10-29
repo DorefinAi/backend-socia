@@ -5,8 +5,9 @@ import { extname } from "node:path";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { TypeBoxValidatorCompiler, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
+import type { PaceStore } from "@socia/core";
 import { DeskError, type Db } from "@socia/db";
-import { LocalStorage, type Storage } from "@socia/providers";
+import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyServerOptions } from "fastify";
 import { COOKIE, HttpError, loadSession } from "./auth";
@@ -16,11 +17,17 @@ import { authRoutes } from "./routes/auth";
 import { deskRoutes } from "./routes/desk";
 import { libraryRoutes } from "./routes/library";
 import { statusRoutes } from "./routes/status";
+import { templateRoutes } from "./routes/templates";
+import { trendRoutes } from "./routes/trends";
 
 export interface AppDeps {
   db: Db;
   storage: Storage;
   config: ApiConfig;
+  /** Reads from the free public web sources (Web Scraper); tests pass recorded fixtures */
+  web?: WebGet;
+  /** Pacing for GDELT and the slow sources; default: shared with the worker through the kv table */
+  pace?: PaceStore;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -50,7 +57,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
     if (err instanceof HttpError) return reply.status(err.status).send({ error: err.code, message: err.message });
     const e = err as { validation?: unknown; statusCode?: number; message: string };
     if (e.validation) return reply.status(400).send({ error: "invalid", message: e.message });
-    // Body parser refusals (only the card upload takes a non-JSON body)
+    // Body parser refusals (only the card and card-background uploads take a non-JSON body)
     if (e.statusCode === 413) return reply.status(413).send({ error: "too_large", message: "The upload is over 5 MB, the most X accepts." });
     if (e.statusCode === 415) return reply.status(415).send({ error: "unsupported_type", message: "This content type is not accepted here." });
     if (e.statusCode && e.statusCode < 500) return reply.status(e.statusCode).send({ error: "bad_request", message: e.message });
@@ -79,5 +86,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   await app.register(libraryRoutes, deps);
   await app.register(adminRoutes, deps);
   await app.register(statusRoutes, deps);
+  await app.register(templateRoutes, deps);
+  await app.register(trendRoutes, deps);
   return app;
 }

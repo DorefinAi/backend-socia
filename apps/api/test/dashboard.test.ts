@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assets, createDb, ingestedFiles, orgs, postDrafts, publishedPosts, recordIngestPoll, runMigrations, stories, users, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { hashPassword } from "../src/auth";
@@ -19,6 +19,7 @@ const URL = process.env.TEST_DATABASE_URL;
   let app: Awaited<ReturnType<typeof buildApp>>;
   let cookie = "";
   let samvadiaDraft = "";
+  let rejectedDraft = "";
   let orgId = "";
 
   const config: ApiConfig = {
@@ -52,7 +53,7 @@ const URL = process.env.TEST_DATABASE_URL;
       .values({
         orgId, source: "samvadia", externalId: "abc:v1", district: "Baran", slug: "271026_BRN_DHAN_AV_MUKESH", status: "composed", headline: "धान की आवक", body: "मंडी में आवक।",
         mediaState: "attached",
-        external: { storyId: "abc", itemId: "item", version: 1, kind: "original", guid: "g", title: "t", reporter: "MUKESH", districtCode: "BRN", publishedAt: new Date().toISOString(), footagePath: "/BARAN/x/", footageStatus: "found" },
+        external: { storyId: "abc", itemId: "item", version: 1, kind: "original", guid: "g", title: "t", reporter: "MUKESH", districtCode: "BRN", publishedAt: new Date().toISOString(), footagePath: "/BARAN/x/", footageStatus: "found", priority: "breaking", category: "राजनीति/Politics" },
       })
       .returning();
     await h.db.insert(assets).values([
@@ -74,6 +75,14 @@ const URL = process.env.TEST_DATABASE_URL;
       .returning();
     await h.db.insert(publishedPosts).values({ orgId, draftId: d2!.id, platform: "x", platformPostId: "123", permalink: "https://x.com/a/status/123", text: "पुरानी खबर" });
 
+    // A rejected file story, with the operator's note; file stories carry no Samvadia priority
+    const [rs] = await h.db.insert(stories).values({ orgId, slug: "r", status: "composed", headline: "दोहराई खबर", body: "" }).returning();
+    const [d3] = await h.db
+      .insert(postDrafts)
+      .values({ orgId, storyId: rs!.id, status: "rejected", rejectReason: "duplicate", rejectNote: "सुबह जा चुकी है", bodyText: "दोहराई खबर", cardHeadline: "दोहराई खबर", composeVersion: "t" })
+      .returning();
+    rejectedDraft = d3!.id;
+
     await recordIngestPoll(h.db, orgId, { mode: "samvadia", taken: 2, cursor: { publishedAt: new Date().toISOString(), storyId: "abc" } });
 
     app = await buildApp({ db: h.db, storage: store, config }, false);
@@ -87,10 +96,67 @@ const URL = process.env.TEST_DATABASE_URL;
     await h?.close();
   });
 
-  it("queue items carry source, district and media counts", async () => {
+  it("queue items carry source, district, Samvadia priority and category, and media counts", async () => {
     const { body } = await get("/x/queue");
     expect(body.items).toHaveLength(1);
-    expect(body.items[0]).toMatchObject({ id: samvadiaDraft, source: "samvadia", district: "Baran", media: { images: 1, videos: 1, state: "attached" }, createdAt: expect.any(String) });
+    expect(body.items[0]).toMatchObject({
+      id: samvadiaDraft, source: "samvadia", district: "Baran", priority: "breaking", category: "राजनीति/Politics",
+      media: { images: 1, videos: 1, state: "attached" }, createdAt: expect.any(String), rejectReason: null, rejectNote: null,
+    });
+  });
+
+  it("rejected items carry the reject note; a story without Samvadia labels is normal / null", async () => {
+    const { body } = await get("/x/queue?view=rejected");
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ id: rejectedDraft, rejectReason: "duplicate", rejectNote: "सुबह जा चुकी है", priority: "normal", category: null });
+    expect((await get(`/drafts/${rejectedDraft}`)).body.story).toMatchObject({ priority: "normal", category: null });
+  });
+
+  it("pages the rejected news newest-rejected first, with a cursor", async () => {
+    const [org] = await h.db.select().from(orgs);
+    // Four more rejected drafts, rejected a minute apart; two share a time so the id breaks the tie
+    const base = Date.now() - 3600_000;
+    const times = [base + 60_000, base + 120_000, base + 120_000, base + 180_000];
+    const made: string[] = [];
+    for (const [i, at] of times.entries()) {
+      const [s] = await h.db.insert(stories).values({ orgId: org!.id, slug: `rej${i}`, status: "composed", headline: `रद्द ${i}`, body: "" }).returning();
+      const [d] = await h.db
+        .insert(postDrafts)
+        .values({ orgId: org!.id, storyId: s!.id, status: "rejected", rejectReason: "duplicate", bodyText: `रद्द ${i}`, cardHeadline: `रद्द ${i}`, composeVersion: "t", updatedAt: new Date(at) })
+        .returning();
+      made.push(d!.id);
+    }
+    const all = (await get("/x/queue?view=rejected")).body;
+    expect(all.items).toHaveLength(5);
+    expect(all.nextCursor).toBeNull();
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const page: { status: number; body: { items: { id: string }[]; nextCursor: string | null } } = await get(`/x/queue?view=rejected&limit=2${cursor ? `&before=${encodeURIComponent(cursor)}` : ""}`);
+      expect(page.status).toBe(200);
+      seen.push(...page.body.items.map((i) => i.id));
+      cursor = page.body.nextCursor;
+      if (cursor) expect(cursor).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\|[0-9a-f-]{36}$/);
+      pages++;
+    } while (cursor && pages < 10);
+    // Every rejected draft once, in the same order as the single page
+    expect(seen).toEqual(all.items.map((i: { id: string }) => i.id));
+    expect(seen.slice(1)).toEqual(expect.arrayContaining(made));
+    expect(pages).toBe(3);
+
+    expect((await get("/x/queue?view=rejected&before=yesterday")).status).toBe(400);
+    expect((await get(`/x/queue?view=rejected&before=${encodeURIComponent(`${new Date().toISOString()}|not-a-uuid`)}`)).status).toBe(400);
+    // A bare time still works (older clients)
+    expect((await get(`/x/queue?view=rejected&before=${encodeURIComponent(new Date(base + 150_000).toISOString())}`)).body.items.map((i: { id: string }) => i.id))
+      .toEqual(expect.arrayContaining([made[0], made[1], made[2]]));
+    expect((await get("/x/queue?view=rejected&limit=201")).status).toBe(400);
+
+    // Leave the shared fixture as the other tests expect it
+    const storyIds = (await h.db.select({ s: postDrafts.storyId }).from(postDrafts).where(inArray(postDrafts.id, made))).map((r) => r.s);
+    await h.db.delete(postDrafts).where(inArray(postDrafts.id, made));
+    await h.db.delete(stories).where(inArray(stories.id, storyIds));
   });
 
   it("a draft carries its media (photos first) and where its story came from", async () => {
@@ -98,13 +164,13 @@ const URL = process.env.TEST_DATABASE_URL;
     expect(body.media.map((m: { kind: string }) => m.kind)).toEqual(["image", "video"]);
     expect(body.media[0]).toMatchObject({ fileName: "photo.jpg", copied: true, url: "http://localhost/dev-files/media/s/photo.jpg", skipReason: null });
     expect(body.media[1]).toMatchObject({ fileName: "clip.mp4", copied: false, url: null, skipReason: "video_off", bytes: 300 });
-    expect(body.story).toMatchObject({ source: "samvadia", district: "Baran", external: { footagePath: "/BARAN/x/", reporter: "MUKESH" } });
+    expect(body.story).toMatchObject({ source: "samvadia", district: "Baran", priority: "breaking", category: "राजनीति/Politics", external: { footagePath: "/BARAN/x/", reporter: "MUKESH" } });
   });
 
   it("counts drafts per state and view, and posts today", async () => {
     const { body } = await get("/x/counts");
     expect(body.byStatus).toMatchObject({ ready: 1, published: 1, claimed: 0, failed: 0 });
-    expect(body.byView).toEqual({ inbox: 1, sending: 0, rejected: 0, failed: 0 });
+    expect(body.byView).toEqual({ inbox: 1, sending: 0, rejected: 1, failed: 0 });
     expect(body.publishedToday).toBe(1);
     expect(body.cap).toMatchObject({ platform: "x", cap: 800 });
   });
@@ -116,7 +182,7 @@ const URL = process.env.TEST_DATABASE_URL;
 
   it("reports ingest health", async () => {
     const { body } = await get("/ingest/status");
-    expect(body).toMatchObject({ mode: "samvadia", lastError: null, cursor: { storyId: "abc" }, today: { stories: 2, mediaCopied: 1, mediaSkipped: 1 }, recentErrors: [] });
+    expect(body).toMatchObject({ mode: "samvadia", lastError: null, cursor: { storyId: "abc" }, today: { stories: 3, mediaCopied: 1, mediaSkipped: 1 }, recentErrors: [] });
     expect(body.lastPollAt).toEqual(body.lastOkAt);
   });
 

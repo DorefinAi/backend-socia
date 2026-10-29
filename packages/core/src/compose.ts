@@ -1,14 +1,18 @@
 // The compose engine: pure rules, no network. The same module drives the API's live checks, so what
 // the operator sees is what the worker posts.
 
-import { selectHashtags, type HashtagConfig, type HashtagGazetteer } from "./hashtags";
+import { districtHashtag, selectTagLine, type HashtagConfig, type HashtagGazetteer } from "./hashtags";
 import { suggestMentions, type HandleGazetteer, type MentionSuggestion } from "./mentions";
-import { findUrl, URL_REASON, xLen } from "./xtext";
+import { findUrl, stripUrls, URL_REASON, xLen } from "./xtext";
 
 export const X_LIMIT = 280;
 /** U+2026: one character, but X weighs it 2 */
 export const ELLIPSIS = "…";
 export const HEADLINE_WORDS = 9;
+/** First India ends a cut story body with four dots, not an ellipsis */
+export const BODY_CUT = "....";
+/** Bumped when the post layout changes, so drafts from each format can be told apart */
+export const COMPOSE_FORMAT = "fi1";
 
 const words = new Intl.Segmenter("hi", { granularity: "word" });
 const graphemes = new Intl.Segmenter("hi", { granularity: "grapheme" });
@@ -65,15 +69,114 @@ export interface PostCheck {
   problems: string[];
 }
 
+/** What is left of a post once hashtags, mentions, punctuation and spaces are taken out */
+const TAG_OR_MENTION = /[#@][\p{L}\p{M}\p{N}_]+/gu;
+const NOT_TEXT = /[\s\p{P}\p{S}]+/gu;
+
 /** Run by the API before approve, and again by the publish worker before sending. */
 export function checkXPost(text: string): PostCheck {
   const problems: string[] = [];
   const length = xLen(text);
   if (!text.trim()) problems.push("The post is empty.");
+  else if (!text.replace(TAG_OR_MENTION, "").replace(NOT_TEXT, "")) problems.push("The post has only hashtags and mentions. Add the news text.");
   if (length > X_LIMIT) problems.push(`The post is ${length - X_LIMIT} characters over X's limit of ${X_LIMIT}.`);
   const url = findUrl(text);
   if (url) problems.push(`"${url}" is a link. ${URL_REASON}`);
   return { ok: problems.length === 0, length, problems };
+}
+
+// ─── First India format ──────────────────────────────────────────────────────
+//
+//   #Jaipur: <full headline>
+//
+//   <opening of the story body, cut on a word>....
+//
+//   #RajasthanWithFirstIndia #RajasthanHighCourt
+//
+// Lines 1 and 2 are the editable bodyText; the tag line is the hashtags (and accepted mentions).
+
+const oneLine = (text: string) => text.replace(/\s+/gu, " ").trim();
+/** After a repeated headline: the end of the text, a space or punctuation, never the rest of a word */
+const WORD_END = /^(?:$|[\s।॥.,;:!?\-–—])/u;
+
+/** The body as one paragraph, links taken out (a post must carry none), and the headline not repeated. */
+export function bodyExcerpt(body: string, headline = ""): string {
+  let text = oneLine(stripUrls(body));
+  const head = oneLine(headline);
+  // Samvadia uses the body's first sentence when a story has no headline; do not post it twice
+  if (head && text.startsWith(head) && WORD_END.test(text.slice(head.length))) {
+    text = text.slice(head.length).replace(/^[\s।॥.,;:!?\-–—]+/u, "");
+  }
+  return text;
+}
+
+/**
+ * The longest run of whole words that fits the budget, trailing punctuation dropped. "" if not even one
+ * word fits. The segmenter is lazy and the loop stops at the first word over budget, so a long body
+ * costs no more than a short one.
+ */
+export function cutOnWords(text: string, budget: number): string {
+  if (budget <= 0) return "";
+  let end = 0;
+  for (const s of words.segment(text)) {
+    if (!s.isWordLike) continue;
+    const stop = s.index + s.segment.length;
+    if (xLen(text.slice(0, stop)) > budget) break;
+    end = stop;
+  }
+  return text.slice(0, end).replace(TRAILING, "");
+}
+
+/** Whole graphemes within the budget, never ending on a virama (half a conjunct). The fallback for one huge word. */
+function cutOnGraphemes(text: string, budget: number): string {
+  let out = "";
+  for (const { segment } of graphemes.segment(text)) {
+    if (xLen(out + segment) > budget) break;
+    out += segment;
+  }
+  return out.replace(/्+$/u, "").replace(TRAILING, "");
+}
+
+/** The headline cut to the budget (ellipsis not included): on words, else on graphemes. */
+function cutHeadline(headline: string, budget: number): string {
+  if (budget <= 0) return "";
+  return cutOnWords(headline, budget) || cutOnGraphemes(headline, budget);
+}
+
+export interface FirstIndiaParts {
+  /** Line 1's hashtag, e.g. "#Jaipur"; "" when the story has no district */
+  district: string;
+  headline: string;
+  body: string;
+}
+
+/**
+ * Lines 1 and 2, sized so the whole post (tag line and every handle in `tags` included) fits X's limit.
+ * The body is cut first, then dropped; only when line 1 alone does not fit is the headline cut (with …),
+ * and when even the #District prefix leaves no room it goes too. "" when there is nothing to post.
+ */
+export function firstIndiaText(parts: FirstIndiaParts, tags: string[], limit = X_LIMIT): string {
+  const headline = oneLine(parts.headline);
+  if (!headline) return "";
+  const suffix = tagLine(tags, []);
+  const room = limit - (suffix ? xLen(suffix) + 2 : 0);
+  const prefix = parts.district ? `${parts.district}: ` : "";
+
+  const line1 = prefix + headline;
+  if (xLen(line1) <= room) {
+    const excerpt = bodyExcerpt(parts.body, headline);
+    const left = room - xLen(line1) - 2;
+    if (!excerpt) return line1;
+    if (xLen(excerpt) <= left) return `${line1}\n\n${excerpt}`;
+    const cut = cutOnWords(excerpt, left - xLen(BODY_CUT));
+    return cut ? `${line1}\n\n${cut}${BODY_CUT}` : line1;
+  }
+
+  for (const p of prefix ? [prefix, ""] : [""]) {
+    const cut = cutHeadline(headline, room - xLen(p) - xLen(ELLIPSIS));
+    if (cut) return `${p}${cut}${ELLIPSIS}`;
+  }
+  return "";
 }
 
 // ─── The composer seam: rules now, an LLM later, same interface ──────────────
@@ -84,7 +187,7 @@ export type ComposeMethod = "rules" | "llm";
 export interface StoryForCompose {
   headline: string;
   body: string;
-  /** District or city the source already knows (Samvadia); matched for hashtags only, never posted as text */
+  /** District the source already knows (Samvadia): line 1's #District, e.g. "Jaipur" or "Sawai Madhopur" */
   place?: string | null;
 }
 
@@ -115,14 +218,19 @@ export class RuleComposer implements Composer {
   constructor(private readonly deps: RuleComposerDeps) {}
 
   async compose(story: StoryForCompose): Promise<DraftContent> {
-    const text = `${story.headline}\n${story.body}`;
-    // The known place goes last, so a city named in the text still ranks first at equal priority
-    const hashtags = selectHashtags(story.place ? `${text}\n${story.place}` : text, this.deps.hashtags, this.deps.hashtagConfig);
+    // No headline: the body stands in for it (line 1), and there is no line 2
+    const given = story.headline.trim();
+    const headline = given || story.body.trim();
+    const body = given ? story.body : "";
+    const text = `${headline}
+${body}`;
+    const place = story.place?.trim();
+    const district = place ? districtHashtag(place, this.deps.hashtags) : "";
+    const hashtags = selectTagLine(text, this.deps.hashtags, this.deps.hashtagConfig, district ? [district] : []);
     const mentionSuggestions = suggestMentions(text, this.deps.handles, this.deps.maxMentions ?? 2);
     // Leave room for every suggestion, so accepting them never pushes the post over the limit
-    const budget = bodyBudget(hashtags, mentionSuggestions.map((m) => m.handle));
-    const { text: bodyText } = truncateHeadline(story.headline, budget);
-    return { bodyText, hashtags, mentionSuggestions, composeMethod: "rules", composeVersion: this.deps.version };
+    const bodyText = firstIndiaText({ district, headline, body }, [...hashtags, ...mentionSuggestions.map((m) => m.handle)]);
+    return { bodyText, hashtags, mentionSuggestions, composeMethod: "rules", composeVersion: `${COMPOSE_FORMAT}.${this.deps.version}` };
   }
 }
 

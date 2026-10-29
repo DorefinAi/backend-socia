@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic, in the shape of sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml (the live feed had no Rajasthan alert on 28 Oct 2026) -->
+<rss version="2.0">
+  <channel>
+    <title>Sachet CAP alerts</title>
+    <item>
+      <title>अगले 3 घंटों में जयपुर, टोंक और सवाई माधोपुर के कुछ स्थानों पर मेघगर्जन के साथ भारी बारिश की संभावना है। ऑरेंज अलर्ट।</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=9000000000000001</link>
+      <author>controlroom@ndma.gov.in (IMD Jaipur)</author>
+      <guid isPermaLink="false">9000000000000001</guid>
+      <pubDate>Wed, 28 Oct 2026 16:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Heavy rain very likely at isolated places over Balaghat and Mandla.</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=9000000000000002</link>
+      <author>controlroom@ndma.gov.in (IMD Bhopal)</author>
+      <guid isPermaLink="false">9000000000000002</guid>
+      <pubDate>Wed, 28 Oct 2026 16:05:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Dense fog likely over parts of Rajasthan tonight.</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier=9000000000000003</link>
+      <author>controlroom@ndma.gov.in (Rajasthan SDMA)</author>
+      <guid isPermaLink="false">9000000000000003</guid>
+      <pubDate>Wed, 28 Oct 2026 16:10:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

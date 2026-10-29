@@ -44,6 +44,13 @@ const URL_PATTERNS = [
 ];
 
 /** The first URL-like part of the text, or null. Posts must contain none (see URL_REASON). */
+/** Every URL-like part in one pass (the same patterns as findUrl), however many there are. */
+const ANY_URL = new RegExp(URL_PATTERNS.map((p) => p.source).join("|"), "gi");
+
+export function stripUrls(text: string): string {
+  return text.replace(ANY_URL, " ");
+}
+
 export function findUrl(text: string): string | null {
   for (const pattern of URL_PATTERNS) {
     const match = pattern.exec(text);

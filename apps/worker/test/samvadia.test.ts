@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  SamvadiaReader, approveDraft, assets, bodyFromDescription, claimDraft, createDb, getKv, hashtagRules, mapStory, orgs, postDrafts,
+  SamvadiaReader, approveDraft, asCategory, asPriority, assets, bodyFromDescription, claimDraft, createDb, getKv, hashtagRules, mapStory, orgs, postDrafts,
   publishJobs, publishedPosts, readIngestStatus, runMigrations, setKv, stories, users, type DbHandle,
 } from "@socia/db";
 import { FakeXClient, FolderFootage, LocalStorage } from "@socia/providers";
@@ -26,12 +26,19 @@ const URL = process.env.TEST_DATABASE_URL;
 const log = pino({ level: "silent" });
 const SCHEMA = "samvadia_fixture";
 
+describe("Samvadia priority and category", () => {
+  it("reads only the three priorities, anything else as normal; a blank category as null", () => {
+    expect(["normal", "high", "breaking", "urgent", null, undefined, 3].map(asPriority)).toEqual(["normal", "high", "breaking", "normal", "normal", "normal", "normal"]);
+    expect([" अपराध/Crime ", "", "   ", null, 5].map(asCategory)).toEqual(["अपराध/Crime", null, null, null, null]);
+  });
+});
+
 describe("mapping a Samvadia story", () => {
   const base = {
     id: "s1", itemId: "i1", version: 1, kind: "original", slug: "261026_BRN_DHAN_AV_MUKESH", title: "261026_BRN_DHAN_AV_MUKESH",
     description: "((पिछला संस्करण रद्द करें: X))\n\nबारां:\n\nपहला वाक्य। दूसरा वाक्य।\n\nसंवाददाता: मुकेश मीणा, बारां ब्यूरो",
     district: "Baran", guid: "g", publishedAt: new Date(), headline: "", body: "", reporterSlug: "MUKESH", districtCode: "BRN",
-    itemKind: "story", footageStatus: "found", footagePath: "/BARAN/x/", footageFiles: [],
+    itemKind: "story", footageStatus: "found", footagePath: "/BARAN/x/", footageFiles: [], priority: "normal", category: null,
   };
 
   it("keeps only the body from the feed description", () => {
@@ -65,12 +72,15 @@ describe("mapping a Samvadia story", () => {
   // The pg pool under drizzle: plain SQL with parameters for the fixture schema
   const q = (text: string, params: unknown[] = []) => (h.db as unknown as { $client: { query: (t: string, p: unknown[]) => Promise<unknown> } }).$client.query(text, params);
 
-  async function approve(opts: { d?: string; district?: string; subject: string; headline: string; body: string; path?: string | null; publishedAt?: Date; itemKind?: string; storyState?: string }) {
+  async function approve(opts: {
+    d?: string; district?: string; subject: string; headline: string; body: string; path?: string | null; publishedAt?: Date; itemKind?: string; storyState?: string;
+    priority?: string; category?: string | null;
+  }) {
     const itemId = randomUUID();
     const storyId = randomUUID();
     const slug = `271026_${opts.d ?? "BRN"}_${opts.subject}_AV_MUKESH`;
-    await q(`INSERT INTO ${SCHEMA}.items (id, headline, body, reporter_slug, district_code, kind, footage_status, footage_path) VALUES ($1,$2,$3,'MUKESH',$4,$5,$6,$7)`, [
-      itemId, opts.headline, opts.body, opts.d ?? "BRN", opts.itemKind ?? "story", opts.path ? "found" : "waiting", opts.path ?? null,
+    await q(`INSERT INTO ${SCHEMA}.items (id, headline, body, reporter_slug, district_code, kind, footage_status, footage_path, priority, category) VALUES ($1,$2,$3,'MUKESH',$4,$5,$6,$7,$8,$9)`, [
+      itemId, opts.headline, opts.body, opts.d ?? "BRN", opts.itemKind ?? "story", opts.path ? "found" : "waiting", opts.path ?? null, opts.priority ?? "normal", opts.category ?? null,
     ]);
     await q(`INSERT INTO ${SCHEMA}.stories (id, item_id, version, kind, slug, title, description, district, guid, state, published_at) VALUES ($1,$2,1,'original',$3::text,$3::text,$4,$5,$6,$7,$8)`, [
       storyId, itemId, slug, `बारां:\n\n${opts.body}\n\nसंवाददाता: मुकेश, बारां ब्यूरो`, opts.district ?? "Baran", `vartmaan-${storyId}-v1`, opts.storyState ?? "ready", opts.publishedAt ?? new Date(),
@@ -80,8 +90,9 @@ describe("mapping a Samvadia story", () => {
 
   async function addVersion(itemId: string, version: number, kind: "update" | "kill", slug: string) {
     const id = randomUUID();
-    await q(`INSERT INTO ${SCHEMA}.stories (id, item_id, version, kind, slug, title, description, district, guid, state, published_at) VALUES ($1,$2,$3,$4,$5::text,$5::text,'x','Baran',$6,'ready',now())`, [
-      id, itemId, version, kind, slug, `vartmaan-${id}-v${version}`,
+    await q(`INSERT INTO ${SCHEMA}.stories (id, item_id, version, kind, slug, title, description, district, guid, state, published_at) VALUES ($1,$2,$3,$4,$5::text,$5::text,'x','Baran',$6,'ready',$7)`, [
+      // A JS date (milliseconds), not now() (microseconds): the order check below compares millisecond keys
+      id, itemId, version, kind, slug, `vartmaan-${id}-v${version}`, new Date(),
     ]);
     return id;
   }
@@ -109,7 +120,7 @@ describe("mapping a Samvadia story", () => {
     await h.db.execute(sql.raw(`CREATE SCHEMA ${SCHEMA};
       CREATE TABLE ${SCHEMA}.items (id uuid PRIMARY KEY, headline text NOT NULL DEFAULT '', body text NOT NULL DEFAULT '', reporter_slug text,
         district_code varchar(8), kind varchar(16) NOT NULL DEFAULT 'story', footage_status varchar(16) NOT NULL DEFAULT 'not_checked',
-        footage_path text, footage_files jsonb NOT NULL DEFAULT '[]'::jsonb);
+        footage_path text, footage_files jsonb NOT NULL DEFAULT '[]'::jsonb, priority text NOT NULL DEFAULT 'normal', category text);
       CREATE TABLE ${SCHEMA}.stories (id uuid PRIMARY KEY, item_id uuid NOT NULL REFERENCES ${SCHEMA}.items(id), version int NOT NULL, kind varchar(16) NOT NULL,
         slug varchar(96) NOT NULL, title text NOT NULL, description text NOT NULL, district text NOT NULL, guid text NOT NULL UNIQUE,
         state varchar(16) NOT NULL, published_at timestamptz, UNIQUE (item_id, version));`));
@@ -157,13 +168,13 @@ describe("mapping a Samvadia story", () => {
   it("turns approved stories into Socia stories once, and copies footage photos-first", async () => {
     const path = "/BARAN/oct2026/27102026/271026_BRN_MANDI_AV_MUKESH/";
     await footage(path, { "271026_BRN_MANDI_AV_MUKESH_01.jpg": 100, "271026_BRN_MANDI_AV_MUKESH_02.jpg": 200, "271026_BRN_MANDI_AV_MUKESH.mp4": 300, "big.jpg": 5000, "clip.xml": "<x/>", "VISUALS/raw.mp4": 50 });
-    const a = await approve({ subject: "MANDI", headline: "मंडी में धान की बंपर आवक", body: "किसानों को अच्छे दाम मिले।", path });
+    const a = await approve({ subject: "MANDI", headline: "मंडी में धान की बंपर आवक", body: "किसानों को अच्छे दाम मिले।", path, priority: "high", category: " कृषि/Agriculture " });
     const run = ingest();
 
     expect(await run.poll()).toBe(1); // the story; footage waits for a second, stable look
     const [story] = await h.db.select().from(stories);
     expect(story).toMatchObject({ source: "samvadia", status: "converted", externalId: `${a.storyId}:v1`, district: "Baran", headline: "मंडी में धान की बंपर आवक", fileId: null, mediaState: "awaiting" });
-    expect(story!.external).toMatchObject({ itemId: a.itemId, version: 1, footagePath: path, reporter: "MUKESH", districtCode: "BRN" });
+    expect(story!.external).toMatchObject({ itemId: a.itemId, version: 1, footagePath: path, reporter: "MUKESH", districtCode: "BRN", priority: "high", category: "कृषि/Agriculture" });
     expect(await getKv(h.db, CURSOR_KEY)).toMatchObject({ storyId: a.storyId });
 
     clock += 2500;
@@ -223,10 +234,12 @@ describe("mapping a Samvadia story", () => {
     await run.poll();
     const [story] = await h.db.select().from(stories).where(eq(stories.externalId, `${a.storyId}:v1`));
     expect(story!.mediaState).toBe("awaiting");
+    expect(story!.external).toMatchObject({ priority: "normal", category: null });
 
     const path = "/BARAN/oct2026/27102026/271026_BRN_BARISH_AV_MUKESH/";
     await footage(path, { "a.jpg": 10 });
-    await q(`UPDATE ${SCHEMA}.items SET footage_path = $2, footage_status = 'found' WHERE id = $1`, [a.itemId, path]);
+    // Samvadia's desk also raised the priority and set a category after approval
+    await q(`UPDATE ${SCHEMA}.items SET footage_path = $2, footage_status = 'found', priority = 'breaking', category = 'मौसम/Weather' WHERE id = $1`, [a.itemId, path]);
     clock += 31_000; // next rescan re-reads Samvadia's footage path
     await run.poll();
     clock += 2500;
@@ -235,7 +248,7 @@ describe("mapping a Samvadia story", () => {
     expect(media.map((m) => m.fileName)).toEqual(["a.jpg"]);
     const [refreshed] = await h.db.select().from(stories).where(eq(stories.id, story!.id));
     expect(refreshed!.mediaState).toBe("attached");
-    expect(refreshed!.external!.footagePath).toBe(path);
+    expect(refreshed!.external).toMatchObject({ footagePath: path, priority: "breaking", category: "मौसम/Weather" });
 
     await footage(path, { "b_late.jpg": 20 });
     clock += 31_000;
@@ -260,7 +273,7 @@ describe("mapping a Samvadia story", () => {
   });
 
   it("goes on through compose (district hashtag), render and approve to a fake X post", async () => {
-    // A story whose text never names the district: the hashtag comes from Samvadia's district
+    // A story whose text never names the district: line 1's #Baran comes from Samvadia's district
     const a = await approve({ subject: "SADAK", headline: "नई सड़क का लोकार्पण", body: "मंत्री ने फीता काटा।" });
     await ingest().poll();
     const dict = new Dictionaries(h.db, orgId);
@@ -270,8 +283,8 @@ describe("mapping a Samvadia story", () => {
       .from(postDrafts)
       .innerJoin(stories, eq(stories.id, postDrafts.storyId))
       .where(eq(stories.externalId, `${a.storyId}:v1`));
-    expect(draft!.d.hashtags).toEqual(["#Baran", "#1stIndiaNews"]);
-    expect(draft!.d.bodyText).toBe("नई सड़क का लोकार्पण");
+    expect(draft!.d.hashtags).toEqual(["#1stIndiaNews"]);
+    expect(draft!.d.bodyText).toBe("#Baran: नई सड़क का लोकार्पण\n\nमंत्री ने फीता काटा।");
 
     const renderer = new CardRenderer(1);
     await renderer.start();
@@ -293,6 +306,6 @@ describe("mapping a Samvadia story", () => {
     const x = new FakeXClient("1stIndiaNews");
     await new Publisher({ db: h.db, storage: store, x, bucket: new MemoryBucket(10, 60), account: "1stIndiaNews", log, active: () => true }).tick();
     const [post] = await h.db.select().from(publishedPosts).where(eq(publishedPosts.draftId, ready!.id));
-    expect(x.posts.get(post!.platformPostId)!.text).toBe("नई सड़क का लोकार्पण\n\n#Baran #1stIndiaNews");
+    expect(x.posts.get(post!.platformPostId)!.text).toBe("#Baran: नई सड़क का लोकार्पण\n\nमंत्री ने फीता काटा।\n\n#1stIndiaNews");
   }, 60_000);
 });

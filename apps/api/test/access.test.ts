@@ -35,7 +35,7 @@ interface Client {
 
   const config: ApiConfig = {
     databaseUrl: URL ?? "", port: 0, corsOrigins: ["http://localhost:3006"], cookieSecure: false, sessionHours: 12, requireTotp: false,
-    secretKey: Buffer.alloc(32, 9).toString("base64"), storageDir: null,
+    secretKey: Buffer.alloc(32, 9).toString("base64"), storageDir: null, rewriteMode: "rules", trustProxy: false,
   };
 
   async function call(client: Client | null, method: string, url: string, payload?: unknown) {
@@ -245,7 +245,7 @@ interface Client {
       expect((await call(who.admin!, "PATCH", `/admin/users/${id}`, { role: "editor" }))).toMatchObject({ status: 409, body: { error: "self_change" } });
       expect((await call(who.admin!, "PATCH", `/users/${id}`, { active: false }))).toMatchObject({ status: 409, body: { error: "self_change" } });
       expect((await call(who.admin!, "PATCH", `/admin/users/${id}`, { password: "a brand new long password" }))).toMatchObject({ status: 409, body: { error: "self_change" } });
-      expect((await call(who.admin!, "PATCH", `/admin/users/${id}`, { resetTotp: true }))).toMatchObject({ status: 409, body: { error: "self_change" } });
+      expect((await call(who.admin!, "PATCH", `/admin/users/${id}`, { resetTotp: true, password: "a brand new long password" }))).toMatchObject({ status: 409, body: { error: "self_change" } });
     }
     // Another user by upper-case id works as usual
     expect((await call(who.admin!, "GET", `/admin/users/${ids.op!.toUpperCase()}/permissions`)).body.role).toBe("operator");
@@ -259,7 +259,8 @@ interface Client {
     ]);
     const statuses = [a.status, b.status].sort();
     expect(statuses[0]).toBe(200);
-    expect([401, 409]).toContain(statuses[1]);
+    // The loser is refused: 401 (signed out), 409 last_admin, or 403 (re-read under the lock, no longer a user manager)
+    expect([401, 403, 409]).toContain(statuses[1]);
     if (statuses[1] === 409) expect([a, b].find((r) => r.status === 409)!.body.error).toBe("last_admin");
     const admins = await h.db.select().from(users).where(eq(users.role, "admin"));
     expect(admins).toHaveLength(1);
@@ -287,7 +288,7 @@ interface Client {
     // Stronger users are out of reach, even for a password reset or a platform change
     expect((await call(me, "PATCH", `/admin/users/${ids.op}`, { platforms: ["x"] }))).toMatchObject({ status: 403, body: { error: "exceeds_own_access" } });
     expect((await call(me, "PATCH", `/admin/users/${ids.admin}`, { password: "take over this account" })).status).toBe(403);
-    expect((await call(me, "PATCH", `/admin/users/${ids.admin}`, { resetTotp: true })).status).toBe(403);
+    expect((await call(me, "PATCH", `/admin/users/${ids.admin}`, { resetTotp: true, password: "take over this account" })).status).toBe(403);
     expect((await call(me, "PATCH", `/admin/users/${basic.body.id}`, { role: "admin" })).body.error).toBe("exceeds_own_access");
     expect((await call(me, "PATCH", `/admin/users/${basic.body.id}`, { role: "user-desk" })).body.role).toBe("user-desk");
     expect((await call(me, "PUT", `/admin/users/${basic.body.id}/overrides`, { overrides: [{ permission: "roles.manage", allowed: true }] })).body.error).toBe("exceeds_own_access");

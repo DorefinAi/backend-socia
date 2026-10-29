@@ -16,3 +16,4 @@ export * from "./rajasthan";
 export * from "./trends";
 export * from "./trend-sources";
 export * from "./permissions";
+export * from "./rewrite";

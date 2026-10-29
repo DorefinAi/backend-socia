@@ -33,7 +33,7 @@ interface Client {
   let orgId: string;
 
   const config: ApiConfig = {
-    databaseUrl: URL ?? "", port: 0, corsOrigins: ["http://localhost:3000"], cookieSecure: false, sessionHours: 12, requireTotp: true, secretKey: SECRET_KEY, storageDir: null,
+    databaseUrl: URL ?? "", port: 0, corsOrigins: ["http://localhost:3000"], cookieSecure: false, sessionHours: 12, requireTotp: true, secretKey: SECRET_KEY, storageDir: null, rewriteMode: "rules", trustProxy: false,
   };
 
   async function call(client: Client | null, method: string, url: string, payload?: unknown, csrf = true) {

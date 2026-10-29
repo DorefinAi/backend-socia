@@ -134,6 +134,7 @@ const cardFiles = (storage: Storage, body: Buffer, contentType: string): CardFil
 
 export const templateRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage }) => {
   const limiter = new SlidingLimiter(UPLOADS_PER_WINDOW, UPLOAD_WINDOW_MS);
+  app.addHook("onClose", async () => limiter.close());
 
   app.get("/me/card-template", { schema: { querystring: PlatformQuery } }, async (req) => {
     const { user } = guard(req);

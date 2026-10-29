@@ -313,6 +313,8 @@ export const postDrafts = pgTable(
     claimExpiresAt: timestamp("claim_expires_at", { withTimezone: true }),
     rejectReason: text("reject_reason"),
     rejectNote: text("reject_note"),
+    /** How a Web Scraper draft was reworded from the publishers' text; null for every other draft */
+    rewrite: jsonb("rewrite").$type<DraftRewrite>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -468,6 +470,18 @@ export const trendItems = pgTable(
   },
   (t) => [index("trend_items_run_idx").on(t.runId, t.type, t.window, t.rank), index("trend_items_url_idx").on(t.url)],
 );
+
+/** post_drafts.rewrite (handoff/web-scraper-contract.md, "Draft rewording") */
+export interface DraftRewrite {
+  /** REWRITE_MODE that made it; only "rules" exists */
+  mode: "rules";
+  /** Word 4-gram overlap with the closest source (0..1, see @socia/core copyStats) */
+  similarity: number;
+  /** similarity > 0.4 even after the retries: reword by hand before posting */
+  tooClose: boolean;
+  /** The publishers whose text went into the draft, the lead item's first */
+  sources: { name: string; url: string }[];
+}
 
 export interface TrendItemSource {
   name: string;

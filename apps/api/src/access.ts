@@ -122,9 +122,88 @@ export function assertActorCovers(actor: SessionUser, set: Iterable<PermissionKe
   if (missing.length) throw new HttpError(403, "exceeds_own_access", `${who} can do things you cannot (${labels(missing)}). Ask a full admin.`);
 }
 
-/** Disconnect these users' live sockets once the change commits, so they rejoin with their new access. */
-export async function accessChanged(tx: Executor, orgId: string, userIds: readonly string[]): Promise<void> {
-  if (userIds.length) await notify(tx, orgId, { type: "access.changed", userIds: [...new Set(userIds)] });
+// ─── Platform scope ──────────────────────────────────────────────────────────
+// An actor whose role is platform-scoped manages only platform-scoped users and roles, and only within
+// their own platforms: they cannot create or move anyone onto an unscoped role, hand out platforms they do
+// not have, turn a role's platform limit off, or touch a user (or a role with users) on wider platforms.
+
+export interface Scope {
+  platformScoped: boolean;
+  platforms: readonly string[];
+}
+
+const outsideOwn = (actor: SessionUser, platforms: readonly string[]) => [...new Set(platforms)].filter((p) => !actor.platforms.includes(p));
+
+/** 403 exceeds_own_access unless the resulting user/role stays inside a platform-scoped actor's scope. */
+export function assertScopeWithinOwn(actor: SessionUser, target: Scope, what: string): void {
+  if (!actor.platformScoped) return;
+  if (!target.platformScoped) {
+    throw new HttpError(403, "exceeds_own_access", `Your role is limited to your own platforms, so you can only ${what} with roles that are limited to platforms too.`);
+  }
+  const extra = outsideOwn(actor, target.platforms);
+  if (extra.length) throw new HttpError(403, "exceeds_own_access", `You can only ${what} on your own platforms. You do not have ${extra.join(", ")}.`);
+}
+
+/** 403 exceeds_own_access when a platform-scoped actor would change a user or role reaching beyond their scope. */
+export function assertActorCoversScope(actor: SessionUser, target: Scope, who: string): void {
+  if (!actor.platformScoped) return;
+  if (!target.platformScoped) throw new HttpError(403, "exceeds_own_access", `${who} is not limited to platforms, but you are. Ask a full admin.`);
+  const extra = outsideOwn(actor, target.platforms);
+  if (extra.length) throw new HttpError(403, "exceeds_own_access", `${who} works on platforms you do not have (${extra.join(", ")}). Ask a full admin.`);
+}
+
+/** Every platform any user of the role has (what an edit of the role reaches) */
+export async function rolePlatforms(ex: Executor, orgId: string, roleKey: string): Promise<string[]> {
+  const rows = await ex.execute(sql`SELECT DISTINCT unnest(${users.platforms}) AS p FROM ${users} WHERE ${users.orgId} = ${orgId} AND ${users.role} = ${roleKey}`);
+  return (rows.rows as { p: string }[]).map((r) => r.p);
+}
+
+/**
+ * The actor as they are now, read inside the change's transaction after lockAccess: the session's copy
+ * was resolved before the lock, so a concurrent demotion could otherwise still pass the checks.
+ */
+export async function reloadActor(tx: Executor, actor: SessionUser): Promise<SessionUser> {
+  const [u] = await tx.select().from(users).where(eq(users.id, actor.id));
+  const role = u?.active ? await getRole(tx, u.orgId, u.role) : null;
+  if (!u || !role) throw new HttpError(401, "signed_out", "Sign in to continue.");
+  const overrides = await userOverrides(tx, u.id);
+  return {
+    ...actor, name: u.name, role: u.role, roleLabel: role.label, platformScoped: role.platformScoped, platforms: u.platforms, active: u.active,
+    permissions: effectivePermissionSet(await roleAllowed(tx, role), overrides), overrides,
+  };
+}
+
+/** pg_notify payloads must stay under 8000 bytes; keep each access.changed well below that. */
+export const NOTIFY_MAX_BYTES = 7000;
+
+/** Splits ids into groups whose JSON (plus `overhead` bytes of envelope) stays under NOTIFY_MAX_BYTES. */
+export function chunkIds(ids: readonly string[], overhead: number, max = NOTIFY_MAX_BYTES): string[][] {
+  const out: string[][] = [];
+  let cur: string[] = [];
+  let size = overhead + 2;
+  for (const id of ids) {
+    const add = Buffer.byteLength(JSON.stringify(id)) + 1;
+    if (cur.length && size + add > max) {
+      out.push(cur);
+      cur = [];
+      size = overhead + 2;
+    }
+    cur.push(id);
+    size += add;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+/**
+ * Disconnect live sockets once the change commits: every socket of these users, and the sockets of these
+ * sessions (a sign-out), so they reconnect with their new access or are refused. Sent in chunks.
+ */
+export async function accessChanged(tx: Executor, orgId: string, userIds: readonly string[], sessionIds: readonly string[] = []): Promise<void> {
+  // Envelope: {"type":"access.changed","userIds":[],"sessionIds":[],"orgId":"<uuid>","platform":"x"} ≈ 120 bytes
+  const overhead = 160;
+  for (const chunk of chunkIds([...new Set(userIds)], overhead)) await notify(tx, orgId, { type: "access.changed", userIds: chunk });
+  for (const chunk of chunkIds([...new Set(sessionIds)], overhead)) await notify(tx, orgId, { type: "access.changed", userIds: [], sessionIds: chunk });
 }
 
 export async function roleUserIds(ex: Executor, orgId: string, roleKey: string): Promise<string[]> {

@@ -41,7 +41,7 @@ function png(width: number, height: number, pad = 0): Buffer {
 
   const config: ApiConfig = {
     databaseUrl: URL ?? "", port: 0, corsOrigins: ["http://localhost:3005"], cookieSecure: false, sessionHours: 12, requireTotp: false,
-    secretKey: Buffer.alloc(32, 5).toString("base64"), storageDir: null,
+    secretKey: Buffer.alloc(32, 5).toString("base64"), storageDir: null, rewriteMode: "rules", trustProxy: false,
   };
 
   async function call(who: { cookie: string; csrf: string }, method: string, url: string, payload?: unknown) {

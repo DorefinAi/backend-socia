@@ -2,13 +2,13 @@
 // request, the og:image cache, keyword watches, and turning a trend into a Socia story + X draft.
 
 import { createHash } from "node:crypto";
-import type { Composer, PaceState, PaceStore, SourceHealth, TrendAlert, TrendRow } from "@socia/core";
+import { detectLang, rewriteChecked, type Composer, type PaceState, type PaceStore, type RewriteInput, type Rewriter, type SourceHealth, type TrendAlert, type TrendRow } from "@socia/core";
 import { and, asc, count, desc, eq, ilike, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { audit } from "./audit";
 import type { Db } from "./client";
 import type { Actor } from "./desk";
 import { getKv, setKv } from "./kv";
-import { postDrafts, stories, trendItems, trendRuns, trendWatches, type TREND_RUN_TRIGGERS, type TrendSourceHealth } from "./schema";
+import { postDrafts, stories, trendItems, trendRuns, trendWatches, type DraftRewrite, type TREND_RUN_TRIGGERS, type TrendSourceHealth } from "./schema";
 
 export type TrendItem = typeof trendItems.$inferSelect;
 export type TrendRun = typeof trendRuns.$inferSelect;
@@ -169,26 +169,98 @@ export async function trendRefreshRequestedAt(db: Db, orgId: string): Promise<Da
 export const trendExternalId = (item: Pick<TrendItem, "url" | "headline">) =>
   `trend:${createHash("sha256").update(`${item.url}\n${item.headline}`).digest("hex").slice(0, 32)}`;
 
+/** Other publishers of the same story in the item's run: at most 2, one each, those with a summary first */
+export async function clusterSiblings(db: Db, item: TrendItem, max = 2): Promise<TrendItem[]> {
+  if (!item.clusterId) return [];
+  const rows = await db
+    .select()
+    .from(trendItems)
+    .where(and(eq(trendItems.runId, item.runId), eq(trendItems.clusterId, item.clusterId), ne(trendItems.id, item.id)))
+    .orderBy(asc(trendItems.rank));
+  const seen = new Set([item.sourceName.toLowerCase()]);
+  const urls = new Set([item.url]);
+  const out: TrendItem[] = [];
+  for (const r of [...rows].sort((a, b) => Number(!!b.summary) - Number(!!a.summary))) {
+    if (out.length >= max || seen.has(r.sourceName.toLowerCase()) || urls.has(r.url)) continue;
+    seen.add(r.sourceName.toLowerCase());
+    urls.add(r.url);
+    out.push(r);
+  }
+  return out;
+}
+
+/** What the rewriter reads: the item's headline and summary, then each sibling's headline and summary */
+export function rewriteInput(item: TrendItem, siblings: TrendItem[]): RewriteInput {
+  const headline = item.headline || item.title;
+  const summaries = [
+    { source: item.sourceName, text: item.summary },
+    ...siblings.map((s) => ({ source: s.sourceName, text: [s.headline || s.title, s.summary].filter(Boolean).join("\n") })),
+  ];
+  return { headline, summaries, district: item.district, lang: detectLang(`${headline} ${item.summary}`) };
+}
+
 /**
  * Story (source "trend", no media: the publisher's photo is preview only and never attached) plus an X
- * draft composed by the normal rules. The draft waits for its automatic card like any other. Drafting
- * the same news item again returns the existing draft.
+ * draft. The headline and body are reworded from the item and up to 2 other publishers of the same story
+ * (rules, no AI), checked for copying, then laid out by the normal composer (#District line, "....", tags,
+ * X's 280). The publishers' own text stays in the story's sourceText. The draft waits for its automatic
+ * card like any other. Drafting the same news item again returns the existing draft.
  */
-export async function createTrendDraft(db: Db, actor: Actor, item: TrendItem, composer: Composer): Promise<{ draftId: string; created: boolean }> {
+export async function createTrendDraft(
+  db: Db, actor: Actor, item: TrendItem, composer: Composer, rewriter: Rewriter, now = new Date(),
+): Promise<{ draftId: string; created: boolean; rewrite: DraftRewrite | null; rewriteError?: string }> {
   const externalId = trendExternalId(item);
-  const headline = item.headline || item.title;
-  const body = item.summary;
-  const content = await composer.compose({ headline, body, place: item.district }, "x");
-
-  return db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({ draftId: postDrafts.id })
+  const existingDraft = async (q: Pick<Db, "select">) => {
+    const [row] = await q
+      .select({ draftId: postDrafts.id, rewrite: postDrafts.rewrite })
       .from(stories)
       .innerJoin(postDrafts, eq(postDrafts.storyId, stories.id))
       .where(and(eq(stories.orgId, actor.orgId), eq(stories.source, "trend"), eq(stories.externalId, externalId)));
-    if (existing) return { draftId: existing.draftId, created: false };
+    return row ? { draftId: row.draftId, created: false, rewrite: row.rewrite ?? null } : null;
+  };
+  const before = await existingDraft(db);
+  if (before) return before;
 
-    const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  const siblings = await clusterSiblings(db, item);
+  const input = rewriteInput(item, siblings);
+  // Draft time + item: drafting the item another time words it differently; one seed always the same
+  const urlOf = new Map([item, ...siblings].map((t) => [t.sourceName, t.url] as const));
+  let headline: string;
+  let body: string;
+  let rewrite: DraftRewrite;
+  let attempts = 0;
+  let rewriteError: string | undefined;
+  try {
+    const reworded = await rewriteChecked(rewriter, input, `${now.toISOString()}|${item.id}`);
+    // An empty result is a failed rewording (a body only counts when the publisher gave one)
+    if (!reworded.headline.trim()) throw new Error("the reworded headline is empty");
+    if (!reworded.body.trim() && item.summary.trim()) throw new Error("the reworded body is empty");
+    headline = reworded.headline;
+    body = reworded.body;
+    attempts = reworded.attempts;
+    rewrite = {
+      mode: rewriter.name,
+      similarity: reworded.similarity,
+      tooClose: reworded.tooClose,
+      sources: reworded.usedSources.filter((n) => urlOf.has(n)).map((name) => ({ name, url: urlOf.get(name)! })),
+    };
+  } catch (err) {
+    // Drafting never fails on the rewording: the publisher's text, flagged so the desk rewords it by hand
+    rewriteError = err instanceof Error ? err.message : String(err);
+    headline = input.headline;
+    body = item.summary;
+    rewrite = { mode: rewriter.name, similarity: 1, tooClose: true, sources: [{ name: item.sourceName, url: item.url }] };
+  }
+  const content = await composer.compose({ headline, body, place: item.district }, "x");
+  const sourceText = [item, ...siblings]
+    .map((t) => [`${t.sourceName}: ${t.headline || t.title}`, t.summary, t.url].filter(Boolean).join("\n"))
+    .join("\n\n");
+
+  return db.transaction(async (tx) => {
+    const existing = await existingDraft(tx);
+    if (existing) return existing;
+
+    const stamp = now.toISOString().slice(2, 10).replace(/-/g, "");
     const [story] = await tx
       .insert(stories)
       .values({
@@ -198,25 +270,24 @@ export async function createTrendDraft(db: Db, actor: Actor, item: TrendItem, co
         district: item.district,
         slug: `${stamp}_TREND_${externalId.slice(6, 14).toUpperCase()}`,
         status: "composed",
-        sourceText: `${item.title}\n${item.url}`,
+        sourceText,
         sourceCharset: "utf-8",
         sourceEncoding: "unicode",
         headline,
         body,
         parseMethod: "trend",
-        parseNote: `From the Web Scraper (${item.platform}, ${item.sourceName}): ${item.url}. Rewrite in First India's words before posting.`,
+        parseNote: rewriteError
+          ? `From the Web Scraper (${item.platform}, ${item.sourceName}): ${item.url}. Rewording failed, so this is the publisher's own text: reword it before posting. Check facts before posting.`
+          : `From the Web Scraper (${item.platform}, ${item.sourceName}): ${item.url}. Reworded by rules from ${rewrite.sources.length || 1} ` +
+            `publisher(s), similarity ${rewrite.similarity.toFixed(2)}${rewrite.tooClose ? " (too close to the source: reword it before posting)" : ""}. Check facts before posting.`,
         mediaState: "none",
       })
       .onConflictDoNothing()
       .returning();
     if (!story) {
       // Another desk drafted it a moment ago
-      const [again] = await tx
-        .select({ draftId: postDrafts.id })
-        .from(stories)
-        .innerJoin(postDrafts, eq(postDrafts.storyId, stories.id))
-        .where(and(eq(stories.orgId, actor.orgId), eq(stories.source, "trend"), eq(stories.externalId, externalId)));
-      if (again) return { draftId: again.draftId, created: false };
+      const again = await existingDraft(tx);
+      if (again) return again;
       throw new Error("The trend story exists without a draft");
     }
     const [draft] = await tx
@@ -224,13 +295,17 @@ export async function createTrendDraft(db: Db, actor: Actor, item: TrendItem, co
       .values({
         orgId: actor.orgId, storyId: story.id, platform: "x", status: "rendering", bodyText: content.bodyText, cardHeadline: headline,
         hashtags: content.hashtags, mentionSuggestions: content.mentionSuggestions, composeMethod: content.composeMethod, composeVersion: content.composeVersion,
+        rewrite,
       })
       .returning({ id: postDrafts.id });
     await audit(tx, {
       orgId: actor.orgId, actorId: actor.id, action: "trend.drafted", entityType: "post_draft", entityId: draft!.id,
-      after: { trendItemId: item.id, url: item.url, platform: item.platform, sourceName: item.sourceName, storyId: story.id },
+      after: {
+        trendItemId: item.id, url: item.url, platform: item.platform, sourceName: item.sourceName, storyId: story.id,
+        rewrite: { mode: rewrite.mode, similarity: rewrite.similarity, tooClose: rewrite.tooClose, sources: rewrite.sources.map((s) => s.name), attempts, failed: rewriteError ?? null },
+      },
     });
-    return { draftId: draft!.id, created: true };
+    return { draftId: draft!.id, created: true, rewrite, rewriteError };
   });
 }
 

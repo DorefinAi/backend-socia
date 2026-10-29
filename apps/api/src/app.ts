@@ -13,7 +13,7 @@ import Fastify, { type FastifyServerOptions } from "fastify";
 import { COOKIE, HttpError, loadSession } from "./auth";
 import type { ApiConfig } from "./config";
 import { adminRoutes } from "./routes/admin";
-import { authRoutes } from "./routes/auth";
+import { authRoutes, type AuthLimits } from "./routes/auth";
 import { deskRoutes } from "./routes/desk";
 import { libraryRoutes } from "./routes/library";
 import { statusRoutes } from "./routes/status";
@@ -28,6 +28,29 @@ export interface AppDeps {
   web?: WebGet;
   /** Pacing for GDELT and the slow sources; default: shared with the worker through the kv table */
   pace?: PaceStore;
+  /** Sign-in throttling (routes/auth.ts); tests pass small numbers. Default: AUTH_LIMITS */
+  authLimits?: Partial<AuthLimits>;
+}
+
+/**
+ * Request schemas are strict: an object schema that does not say otherwise gets additionalProperties: false,
+ * so an unknown key is a 400 instead of slipping through to a handler (mass assignment). Applies to every
+ * body, querystring and params schema of every route, including ones that forget to say so. Members of an
+ * allOf (Type.Intersect) are left alone, since each member only knows its own keys.
+ */
+export function strictSchema<T>(schema: T): T {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return schema;
+  const src = schema as Record<string, unknown>;
+  // Keep TypeBox's own (non-enumerable) markers: copy every property descriptor
+  const out = Object.create(Object.getPrototypeOf(src), Object.getOwnPropertyDescriptors(src)) as Record<string, unknown>;
+  const set = (key: string, value: unknown) => Object.defineProperty(out, key, { value, enumerable: true, writable: true, configurable: true });
+  if (src.type === "object" && src.properties && typeof src.properties === "object") {
+    if (src.additionalProperties === undefined && src.patternProperties === undefined) set("additionalProperties", false);
+    set("properties", Object.fromEntries(Object.entries(src.properties as Record<string, unknown>).map(([k, v]) => [k, strictSchema(v)])));
+  }
+  if (src.items) set("items", Array.isArray(src.items) ? src.items.map(strictSchema) : strictSchema(src.items));
+  for (const key of ["anyOf", "oneOf"] as const) if (Array.isArray(src[key])) set(key, (src[key] as unknown[]).map(strictSchema));
+  return out as T;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -36,8 +59,15 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logger"] = true) {
-  const app = Fastify({ logger, trustProxy: true }).withTypeProvider<TypeBoxTypeProvider>();
-  app.setValidatorCompiler(TypeBoxValidatorCompiler);
+  // Only the configured proxies may set req.ip (the sign-in rate-limit key); default: the socket address
+  // Fastify turns a bare hop count into "trust nothing" (fail closed), which behind a proxy would key every
+  // user on the proxy's address; a count is given as a function instead: trust the first `n` hops
+  // (the socket peer is hop 0). Safe only when clients cannot reach the API without the proxy (Render).
+  const tp = deps.config.trustProxy;
+  const trustProxy = typeof tp === "number" ? (_address: string, hop: number) => hop < tp : tp;
+  const app = Fastify({ logger, trustProxy }).withTypeProvider<TypeBoxTypeProvider>();
+  // Strict bodies, querystrings and params (headers always carry extra keys)
+  app.setValidatorCompiler((route) => TypeBoxValidatorCompiler(route.httpPart === "headers" ? route : { ...route, schema: strictSchema(route.schema) }));
 
   await app.register(cookie);
   await app.register(cors, {

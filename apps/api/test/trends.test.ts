@@ -5,8 +5,10 @@ import { readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { googleNewsSearchUrl, type TrendRow } from "@socia/core";
-import { assets, auditLog, createDb, getKv, hashtagRules, orgs, postDrafts, runMigrations, saveTrendRun, stories, trendRuns, users, type DbHandle } from "@socia/db";
+import { RuleRewriter, googleNewsSearchUrl, type Rewriter, type TrendRow } from "@socia/core";
+import {
+  assets, auditLog, createDb, createTrendDraft, getKv, hashtagRules, loadRuleComposer, orgs, postDrafts, runMigrations, saveTrendRun, stories, trendRuns, users, type DbHandle,
+} from "@socia/db";
 import { LocalStorage, type WebGet } from "@socia/providers";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -47,7 +49,7 @@ const row = (r: Partial<TrendRow> & Pick<TrendRow, "title" | "rank">): TrendRow 
 
   const config: ApiConfig = {
     databaseUrl: URL ?? "", port: 0, corsOrigins: ["http://localhost:3005"], cookieSecure: false, sessionHours: 12, requireTotp: false,
-    secretKey: Buffer.alloc(32, 9).toString("base64"), storageDir: null,
+    secretKey: Buffer.alloc(32, 9).toString("base64"), storageDir: null, rewriteMode: "rules", trustProxy: false,
   };
 
   const web: WebGet = async (url) => {
@@ -186,23 +188,97 @@ const row = (r: Partial<TrendRow> & Pick<TrendRow, "title" | "rank">): TrendRow 
     expect(res).toMatchObject({ status: 200, body: { draftId: expect.any(String), created: true } });
     const draftId = res.body.draftId;
     const [d] = await h.db.select({ d: postDrafts, s: stories }).from(postDrafts).innerJoin(stories, eq(stories.id, postDrafts.storyId)).where(eq(postDrafts.id, draftId));
-    expect(d!.s).toMatchObject({ source: "trend", status: "composed", mediaState: "none", district: "Jaipur", headline: "जयपुर हाईकोर्ट का फैसला", body: "अदालत ने सुनवाई के बाद आदेश दिया।" });
-    expect(d!.d).toMatchObject({ status: "rendering", platform: "x", hashtags: ["#RajasthanWithFirstIndia"] });
-    expect(d!.d.bodyText).toBe("#Jaipur: जयपुर हाईकोर्ट का फैसला\n\nअदालत ने सुनवाई के बाद आदेश दिया।");
+    expect(d!.s).toMatchObject({ source: "trend", status: "composed", mediaState: "none", district: "Jaipur" });
+    // Reworded, not the publisher's words (the seed is the draft time, so the exact wording varies per draft)
+    expect(d!.s.body).not.toBe("अदालत ने सुनवाई के बाद आदेश दिया।");
+    expect(d!.s.body).toMatch(/(?:सुनवाई|हियरिंग) के (?:बाद|पश्चात)/u);
+    expect(d!.s.body).toMatch(/आदेश/u);
+    expect(d!.s.headline).toMatch(/जयपुर हाईकोर्ट का/u);
+    // The publisher's own text is kept for the desk to compare
+    expect(d!.s.sourceText).toBe("Dainik Bhaskar: जयपुर हाईकोर्ट का फैसला\nअदालत ने सुनवाई के बाद आदेश दिया।\nhttps://www.bhaskar.com/1");
+    expect(d!.d).toMatchObject({ status: "rendering", platform: "x", hashtags: ["#RajasthanWithFirstIndia"], cardHeadline: d!.s.headline });
+    // Then the First India layout as before: #District line, blank line, body
+    expect(d!.d.bodyText).toBe(`#Jaipur: ${d!.s.headline}\n\n${d!.s.body}`);
+    const rewrite = { mode: "rules", similarity: expect.any(Number), tooClose: expect.any(Boolean), sources: [{ name: "Dainik Bhaskar", url: "https://www.bhaskar.com/1" }] };
+    expect(d!.d.rewrite).toEqual(rewrite);
+    expect(d!.d.rewrite!.tooClose).toBe(d!.d.rewrite!.similarity > 0.4);
+    expect(res.body.rewrite).toEqual(d!.d.rewrite);
     expect(await h.db.select().from(assets).where(eq(assets.storyId, d!.s.id))).toEqual([]);
     const [a] = await h.db.select().from(auditLog).where(and(eq(auditLog.action, "trend.drafted"), eq(auditLog.entityId, draftId)));
-    expect(a!.after).toMatchObject({ trendItemId: ids.hc, url: "https://www.bhaskar.com/1" });
+    expect(a!.after).toMatchObject({ trendItemId: ids.hc, url: "https://www.bhaskar.com/1", rewrite: { mode: "rules", sources: ["Dainik Bhaskar"], attempts: expect.any(Number) } });
 
-    // The desk's draft view works for a trend story
+    // The desk's draft view works for a trend story, and carries the rewrite note
     const view = await call(who.op, "GET", `/drafts/${draftId}`);
     expect(view.body.story).toMatchObject({ source: "trend", priority: "normal", category: null, external: null });
+    expect(view.body.rewrite).toEqual(d!.d.rewrite);
     // Drafting the same news again gives the same draft
-    expect((await call(who.op, "POST", `/trends/${ids.hc}/draft`, { platform: "x" })).body).toEqual({ draftId, created: false });
+    expect((await call(who.op, "POST", `/trends/${ids.hc}/draft`, { platform: "x" })).body).toEqual({ draftId, created: false, rewrite: d!.d.rewrite });
 
     // Once rendered it is in the X queue like any other draft
     await h.db.update(postDrafts).set({ status: "ready", cardRenderedRev: 1, cardKey: "cards/t.png" }).where(eq(postDrafts.id, draftId));
     const queue = await call(who.op, "GET", "/x/queue");
     expect(queue.body.items.find((i: { id: string }) => i.id === draftId)).toMatchObject({ source: "trend", district: "Jaipur", priority: "normal", category: null });
+  });
+
+  it("blends up to 3 publishers of the same story into the draft and names them", async () => {
+    const story = { clusterId: "c-blend", type: "articles" as const, district: "Jodhpur", superTag: "Crime" };
+    const { items } = await saveTrendRun(h.db, orgId, { trigger: "schedule", startedAt: new Date(), sources: [] }, [
+      row({ ...story, rank: 1, title: "जोधपुर में सड़क हादसे में 4 की मौत", url: "https://www.bhaskar.com/jodhpur-1", sourceName: "Dainik Bhaskar",
+        summary: "जोधपुर में बुधवार रात तेज रफ्तार बस ने जीप को टक्कर मार दी। हादसे में 4 लोगों की मौत हो गई।" }),
+      row({ ...story, rank: 2, title: "जोधपुर में बस और जीप की भिड़ंत, 4 लोगों की गई जान", url: "https://www.patrika.com/jodhpur-1", sourceName: "Rajasthan Patrika",
+        summary: "मृतकों में 2 महिलाएं शामिल हैं। पुलिस ने बताया कि बस चालक फरार हो गया।" }),
+      row({ ...story, rank: 3, title: "जोधपुर हादसा: मुख्यमंत्री ने जताया दुख", url: "https://www.amarujala.com/jodhpur-1", sourceName: "Amar Ujala",
+        summary: "मुख्यमंत्री भजनलाल शर्मा ने हादसे पर दुख जताया और घायलों के बेहतर इलाज के निर्देश दिए।" }),
+      // Same publisher again (another window): never a second voice
+      row({ ...story, rank: 4, window: "7d", title: "जोधपुर में सड़क हादसे में 4 की मौत", url: "https://www.bhaskar.com/jodhpur-1", sourceName: "Dainik Bhaskar" }),
+    ]);
+    const res = await call(who.op, "POST", `/trends/${items[0]!.id}/draft`, { platform: "x" });
+    expect(res).toMatchObject({ status: 200, body: { created: true } });
+    const names = res.body.rewrite.sources.map((s: { name: string }) => s.name);
+    expect(names[0]).toBe("Dainik Bhaskar");
+    expect(names.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(names).size).toBe(names.length);
+    expect(res.body.rewrite.sources).toContainEqual({ name: "Rajasthan Patrika", url: "https://www.patrika.com/jodhpur-1" });
+    expect(res.body.rewrite.similarity).toBeLessThanOrEqual(0.4);
+
+    const [d] = await h.db.select({ d: postDrafts, s: stories }).from(postDrafts).innerJoin(stories, eq(stories.id, postDrafts.storyId)).where(eq(postDrafts.id, res.body.draftId));
+    // Facts from the others, each once; the headline's "4 की मौत" not repeated in the body
+    expect(d!.s.body).toMatch(/2 महिलाएं|बस चालक|भजनलाल शर्मा/u);
+    expect(d!.s.body).not.toMatch(/4 लोगों की मौत/u);
+    for (const source of ["Dainik Bhaskar", "Rajasthan Patrika", "Amar Ujala"]) expect(d!.s.sourceText).toContain(`${source}: `);
+    expect(d!.d.bodyText.startsWith("#Jodhpur: ")).toBe(true);
+    expect((await call(who.op, "GET", `/drafts/${res.body.draftId}`)).body.rewrite).toEqual(res.body.rewrite);
+  });
+
+  it("never fails a draft on the rewording: a throwing or empty rewriter keeps the source text, flagged tooClose", async () => {
+    const [op] = await h.db.select().from(users).where(eq(users.email, "op@test"));
+    const actorOp = { id: op!.id, orgId, name: op!.name, role: op!.role };
+    const { composer } = await loadRuleComposer(h.db, orgId);
+    const summary = "बाड़मेर में गुरुवार को 12 डिग्री तापमान दर्ज किया गया।";
+    const { items } = await saveTrendRun(h.db, orgId, { trigger: "schedule", startedAt: new Date(), sources: [] }, [
+      row({ rank: 1, type: "articles", title: "बाड़मेर में ठंड बढ़ी", url: "https://www.bhaskar.com/barmer-cold", district: "Barmer", summary }),
+      row({ rank: 2, type: "articles", title: "बाड़मेर में पारा गिरा", url: "https://www.bhaskar.com/barmer-mercury", district: "Barmer", summary }),
+    ]);
+    const throwing: Rewriter = { name: "rules", rewrite: async () => { throw new Error("boom"); } };
+    const empty: Rewriter = { name: "rules", rewrite: async () => ({ headline: "बाड़मेर में ठंड", body: "", usedSources: [] }) };
+
+    for (const [rewriter, item] of [[throwing, items[0]!], [empty, items[1]!]] as const) {
+      const out = await createTrendDraft(h.db, actorOp, item, composer, rewriter);
+      expect(out).toMatchObject({ created: true, rewrite: { mode: "rules", similarity: 1, tooClose: true, sources: [{ name: "Dainik Bhaskar", url: item.url }] } });
+      expect(out.rewriteError).toMatch(rewriter === throwing ? /boom/ : /body is empty/);
+      const [d] = await h.db.select({ d: postDrafts, s: stories }).from(postDrafts).innerJoin(stories, eq(stories.id, postDrafts.storyId)).where(eq(postDrafts.id, out.draftId));
+      expect(d!.s).toMatchObject({ headline: item.title, body: summary });
+      expect(d!.s.parseNote).toMatch(/Rewording failed/);
+      expect(d!.d.bodyText).toBe(`#Barmer: ${item.title}\n\n${summary}`);
+      expect(d!.d.rewrite).toEqual(out.rewrite);
+    }
+    // A headline-only item whose reworded body is empty is fine: nothing was lost
+    const { items: [bare] } = await saveTrendRun(h.db, orgId, { trigger: "schedule", startedAt: new Date(), sources: [] }, [
+      row({ rank: 1, type: "articles", title: "बाड़मेर में सर्दी का असर बढ़ा", url: "https://www.bhaskar.com/barmer-bare", district: "Barmer" }),
+    ]);
+    const ok = await createTrendDraft(h.db, actorOp, bare!, composer, new RuleRewriter());
+    expect(ok.rewriteError).toBeUndefined();
+    expect(ok.rewrite!.similarity).toBeLessThan(1);
   });
 
   it("serves the publisher's picture through the API, fetched once; refuses anything that is not PNG/JPEG/WebP", async () => {

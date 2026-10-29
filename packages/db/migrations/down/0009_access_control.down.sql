@@ -1,8 +1,22 @@
 -- Rollback of 0009_access_control. Not run by the migrator (it only reads meta/_journal.json); run it by hand,
 -- with the pre-0009 API and worker code deployed, e.g. psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <this file>.
 -- DESTRUCTIVE: custom roles, every role permission setting, every user exception and users.last_login_at are
--- dropped; users on a custom role become viewer (their old role is not kept). Audit rows stay.
+-- dropped; users on a custom role become viewer (their old role is not kept) and are signed out. Audit rows stay.
+-- Refuses (raises, nothing changed) unless 0009 is the newest row in drizzle.__drizzle_migrations.
 BEGIN;
+-- Guard: only when 0009 is the newest applied migration. Roll back anything newer first (its own down
+-- script), else this would remove 0009's journal row under a later schema and the migrator would re-apply it.
+DO $guard$
+DECLARE newest bigint;
+BEGIN
+  SELECT max("created_at") INTO newest FROM "drizzle"."__drizzle_migrations";
+  IF newest IS DISTINCT FROM 1793255717558 THEN
+    RAISE EXCEPTION '0009_access_control is not the newest applied migration (newest created_at: %). Roll back the newer migrations first.', newest;
+  END IF;
+END
+$guard$;
+-- Users moved to viewer lose their sessions, so nobody keeps a session minted under a removed role
+DELETE FROM "sessions" WHERE "user_id" IN (SELECT "id" FROM "users" WHERE "role" NOT IN ('operator', 'editor', 'admin', 'viewer'));
 UPDATE "users" SET "role" = 'viewer' WHERE "role" NOT IN ('operator', 'editor', 'admin', 'viewer');
 ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_org_role_fk";
 DROP INDEX IF EXISTS "users_org_role_idx";

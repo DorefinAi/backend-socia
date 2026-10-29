@@ -22,9 +22,10 @@ export type SociaEvent =
   | { type: "media.attached"; storyId: string; draftIds: string[]; count: number }
   /** A poll that ingested something or failed; the dashboard refetches /ingest/status */
   | { type: "ingest.status"; ok: boolean; at: string }
-  /** A user's access changed (role, platforms, deactivation, their role's permissions): their sockets are
-   *  disconnected so they reconnect, re-authenticate and join the right rooms. Never sent to browsers. */
-  | { type: "access.changed"; userIds: string[] };
+  /** A user's access changed (role, platforms, deactivation, their role's permissions, sessions revoked): their
+   *  sockets (or only those of `sessionIds`, e.g. a sign-out) are disconnected so they reconnect, re-authenticate
+   *  and join the right rooms. Never sent to browsers. */
+  | { type: "access.changed"; userIds: string[]; sessionIds?: string[] };
 
 export type SociaEventEnvelope = SociaEvent & { orgId: string; platform?: string };
 

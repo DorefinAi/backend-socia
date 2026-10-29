@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 import {
-  SUPER_TAGS, GENERAL_TAG, TRENDS_USER_AGENT, TREND_PLATFORMS, TREND_TOP, TREND_TYPES, TREND_WINDOWS, searchTrendSources, trendTagger, watchHits, watchKey,
+  SUPER_TAGS, GENERAL_TAG, TRENDS_USER_AGENT, TREND_PLATFORMS, TREND_TOP, TREND_TYPES, TREND_WINDOWS, createRewriter, searchTrendSources, trendTagger, watchHits, watchKey,
   type PaceStore, type TextGet,
 } from "@socia/core";
 import {
@@ -128,7 +128,7 @@ export function sniffImage(buf: Buffer): "image/png" | "image/jpeg" | "image/web
   return null;
 }
 
-export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage, web, pace }) => {
+export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage, web, pace, config }) => {
   const get: WebGet = web ?? politeGet(process.env.TRENDS_USER_AGENT ?? TRENDS_USER_AGENT);
   const text: TextGet = (url) => getText(get, url, { timeoutMs: url.includes("gdeltproject.org") ? 30_000 : 15_000, maxBytes: 5 * 1024 * 1024 });
   // Shared with the worker through the kv table: one IP, one GDELT allowance
@@ -136,7 +136,13 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
   const gdelt = process.env.TRENDS_GDELT !== "false";
   const searches = new SlidingLimiter(SEARCHES_PER_MINUTE, 60_000);
   const refreshes = new SlidingLimiter(REFRESHES_PER_MINUTE, 60_000);
+  app.addHook("onClose", async () => {
+    searches.close();
+    refreshes.close();
+  });
   const failedImages = new Map<string, number>();
+  // REWRITE_MODE (rules only for now): drafts from a trend are reworded, never the publisher's words
+  const rewriter = createRewriter(config.rewriteMode);
   const inFlight = new Map<string, Promise<{ body: Buffer; type: string } | null>>();
 
   const keywordsOf = async (userId: string) => (await listTrendWatches(db, userId)).map((w) => w.keyword);
@@ -246,8 +252,10 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
       const item = await getTrendItem(db, user.orgId, req.params.id);
       if (!item) throw new HttpError(404, "not_found", "This trend is gone (runs are kept for 7 days). Refresh the list.");
       const { composer } = await loadRuleComposer(db, user.orgId);
-      const { draftId, created } = await createTrendDraft(db, actor(user), item, composer);
-      return { draftId, created };
+      const { draftId, created, rewrite, rewriteError } = await createTrendDraft(db, actor(user), item, composer, rewriter);
+      // The draft still exists (publisher's text, tooClose); the reason is for the logs only
+      if (rewriteError) req.log.warn({ trendItemId: item.id, draftId, rewriteError }, "trend draft: rewording failed, kept the source text");
+      return { draftId, created, rewrite };
     },
   );
 

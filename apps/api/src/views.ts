@@ -87,6 +87,8 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
     job: job ? { id: job.id, kind: job.kind, status: job.status, sendAt: job.nextAttemptAt, attempts: job.attempts, error: job.lastError } : null,
     composeMethod: draft.composeMethod,
     composeVersion: draft.composeVersion,
+    /** Web Scraper drafts: how the publishers' text was reworded (mode, similarity, tooClose, sources); else null */
+    rewrite: draft.rewrite ?? null,
     createdAt: draft.createdAt,
     updatedAt: draft.updatedAt,
     story: {

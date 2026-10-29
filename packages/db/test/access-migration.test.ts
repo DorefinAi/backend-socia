@@ -34,6 +34,9 @@ const settings = { hashtagScript: "latin" as const, fixedHashtags: [], maxHashta
       { orgId: org!.id, name: "V", email: "v@test", passwordHash: "x", role: "video-desk" },
       { orgId: org!.id, name: "E", email: "e@test", passwordHash: "x", role: "editor" },
     ]);
+    // Rollbacks run newest first: the migrator only applies what is newer than the last one it recorded
+    await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0010_draft_rewrite.down.sql"), "utf8"));
+    expect(await rows(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'post_drafts' AND column_name = 'rewrite'`)).toEqual([]);
     await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0009_access_control.down.sql"), "utf8"));
 
     expect(await rows(sql`SELECT email, role FROM users ORDER BY email`)).toEqual([{ email: "e@test", role: "editor" }, { email: "v@test", role: "viewer" }]);
@@ -44,5 +47,9 @@ const settings = { hashtagScript: "latin" as const, fixedHashtags: [], maxHashta
     await runMigrations(TEST_URL!);
     expect((await h.db.select().from(roles)).map((r) => r.key).sort()).toEqual(["admin", "editor", "operator", "viewer"]);
     expect(await rows(sql`SELECT conname FROM pg_constraint WHERE conname IN ('users_role_check', 'users_org_role_fk')`)).toEqual([{ conname: "users_org_role_fk" }]);
+    // 0010 came back too (post_drafts.rewrite, nullable jsonb)
+    expect(await rows(sql`SELECT data_type, is_nullable FROM information_schema.columns WHERE table_name = 'post_drafts' AND column_name = 'rewrite'`)).toEqual([
+      { data_type: "jsonb", is_nullable: "YES" },
+    ]);
   });
 });

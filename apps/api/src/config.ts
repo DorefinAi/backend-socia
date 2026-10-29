@@ -1,3 +1,4 @@
+import { rewriteModeFrom, type RewriteMode } from "@socia/core";
 import { LocalStorage, S3Storage, type Storage } from "@socia/providers";
 
 export interface ApiConfig {
@@ -13,6 +14,32 @@ export interface ApiConfig {
   secretKey: string;
   /** Development only: serve LocalStorage files at /dev-files */
   storageDir: string | null;
+  /** REWRITE_MODE: how Web Scraper drafts are reworded; resolved at load ("rules" when unset, the only mode for now) */
+  rewriteMode: RewriteMode;
+  /**
+   * TRUST_PROXY: which proxies may set X-Forwarded-For (and so req.ip, the sign-in rate-limit key).
+   * false (default): the socket address, X-Forwarded-For ignored. A number: that many proxy hops in front
+   * (1 behind Render or one load balancer); only safe when the API cannot be reached without passing the
+   * proxy. A list: the proxies' addresses/CIDRs (safer when known). Never `true`: any client could then pick
+   * its own IP.
+   */
+  trustProxy: TrustProxy;
+}
+
+export type TrustProxy = false | number | string[];
+
+/** Parses TRUST_PROXY; an unusable value stops startup instead of trusting the wrong hops */
+export function trustProxyFrom(value: string | undefined): TrustProxy {
+  const v = (value ?? "").trim();
+  if (!v || v.toLowerCase() === "false" || v === "0") return false;
+  if (/^\d+$/.test(v)) return Number(v);
+  if (v.toLowerCase() === "true") {
+    throw new Error("TRUST_PROXY=true would let any client set its own IP. Use the number of proxy hops (e.g. 1) or the proxies' addresses.");
+  }
+  const list = v.split(",").map((x) => x.trim()).filter(Boolean);
+  const bad = list.filter((x) => !/^[0-9a-fA-F:.]+(\/\d{1,3})?$/.test(x) && !["loopback", "linklocal", "uniquelocal"].includes(x));
+  if (bad.length) throw new Error(`TRUST_PROXY: not an address, CIDR or hop count: ${bad.join(", ")}`);
+  return list;
 }
 
 function need(name: string): string {
@@ -31,6 +58,9 @@ export function loadConfig(): ApiConfig {
     requireTotp: process.env.REQUIRE_TOTP !== "false",
     secretKey: need("SECRET_KEY"),
     storageDir: process.env.STORAGE_DIR ?? null,
+    // An unknown mode stops startup instead of drafting with the wrong rewriter
+    rewriteMode: rewriteModeFrom(process.env.REWRITE_MODE),
+    trustProxy: trustProxyFrom(process.env.TRUST_PROXY),
   };
 }
 

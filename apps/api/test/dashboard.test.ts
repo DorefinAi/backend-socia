@@ -24,7 +24,7 @@ const URL = process.env.TEST_DATABASE_URL;
 
   const config: ApiConfig = {
     databaseUrl: URL ?? "", port: 0, corsOrigins: ["http://localhost:3005"], cookieSecure: false, sessionHours: 12, requireTotp: false,
-    secretKey: Buffer.alloc(32, 3).toString("base64"), storageDir: null,
+    secretKey: Buffer.alloc(32, 3).toString("base64"), storageDir: null, rewriteMode: "rules", trustProxy: false,
   };
 
   const get = async (url: string) => {

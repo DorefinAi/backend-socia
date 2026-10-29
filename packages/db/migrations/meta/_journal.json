@@ -71,6 +71,13 @@
       "when": 1793255717558,
       "tag": "0009_access_control",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793294825236,
+      "tag": "0010_draft_rewrite",
+      "breakpoints": true
     }
   ]
 }

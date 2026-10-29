@@ -1,14 +1,18 @@
-// The Web Scraper (contract: handoff/web-scraper-contract.md). Reads the trend runs the worker stores;
+// The Web Scraper (contracts: handoff/web-scraper-contract.md, handoff/scraper-analytics-contract.md §A).
+// Reads the trend runs the worker stores; stories told by several publishers come back as one row with
+// their sources, items carry a district, and each user's watched keywords mark (and can filter) items.
 // a live search and the trend pictures are the only calls that go out to the web from the API, and
 // only to the free public sources (and the picture URLs those sources gave). No AI anywhere.
 
 import { createHash } from "node:crypto";
 import {
-  SUPER_TAGS, GENERAL_TAG, TRENDS_USER_AGENT, TREND_PLATFORMS, TREND_TYPES, TREND_WINDOWS, searchTrendSources, trendTagger, type PaceStore, type TextGet,
+  SUPER_TAGS, GENERAL_TAG, TRENDS_USER_AGENT, TREND_PLATFORMS, TREND_TOP, TREND_TYPES, TREND_WINDOWS, searchTrendSources, trendTagger, watchHits, watchKey,
+  type PaceStore, type TextGet,
 } from "@socia/core";
 import {
-  activeHashtagRules, createTrendDraft, getTrendItem, kvPaceStore, latestTrendRun, listTrendItems, loadRuleComposer, previousSourceHealth, requestTrendRefresh, saveTrendRun,
-  type Actor, type TrendItem,
+  TREND_WATCH_MAX, activeHashtagRules, addTrendWatch, createTrendDraft, deleteTrendWatch, getTrendItem, kvPaceStore, latestTrendRun, listTrendItems, listTrendWatches,
+  loadRuleComposer, previousSourceHealth, requestTrendRefresh, saveTrendRun, trendDistrictCounts,
+  type Actor, type TrendItem, type TrendWatch,
 } from "@socia/db";
 import { getText, politeGet, type WebGet } from "@socia/providers";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
@@ -34,12 +38,19 @@ const ListQuery = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 100 })),
   platform: Type.Optional(literals(TREND_PLATFORMS)),
   superTag: Type.Optional(literals([...SUPER_TAGS, GENERAL_TAG])),
+  /** English district name ("Sawai Madhopur"), case-insensitive */
+  district: Type.Optional(Type.String({ minLength: 1, maxLength: 60 })),
+  /** 1: only items matching the user's watched keywords */
+  watched: Type.Optional(literals(["0", "1"])),
+  /** 0: every item (each publisher's article); default 1: one row per story */
+  group: Type.Optional(literals(["0", "1"])),
 });
 
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
 
-/** The frontend's ScraperItem, plus district, publisher and the picture (through this API) */
-export function trendView(t: TrendItem) {
+/** The frontend's ScraperItem, plus district, publisher, the picture (through this API), the story and watch hits */
+export function trendView(t: TrendItem, extra: { watchHits?: string[]; sources?: TrendItem["sources"] } = {}) {
+  const sources = extra.sources ?? t.sources ?? [];
   return {
     id: t.id,
     rank: t.rank,
@@ -59,8 +70,55 @@ export function trendView(t: TrendItem) {
     imageUrl: t.imageUrl ? `/trends/${t.id}/image` : null,
     imageSource: t.imageUrl ? t.imageSource : null,
     alert: t.alert ?? null,
+    /** Items about the same story share it (rows stored before the story grouping: the item's own id) */
+    clusterId: t.clusterId ?? t.id,
+    /** Publishers / channels with the story (at least 1: this item's own) */
+    sourceCount: Math.max(1, sources.length),
+    sources: sources.length ? sources : [{ name: t.sourceName, url: t.url, publishedAt: t.publishedAt?.toISOString() ?? null }],
+    /** The user's watched keywords found in the title or summary */
+    watchHits: extra.watchHits ?? [],
   };
 }
+
+/** The text a watched keyword is looked for in */
+const watchText = (t: TrendItem) => `${t.title} ${t.summary}`;
+
+export interface StoryRow {
+  item: TrendItem;
+  watchHits: string[];
+  rank: number;
+}
+
+/**
+ * Rows in rank order, one per story when grouped (its best-ranked item; watch hits of every member),
+ * numbered 1..n. Without a narrowing filter only the top 20 stories are shown (the rest of the pool is
+ * there for the district filter, search and watches).
+ */
+export function storyRows(items: TrendItem[], keywords: string[], opts: { group: boolean; top: boolean; watchedOnly: boolean }): StoryRow[] {
+  const sorted = [...items].sort((a, b) => a.rank - b.rank);
+  const story = (t: TrendItem) => t.clusterId ?? t.id;
+  const storyRank = (t: TrendItem) => t.clusterRank ?? t.rank;
+  const hits = new Map<string, string[]>();
+  for (const t of sorted) {
+    const found = watchHits(keywords, watchText(t));
+    if (found.length) hits.set(story(t), [...new Set([...(hits.get(story(t)) ?? []), ...found])]);
+  }
+  let rows = sorted.filter((t) => !opts.top || storyRank(t) <= TREND_TOP);
+  if (opts.group) {
+    const seen = new Set<string>();
+    rows = rows.filter((t) => !seen.has(story(t)) && !!seen.add(story(t)));
+  }
+  const out = rows.map((item) => ({ item, watchHits: opts.group ? hits.get(story(item)) ?? [] : watchHits(keywords, watchText(item)), rank: item.rank }));
+  return (opts.watchedOnly ? out.filter((r) => r.watchHits.length) : out).map((r, i) => ({ ...r, rank: opts.group ? i + 1 : r.rank }));
+}
+
+const viewRow = (r: StoryRow) => ({ ...trendView(r.item, { watchHits: r.watchHits }), rank: r.rank });
+
+const watchView = (w: TrendWatch) => ({ id: w.id, keyword: w.keyword, createdAt: w.createdAt.toISOString() });
+
+/** Hits newer than this are "new" when the desk does not say since when */
+const HITS_DEFAULT_MS = 24 * 3600_000;
+const HITS_MAX_ITEMS = 50;
 
 /** PNG, JPEG or WebP from the first bytes; anything else is not served */
 export function sniffImage(buf: Buffer): "image/png" | "image/jpeg" | "image/webp" | null {
@@ -81,15 +139,76 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
   const failedImages = new Map<string, number>();
   const inFlight = new Map<string, Promise<{ body: Buffer; type: string } | null>>();
 
+  const keywordsOf = async (userId: string) => (await listTrendWatches(db, userId)).map((w) => w.keyword);
+
   app.get("/trends", { schema: { querystring: ListQuery } }, async (req) => {
     const { user } = guard(req);
     const run = await latestTrendRun(db, user.orgId);
     if (!run) return { items: [], fetchedAt: null, sources: [], alerts: [] };
+    const district = req.query.district?.trim() || undefined;
+    const q = req.query.q?.trim() || undefined;
+    const watchedOnly = req.query.watched === "1";
     const items = await listTrendItems(db, run.id, {
-      type: req.query.type ?? "topics", window: req.query.window ?? "24h", q: req.query.q, platform: req.query.platform, superTag: req.query.superTag,
+      type: req.query.type ?? "topics", window: req.query.window ?? "24h", q, platform: req.query.platform, superTag: req.query.superTag, district,
     });
-    return { items: items.map(trendView), fetchedAt: run.finishedAt?.toISOString() ?? null, sources: run.sources, alerts: run.alerts };
+    const rows = storyRows(items, await keywordsOf(user.id), { group: req.query.group !== "0", top: !district && !q && !watchedOnly, watchedOnly });
+    return { items: rows.map(viewRow), fetchedAt: run.finishedAt?.toISOString() ?? null, sources: run.sources, alerts: run.alerts };
   });
+
+  /** Article stories per district in the newest run's 24 h list, most first */
+  app.get("/trends/districts", async (req) => {
+    const { user } = guard(req);
+    const run = await latestTrendRun(db, user.orgId);
+    return { districts: run ? await trendDistrictCounts(db, run.id) : [], fetchedAt: run?.finishedAt?.toISOString() ?? null };
+  });
+
+  // ─── Keyword watches (per user) ─────────────────────────────────────────────
+
+  app.get("/me/trend-watches", async (req) => {
+    const { user } = guard(req);
+    return { watches: (await listTrendWatches(db, user.id)).map(watchView), max: TREND_WATCH_MAX };
+  });
+
+  app.post(
+    "/me/trend-watches",
+    { schema: { body: Type.Object({ keyword: Type.String({ minLength: 1, maxLength: 80 }) }, { additionalProperties: false }) } },
+    async (req, reply) => {
+      const { user } = guard(req);
+      const keyword = req.body.keyword.replace(/\s+/g, " ").trim();
+      if (!keyword || !watchKey(keyword)) throw new HttpError(400, "invalid", "Type a word or name to watch (letters or digits).");
+      const added = await addTrendWatch(db, user, keyword);
+      if (!added) throw new HttpError(409, "watch_limit", `Up to ${TREND_WATCH_MAX} keywords each. Remove one to add another.`);
+      return reply.status(added.created ? 201 : 200).send({ watch: watchView(added.watch), created: added.created });
+    },
+  );
+
+  app.delete("/me/trend-watches/:id", { schema: { params: Id } }, async (req, reply) => {
+    const { user } = guard(req);
+    if (!(await deleteTrendWatch(db, user.id, req.params.id))) throw new HttpError(404, "not_found", "That keyword is not on your watch list.");
+    return reply.status(204).send();
+  });
+
+  /** Stories of the newest run (articles, 7 d pool) matching the user's keywords, published after `since` */
+  app.get(
+    "/me/trend-watches/hits",
+    { schema: { querystring: Type.Object({ since: Type.Optional(Type.String({ format: "date-time" })) }) } },
+    async (req) => {
+      const { user } = guard(req);
+      const since = req.query.since ? new Date(req.query.since) : new Date(Date.now() - HITS_DEFAULT_MS);
+      const keywords = await keywordsOf(user.id);
+      const run = await latestTrendRun(db, user.orgId);
+      if (!run || !keywords.length) return { count: 0, items: [], since: since.toISOString(), fetchedAt: run?.finishedAt?.toISOString() ?? null };
+      const items = await listTrendItems(db, run.id, { type: "articles", window: "7d" });
+      // Undated items (some government feeds) never count as new
+      const rows = storyRows(items, keywords, { group: true, top: false, watchedOnly: true }).filter((r) => r.item.publishedAt && r.item.publishedAt > since);
+      return {
+        count: rows.length,
+        items: rows.slice(0, HITS_MAX_ITEMS).map((r, i) => viewRow({ ...r, rank: i + 1 })),
+        since: since.toISOString(),
+        fetchedAt: run.finishedAt?.toISOString() ?? null,
+      };
+    },
+  );
 
   app.post("/trends/search", { schema: { body: Type.Object({ q: Type.String({ minLength: 2, maxLength: 100 }) }, { additionalProperties: false }) } }, async (req) => {
     const { user } = guard(req);
@@ -101,7 +220,8 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
     const { rows, health } = await searchTrendSources(text, q, tagger, startedAt, paceStore, await previousSourceHealth(db, user.orgId), gdelt);
     // Stored like a run (kept apart from the desk's list), so a result can be drafted and its picture shown
     const { items } = await saveTrendRun(db, user.orgId, { trigger: "search", query: q, startedAt, sources: health }, rows);
-    return { items: items.map(trendView), sources: health };
+    const found = storyRows(items, await keywordsOf(user.id), { group: false, top: false, watchedOnly: false });
+    return { items: found.map(viewRow), sources: health };
   });
 
   app.post("/trends/refresh", async (req, reply) => {

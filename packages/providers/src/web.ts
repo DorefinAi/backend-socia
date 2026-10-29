@@ -36,9 +36,11 @@ const MAX_REDIRECTS = 3;
 /** Loopback, private, link-local, CGNAT, multicast, reserved: never fetched. */
 export function privateAddress(ip: string): boolean {
   if (isIP(ip) === 4) {
-    const [a, b] = ip.split(".").map(Number) as [number, number];
+    const [a, b, c] = ip.split(".").map(Number) as [number, number, number];
+    // 192.0.0.0/24 (IETF) and 192.0.2.0/24 (TEST-NET-1) only: the rest of 192.0.x.x is ordinary public space
+    // (Patrika's feeds are served from 192.0.66.x)
     return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19));
+      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0 && (c === 0 || c === 2)) || (a === 198 && (b === 18 || b === 19));
   }
   const v6 = ip.toLowerCase();
   if (v6 === "::" || v6 === "::1") return true;

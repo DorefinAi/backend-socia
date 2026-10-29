@@ -32,7 +32,8 @@ describe("sniffImage", () => {
 
 const row = (r: Partial<TrendRow> & Pick<TrendRow, "title" | "rank">): TrendRow => ({
   type: "topics", window: "24h", url: `https://www.bhaskar.com/${r.rank}`, platform: "RSS", sourceName: "Dainik Bhaskar", reasonWhy: "", superTag: "Politics", subTag: "",
-  district: null, volume: "", growth: "", shares: "", publishedAt: new Date(), imageUrl: null, imageSource: null, headline: r.title, summary: "", alert: null, score: 0, ...r,
+  district: null, volume: "", growth: "", shares: "", publishedAt: new Date(), imageUrl: null, imageSource: null, headline: r.title, summary: "", alert: null,
+  clusterId: `c${r.rank}`, clusterRank: r.rank, sources: [], score: 0, ...r,
 });
 
 (URL ? describe : describe.skip)("trends API", () => {
@@ -132,6 +133,8 @@ const row = (r: Partial<TrendRow> & Pick<TrendRow, "title" | "rank">): TrendRow 
       reasonWhy: "हाईकोर्ट का फैसला (Dainik Bhaskar)", superTag: "Politics", subTag: "", timeFrame: "24h", scrapedAt: expect.any(String), publishedAt: expect.any(String),
       district: "Jaipur", sourceName: "Dainik Bhaskar", imageUrl: `/trends/${ids.hc}/image`, imageSource: "Dainik Bhaskar",
       alert: { level: "orange", title: "भारी बारिश की संभावना", validUntil: "2026-10-28T19:00:00.000Z" },
+      // v2 (scraper-analytics-contract §A): the story, its sources (this row has none stored: its own), watch hits
+      clusterId: "c1", sourceCount: 1, sources: [{ name: "Dainik Bhaskar", url: "https://www.bhaskar.com/1", publishedAt: expect.any(String) }], watchHits: [],
     });
     expect(res.body.alerts).toEqual([expect.objectContaining({ level: "orange", districts: ["Jaipur"], source: "NDMA Sachet" })]);
     expect((await call(who.viewer, "GET", "/trends?type=topics&superTag=Weather")).body.items.map((i: { id: string }) => i.id)).toEqual([ids.rain]);

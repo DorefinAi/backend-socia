@@ -5,7 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { metaImage, parseYoutubeChannels, runTrendSources, trendTagger, type PaceStore, type SourcePlan, type TextGet, type YoutubeChannel } from "@socia/core";
 import {
-  activeHashtagRules, knownPageImages, kvPaceStore, latestTrendRun, previousSourceHealth, pruneTrends, saveTrendRun, setPageImage, trendRefreshRequestedAt,
+  activeHashtagRules, knownPageImages, kvPaceStore, latestTrendRun, orgWatchKeywords, previousSourceHealth, pruneTrends, saveTrendRun, setPageImage, trendRefreshRequestedAt,
   type Db, type TrendItem, type TrendTrigger,
 } from "@socia/db";
 import { getText, type WebGet } from "@socia/providers";
@@ -83,7 +83,9 @@ export class TrendsJob {
     const tagger = trendTagger(await activeHashtagRules(db, orgId));
     const previous = await previousSourceHealth(db, orgId);
     const plan = { ...settings.plan, youtube: await this.youtubeChannels() };
-    const { rows, health, alerts } = await runTrendSources(this.text, plan, tagger, startedAt, this.pace, previous);
+    // Stories matching anyone's watched keywords are kept even past the pool size
+    const watch = await orgWatchKeywords(db, orgId);
+    const { rows, health, alerts } = await runTrendSources(this.text, plan, tagger, startedAt, this.pace, previous, watch);
     const { run, items } = await saveTrendRun(db, orgId, { trigger, startedAt, sources: health, alerts }, rows);
     this.lastRunAt = this.now().getTime();
     log.info({ trigger, runId: run.id, items: items.length, sources: health.map((h) => `${h.name}:${h.ok ? h.items : `x ${h.lastError}`}`) }, "trends run stored");

@@ -178,6 +178,8 @@ export const stories = pgTable(
     index("stories_slug_idx").on(t.orgId, t.slug, t.createdAt),
     uniqueIndex("stories_external_key").on(t.orgId, t.source, t.externalId).where(sql`${t.externalId} IS NOT NULL`),
     index("stories_source_recent_idx").on(t.source, t.createdAt),
+    // Desk analytics: stories received per day
+    index("stories_org_created_idx").on(t.orgId, t.createdAt),
   ],
 );
 
@@ -314,20 +316,43 @@ export const publishedPosts = pgTable(
   ],
 );
 
+/** When a post's numbers are captured, by its age: each once */
+export const METRIC_AGE_BUCKETS = ["1h", "6h", "24h", "3d", "7d"] as const;
+export type MetricAgeBucket = (typeof METRIC_AGE_BUCKETS)[number];
+
+/**
+ * A post's numbers on its platform at an age bucket (worker role "metrics"). Rows from before 0007 have
+ * no bucket (the old 6-hourly X pull). comments / shares / saves are the old names, still filled
+ * (= replies, reposts + quotes, bookmarks) for GET /posts.
+ */
 export const postMetrics = pgTable(
   "post_metrics",
   {
     id: bigserial("id", { mode: "number" }).primaryKey(),
+    orgId: uuid("org_id").notNull().references(() => orgs.id),
     postId: uuid("post_id").notNull().references(() => publishedPosts.id),
+    platform: text("platform").notNull().default("x"),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+    ageBucket: text("age_bucket").$type<MetricAgeBucket>(),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
     impressions: integer("impressions"),
     likes: integer("likes"),
+    reposts: integer("reposts"),
+    replies: integer("replies"),
+    quotes: integer("quotes"),
+    bookmarks: integer("bookmarks"),
     comments: integer("comments"),
     shares: integer("shares"),
     saves: integer("saves"),
     videoViews: integer("video_views"),
+    /** The provider's answer; { source: "fake" } for made-up numbers */
+    raw: jsonb("raw").$type<Record<string, unknown>>(),
   },
-  (t) => [index("post_metrics_post_idx").on(t.postId, t.fetchedAt)],
+  (t) => [
+    index("post_metrics_post_idx").on(t.postId, t.fetchedAt),
+    uniqueIndex("post_metrics_post_bucket_key").on(t.postId, t.ageBucket),
+    check("post_metrics_age_bucket_check", sql`${t.ageBucket} IS NULL OR ${t.ageBucket} IN ('1h', '6h', '24h', '3d', '7d')`),
+  ],
 );
 
 // ─── Web trends (the Web Scraper) ────────────────────────────────────────────
@@ -413,9 +438,37 @@ export const trendItems = pgTable(
     ogChecked: boolean("og_checked").notNull().default(false),
     /** The desk's badge: a warning in force for this item's district */
     alert: jsonb("alert").$type<{ level: "red" | "orange" | "yellow" | "info"; title: string; validUntil?: string }>(),
+    /** Items about the same story share it; null on runs stored before migration 0007 (each its own story) */
+    clusterId: text("cluster_id"),
+    /** The story's place among its type and window's stories; null before 0007 (= rank) */
+    clusterRank: integer("cluster_rank"),
+    /** One per publisher or channel that has the story, newest first */
+    sources: jsonb("sources").$type<TrendItemSource[]>().notNull().default(sql`'[]'::jsonb`),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("trend_items_run_idx").on(t.runId, t.type, t.window, t.rank), index("trend_items_url_idx").on(t.url)],
+);
+
+export interface TrendItemSource {
+  name: string;
+  url: string;
+  publishedAt: string | null;
+}
+
+/** Keywords a desk user watches in the Web Scraper (at most 50 each) */
+export const trendWatches = pgTable(
+  "trend_watches",
+  {
+    id: id(),
+    orgId: orgId(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    keyword: text("keyword").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("trend_watches_user_keyword_key").on(t.userId, sql`lower(${t.keyword})`),
+    index("trend_watches_org_idx").on(t.orgId),
+  ],
 );
 
 // ─── Dictionaries ────────────────────────────────────────────────────────────
@@ -508,7 +561,11 @@ export const auditLog = pgTable(
     after: jsonb("after"),
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("audit_log_entity_idx").on(t.entityType, t.entityId, t.at)],
+  (t) => [
+    index("audit_log_entity_idx").on(t.entityType, t.entityId, t.at),
+    // Desk analytics: approvals, rejections and manual posts per period
+    index("audit_log_action_idx").on(t.orgId, t.action, t.at),
+  ],
 );
 
 /** Small state: the FTP watermark, the last Wikidata sync. */

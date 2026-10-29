@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { googleNewsSearchUrl, googleTrendsUrl, type SourcePlan } from "@socia/core";
+import { TREND_ARTICLE_POOL, googleNewsSearchUrl, googleTrendsUrl, type SourcePlan } from "@socia/core";
 import { createDb, orgs, requestTrendRefresh, runMigrations, trendItems, trendRuns, users, type DbHandle } from "@socia/db";
 import type { WebGet } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
@@ -82,10 +82,16 @@ function fakeWeb() {
     const items = await h.db.select().from(trendItems).where(eq(trendItems.runId, run!.id));
     expect(items.length).toBe(run!.itemCount);
     for (const type of ["topics", "articles", "hashtags"]) {
-      const ranks = items.filter((i) => i.type === type && i.window === "24h").map((i) => i.rank).sort((a, b) => a - b);
+      const rows = items.filter((i) => i.type === type && i.window === "24h");
+      const ranks = rows.map((i) => i.rank).sort((a, b) => a - b);
       expect(ranks.length).toBeGreaterThan(0);
-      expect(ranks.length).toBeLessThanOrEqual(20);
       expect(ranks).toEqual(ranks.map((_, i) => i + 1));
+      // Every row belongs to a story; story ranks run 1..n; topics and hashtags keep 20, articles a pool of 50 stories
+      expect(rows.every((r) => r.clusterId && r.clusterRank)).toBe(true);
+      const stories = [...new Set(rows.map((r) => r.clusterRank!))].sort((a, b) => a - b);
+      expect(stories).toEqual(stories.map((_, i) => i + 1));
+      expect(stories.length).toBeLessThanOrEqual(type === "articles" ? TREND_ARTICLE_POOL : 20);
+      if (type !== "articles") expect(ranks.length).toBeLessThanOrEqual(20);
     }
 
     // Each feed once; Amar Ujala article pages once each for og:image; Google News links are never read

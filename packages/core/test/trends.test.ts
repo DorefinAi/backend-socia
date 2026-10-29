@@ -137,10 +137,17 @@ describe("grouping and ranking", () => {
       article("Mumbai local trains delayed by rain", { url: "https://m.in/1" }),
       article("जयपुर में बारिश से जलभराव", { url: "https://j.in/1", rajasthanFeed: true }),
       article("Old Jaipur story from last week", { url: "https://j.in/old", publishedAt: new Date(NOW.getTime() - 3 * 86400_000) }),
-      ...Array.from({ length: 30 }, (_, i) => article(`Rajasthan item number ${i} unique${i} words${i}`, { url: `https://r.in/${i}` })),
+      // 30 different stories: no word or trigram in common beyond "Rajasthan"
+      ...Array.from({ length: 30 }, (_, i) => {
+        const c = String.fromCodePoint(0x4e00 + i * 7);
+        return article(`Rajasthan ${c.repeat(3)} ${c.repeat(4)} ${c.repeat(5)}`, { url: `https://r.in/${i}` });
+      }),
     ];
     const rows = buildTrends({ articles, topics: [] }, tagger, NOW);
-    const day = rows.filter((r) => r.type === "articles" && r.window === "24h");
+    const pool = rows.filter((r) => r.type === "articles" && r.window === "24h");
+    // Every story of the window is kept (fewer than the pool size); the desk's list is the top 20 stories
+    expect(pool).toHaveLength(32);
+    const day = pool.filter((r) => r.clusterRank <= TREND_TOP);
     expect(day).toHaveLength(TREND_TOP);
     expect(day[0]!.title).toBe("जयपुर में बारिश से जलभराव");
     expect(day[0]).toMatchObject({ rank: 1, district: "Jaipur", superTag: "Weather" });
@@ -255,7 +262,7 @@ describe("collecting the sources", () => {
       districts.map((district, i) => ({
         type: "topics", window: "24h", rank: i + 1, title: `Topic ${i + 1}`, url: `https://t.in/${i}`, platform: "RSS", sourceName: "S",
         reasonWhy: "", superTag: "Politics", subTag: "", district, volume: "1 article", growth: "", shares: "", publishedAt: NOW, imageUrl: null, imageSource: null,
-        headline: `Topic ${i + 1}`, summary: "", alert: null, score: 0,
+        headline: `Topic ${i + 1}`, summary: "", alert: null, clusterId: `t${i}`, clusterRank: i + 1, sources: [], score: 0,
       }));
 
     it("asks about the top topics, the minimum gap apart (12 s); topics with the same district share a call", async () => {

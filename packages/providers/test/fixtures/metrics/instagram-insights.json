@@ -1,0 +1,10 @@
+{
+  "data": [
+    { "name": "views", "period": "lifetime", "values": [{ "value": 15320 }], "title": "Views", "id": "17900/insights/views/lifetime" },
+    { "name": "reach", "period": "lifetime", "values": [{ "value": 11002 }], "title": "Accounts reached", "id": "17900/insights/reach/lifetime" },
+    { "name": "likes", "period": "lifetime", "values": [{ "value": 640 }], "title": "Likes", "id": "17900/insights/likes/lifetime" },
+    { "name": "comments", "period": "lifetime", "values": [{ "value": 28 }], "title": "Comments", "id": "17900/insights/comments/lifetime" },
+    { "name": "shares", "period": "lifetime", "values": [{ "value": 51 }], "title": "Shares", "id": "17900/insights/shares/lifetime" },
+    { "name": "saved", "period": "lifetime", "values": [{ "value": 19 }], "title": "Saved", "id": "17900/insights/saved/lifetime" }
+  ]
+}

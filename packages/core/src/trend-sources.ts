@@ -4,7 +4,7 @@
 // stays free of I/O.
 
 import {
-  TREND_WINDOWS, alertLevel, buildTrends, gdeltVolume, isRajasthanAlert, parseAtom, parseCap, parseGdeltTimeline, parseGoogleTrends, parseRss,
+  TREND_WINDOWS, alertLevel, buildTrends, clusterIdOf, gdeltVolume, isRajasthanAlert, parseAtom, parseCap, parseGdeltTimeline, parseGoogleTrends, parseRss,
   parseSachetRss, parseWikiTop, type RawArticle, type RawTopic, type TrendAlert, type TrendRow, type TrendTagger, type VolumePoint,
 } from "./trends";
 
@@ -66,10 +66,25 @@ export interface FeedConfig {
   rajasthan: boolean;
 }
 
-/** Publisher feeds that answered on 28 Oct 2026 (Patrika, First India, NDTV Rajasthan, Jagran, Live Hindustan and Zee did not) */
+/**
+ * Publisher feeds that answered on 28 Oct 2026, plus the Rajasthan feeds found on 29 Oct 2026 (Patrika's
+ * state and city feeds on cms.patrika.com, News18 Rajasthan, TV9 Bharatvarsh Rajasthan, ABP Live
+ * Rajasthan). Zee Rajasthan (403), ETV Bharat (404/410), First India's site and Dainik Navjyoti (no feed;
+ * DNS failure) did not; see handoff/scraper-analytics-contract.md.
+ */
 export const DEFAULT_FEEDS: FeedConfig[] = [
   { name: "Dainik Bhaskar", url: "https://www.bhaskar.com/rss-v1--category-1740.xml", rajasthan: true },
   { name: "Amar Ujala", url: "https://www.amarujala.com/rss/rajasthan.xml", rajasthan: true },
+  { name: "Rajasthan Patrika", url: "https://cms.patrika.com/googlefeed/blog/location/rajasthan-news", rajasthan: true },
+  { name: "Patrika Jaipur", url: "https://cms.patrika.com/googlefeed/blog/location/jaipur-news", rajasthan: true },
+  { name: "Patrika Jodhpur", url: "https://cms.patrika.com/googlefeed/blog/location/jodhpur-news", rajasthan: true },
+  { name: "Patrika Udaipur", url: "https://cms.patrika.com/googlefeed/blog/location/udaipur-news", rajasthan: true },
+  { name: "Patrika Kota", url: "https://cms.patrika.com/googlefeed/blog/location/kota-news", rajasthan: true },
+  { name: "Patrika Ajmer", url: "https://cms.patrika.com/googlefeed/blog/location/ajmer-news", rajasthan: true },
+  { name: "Patrika Bikaner", url: "https://cms.patrika.com/googlefeed/blog/location/bikaner-news", rajasthan: true },
+  { name: "News18 Rajasthan", url: "https://hindi.news18.com/commonfeeds/v1/hin/rss/rajasthan.xml", rajasthan: true },
+  { name: "TV9 Bharatvarsh Rajasthan", url: "https://www.tv9hindi.com/state/rajasthan/feed", rajasthan: true },
+  { name: "ABP Live Rajasthan", url: "https://www.abplive.com/states/rajasthan/feed", rajasthan: true },
   { name: "Times of India", url: "https://timesofindia.indiatimes.com/rssfeeds/3012544.cms", rajasthan: true },
   { name: "Hindustan Times", url: "https://www.hindustantimes.com/feeds/rss/cities/jaipur-news/rssfeed.xml", rajasthan: true },
   { name: "Indian Express", url: "https://indianexpress.com/section/cities/jaipur/feed/", rajasthan: true },
@@ -92,9 +107,14 @@ export function parseFeedList(value: string | undefined): FeedConfig[] {
 export interface YoutubeChannel {
   name: string;
   channelId: string;
+  /** The district a local channel covers (English name): its videos get it when the title names none */
+  district?: string | null;
 }
 
-/** The channel list file: an array, or { channels: [...] }; id as channelId / channel_id / id, name as name / title */
+/**
+ * The channel list file: an array, or { channels: [...] }; id as channelId / channel_id / id, name as
+ * name / title, optional district.
+ */
 export function parseYoutubeChannels(json: unknown): YoutubeChannel[] {
   const list = Array.isArray(json) ? json : Array.isArray((json as { channels?: unknown })?.channels) ? (json as { channels: unknown[] }).channels : [];
   const out: YoutubeChannel[] = [];
@@ -102,7 +122,8 @@ export function parseYoutubeChannels(json: unknown): YoutubeChannel[] {
     const c = (raw ?? {}) as Record<string, unknown>;
     const channelId = String(c.channelId ?? c.channel_id ?? c.id ?? "").trim();
     const name = String(c.name ?? c.title ?? channelId).trim();
-    if (/^UC[\w-]{22}$/.test(channelId) && !out.some((o) => o.channelId === channelId)) out.push({ name, channelId });
+    const district = typeof c.district === "string" && c.district.trim() ? c.district.trim() : null;
+    if (/^UC[\w-]{22}$/.test(channelId) && !out.some((o) => o.channelId === channelId)) out.push({ name, channelId, ...(district ? { district } : {}) });
   }
   return out;
 }
@@ -230,6 +251,8 @@ export const PACE = {
   gdelt: { label: "GDELT", minGapMs: 12_000, waitMaxMs: 25_000, backoffMs: 120_000, backoffMaxMs: 30 * 60_000, cache: false, rateNote: "GDELT allows about one every 5 seconds." },
   reddit: { label: "Reddit", minGapMs: 3600_000, waitMaxMs: 0, backoffMs: 3600_000, backoffMaxMs: 6 * 3600_000, cache: true, rateNote: "Reddit asks for few requests." },
   wikipedia: { label: "Wikipedia", minGapMs: 6 * 3600_000, waitMaxMs: 0, backoffMs: 3600_000, backoffMaxMs: 6 * 3600_000, cache: true, rateNote: "the daily list is read a few times a day." },
+  // 30+ channel feeds, one a second: read every 30 min, the last answer reused in between
+  youtube: { label: "YouTube", minGapMs: 30 * 60_000, waitMaxMs: 0, backoffMs: 30 * 60_000, backoffMaxMs: 3 * 3600_000, cache: true, rateNote: "YouTube's feeds are read every 30 minutes." },
 } satisfies Record<string, PaceRule>;
 
 export const GDELT_MIN_GAP_MS = PACE.gdelt.minGapMs;
@@ -444,21 +467,27 @@ export async function collectSources(
   const channels = plan.youtube ?? [];
   if (channels.length) {
     articles.push(...(await h.run("YouTube", "YouTube", async () => {
-      const videos: RawArticle[] = [];
-      let failed = 0;
-      let firstError: unknown = null;
-      for (const [i, c] of channels.entries()) {
-        if (i && store) await store.sleep(YOUTUBE_GAP_MS);
-        try {
-          videos.push(...parseAtom(await get(youtubeFeedUrl(c.channelId)), { name: c.name, platform: "YouTube", rajasthan: true }));
-        } catch (err) {
-          failed++;
-          firstError ??= err;
+      // The list can change between runs: the kept answer is only reused for the same list
+      const key = `youtube.${clusterIdOf(channels.map((c) => `${c.channelId}:${c.district ?? ""}`).join(","))}`;
+      const r = await paced(store, key, PACE.youtube, async () => {
+        const videos: RawArticle[] = [];
+        let failed = 0;
+        let firstError: unknown = null;
+        for (const [i, c] of channels.entries()) {
+          if (i && store) await store.sleep(YOUTUBE_GAP_MS);
+          try {
+            const list = parseAtom(await get(youtubeFeedUrl(c.channelId)), { name: c.name, platform: "YouTube", rajasthan: true });
+            videos.push(...list.map((v) => ({ ...v, sourceName: c.name || v.sourceName, district: c.district ?? null })));
+          } catch (err) {
+            failed++;
+            firstError ??= err;
+          }
         }
-      }
-      // Some channels answering is a working source; every channel failing is not
-      if (failed === channels.length) throw firstError;
-      return videos;
+        // Some channels answering is a working source; every channel failing is not
+        if (failed === channels.length) throw firstError;
+        return videos;
+      });
+      return { items: r.value.map(revive), at: r.at };
     })));
   }
   return { articles, topics, alerts, health: h.list };
@@ -466,10 +495,10 @@ export async function collectSources(
 
 /** A full run: sources, grouping and ranking, alerts on matching items, GDELT volume for the top topics. */
 export async function runTrendSources(
-  get: TextGet, plan: SourcePlan, tagger: TrendTagger, now: Date, store: PaceStore | null, previous: SourceHealth[] = [],
+  get: TextGet, plan: SourcePlan, tagger: TrendTagger, now: Date, store: PaceStore | null, previous: SourceHealth[] = [], watch: string[] = [],
 ): Promise<{ rows: TrendRow[]; health: SourceHealth[]; alerts: TrendAlert[] }> {
   const { articles, topics, alerts, health } = await collectSources(get, plan, () => now, previous, store, tagger);
-  const rows = buildTrends({ articles, topics, alerts }, tagger, now);
+  const rows = buildTrends({ articles, topics, alerts, watch }, tagger, now);
   if (plan.gdelt) await addGdeltVolume(get, store, rows, health, previous, now);
   return { rows, health, alerts };
 }

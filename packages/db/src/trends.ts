@@ -1,14 +1,14 @@
 // Web Scraper storage: each run of the free sources and its ranked items, the desk's "refresh now"
-// request, the og:image cache, and turning a trend into a Socia story + X draft.
+// request, the og:image cache, keyword watches, and turning a trend into a Socia story + X draft.
 
 import { createHash } from "node:crypto";
 import type { Composer, PaceState, PaceStore, SourceHealth, TrendAlert, TrendRow } from "@socia/core";
-import { and, desc, eq, ilike, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { audit } from "./audit";
 import type { Db } from "./client";
 import type { Actor } from "./desk";
 import { getKv, setKv } from "./kv";
-import { postDrafts, stories, trendItems, trendRuns, type TREND_RUN_TRIGGERS, type TrendSourceHealth } from "./schema";
+import { postDrafts, stories, trendItems, trendRuns, trendWatches, type TREND_RUN_TRIGGERS, type TrendSourceHealth } from "./schema";
 
 export type TrendItem = typeof trendItems.$inferSelect;
 export type TrendRun = typeof trendRuns.$inferSelect;
@@ -32,6 +32,7 @@ export async function saveTrendRun(
         sourceName: r.sourceName.slice(0, 200), reasonWhy: r.reasonWhy.slice(0, 1000), superTag: r.superTag, subTag: r.subTag.slice(0, 300), district: r.district,
         volume: r.volume, growth: r.growth, shares: r.shares, headline: r.headline.slice(0, 500), summary: r.summary.slice(0, 1500), publishedAt: r.publishedAt,
         imageUrl: r.imageUrl, imageSource: r.imageSource, ogChecked: !!r.imageUrl, alert: r.alert,
+        clusterId: r.clusterId, clusterRank: r.clusterRank, sources: r.sources,
       }));
       if (batch.length) items.push(...(await tx.insert(trendItems).values(batch).returning()));
     }
@@ -56,6 +57,8 @@ export interface TrendFilter {
   q?: string;
   platform?: string;
   superTag?: string;
+  /** English district name, as items carry it ("Sawai Madhopur"); matched without regard to case */
+  district?: string;
 }
 
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -72,10 +75,24 @@ export async function listTrendItems(db: Db, runId: string, f: TrendFilter): Pro
         eq(trendItems.window, f.window),
         f.platform ? eq(trendItems.platform, f.platform) : undefined,
         f.superTag ? eq(trendItems.superTag, f.superTag) : undefined,
+        f.district ? sql`lower(${trendItems.district}) = lower(${f.district})` : undefined,
         q ? or(ilike(trendItems.title, `%${likeEscape(q)}%`), ilike(trendItems.reasonWhy, `%${likeEscape(q)}%`), ilike(trendItems.subTag, `%${likeEscape(q)}%`)) : undefined,
       ),
     )
     .orderBy(trendItems.rank);
+}
+
+/** Article stories per district in the run's 24 h list (each story once, however many publishers have it) */
+export async function trendDistrictCounts(db: Db, runId: string): Promise<{ name: string; count: number }[]> {
+  const story = sql`coalesce(${trendItems.clusterId}, ${trendItems.id}::text)`;
+  const rows = await db
+    .select({ name: trendItems.district, count: sql<number>`count(distinct ${story})::int` })
+    .from(trendItems)
+    .where(and(eq(trendItems.runId, runId), eq(trendItems.type, "articles"), eq(trendItems.window, "24h"), isNotNull(trendItems.district)))
+    .groupBy(trendItems.district);
+  return rows
+    .map((r) => ({ name: r.name!, count: Number(r.count) }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 export async function getTrendItem(db: Db, orgId: string, id: string): Promise<TrendItem | null> {
@@ -215,4 +232,44 @@ export async function createTrendDraft(db: Db, actor: Actor, item: TrendItem, co
     });
     return { draftId: draft!.id, created: true };
   });
+}
+
+// ─── Keyword watches ─────────────────────────────────────────────────────────
+
+export type TrendWatch = typeof trendWatches.$inferSelect;
+
+/** Per user */
+export const TREND_WATCH_MAX = 50;
+
+export async function listTrendWatches(db: Db, userId: string): Promise<TrendWatch[]> {
+  return db.select().from(trendWatches).where(eq(trendWatches.userId, userId)).orderBy(asc(trendWatches.createdAt), asc(trendWatches.keyword));
+}
+
+/**
+ * Adds a keyword (already trimmed and checked by the caller). The same keyword in any case returns the
+ * existing watch with created false; at the limit returns null.
+ */
+export async function addTrendWatch(db: Db, user: { id: string; orgId: string }, keyword: string): Promise<{ watch: TrendWatch; created: boolean } | null> {
+  return db.transaction(async (tx) => {
+    // One user's adds in turn, so two quick adds cannot pass the limit together
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`trend_watches:${user.id}`}))`);
+    const [same] = await tx.select().from(trendWatches).where(and(eq(trendWatches.userId, user.id), sql`lower(${trendWatches.keyword}) = lower(${keyword})`));
+    if (same) return { watch: same, created: false };
+    const [n] = await tx.select({ n: count() }).from(trendWatches).where(eq(trendWatches.userId, user.id));
+    if (Number(n?.n ?? 0) >= TREND_WATCH_MAX) return null;
+    const [watch] = await tx.insert(trendWatches).values({ orgId: user.orgId, userId: user.id, keyword }).returning();
+    return { watch: watch!, created: true };
+  });
+}
+
+/** True when the user had that watch */
+export async function deleteTrendWatch(db: Db, userId: string, id: string): Promise<boolean> {
+  const gone = await db.delete(trendWatches).where(and(eq(trendWatches.userId, userId), eq(trendWatches.id, id))).returning({ id: trendWatches.id });
+  return gone.length > 0;
+}
+
+/** Every keyword watched by anyone in the org (the worker keeps matching stories past the pool size) */
+export async function orgWatchKeywords(db: Db, orgId: string): Promise<string[]> {
+  const rows = await db.selectDistinct({ keyword: trendWatches.keyword }).from(trendWatches).where(eq(trendWatches.orgId, orgId));
+  return rows.map((r) => r.keyword);
 }

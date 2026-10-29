@@ -3,6 +3,7 @@
 // and derive hashtags. Pure functions: the worker fetches, this file decides. Contract:
 // handoff/web-scraper-contract.md.
 
+import { createHash } from "node:crypto";
 import { fold } from "./fold";
 import { Gazetteer, type GazetteerEntry } from "./gazetteer";
 import { asHashtag, type HashtagRule } from "./hashtags";
@@ -14,8 +15,14 @@ export const TREND_WINDOWS = { "12h": 12, "24h": 24, "7d": 168 } as const;
 export type TrendWindow = keyof typeof TREND_WINDOWS;
 export const TREND_PLATFORMS = ["Google News", "Google Trends", "GDELT", "RSS", "YouTube", "Bing News", "Wikipedia", "Reddit", "Government"] as const;
 export type TrendPlatform = (typeof TREND_PLATFORMS)[number];
-/** Kept per type per window */
+/** Shown per type per window (stories, for articles); the desk's default list */
 export const TREND_TOP = 20;
+/**
+ * Article stories kept per window beyond the top 20, so the district filter, a search and keyword
+ * watches have more than the front page to look through. Stories matching a watched keyword are kept
+ * whatever their rank.
+ */
+export const TREND_ARTICLE_POOL = 50;
 
 export const SUPER_TAGS = [
   "Politics", "Crime", "Weather", "Infrastructure", "Education", "Health", "Agriculture", "Culture & Tourism", "Sports", "Business",
@@ -58,6 +65,8 @@ export interface RawArticle {
   imageSource: string | null;
   /** From a Rajasthan-only feed or query: counts toward Rajasthan relevance */
   rajasthanFeed: boolean;
+  /** The district the source covers (a district YouTube channel): used when the text names none */
+  district?: string | null;
 }
 
 export interface RawTopic {
@@ -585,6 +594,170 @@ export function groupArticles(articles: RawArticle[], rule: { likeness: Likeness
   return groups.map(({ lead, articles: list, publishers }) => ({ lead, articles: list, publishers }));
 }
 
+// ─── Same story, different publishers (clusters) ────────────────────────────
+// Headlines about one story differ in wording and length, and the desk reads Hindi and English. Two
+// items are the same story when their normalised titles are alike enough by word Jaccard or by
+// character-trigram Jaccard (trigrams catch inflected forms: "मतदान"/"मतदाता", "Jaipur's"/"Jaipur"),
+// and they were published within 24 h of each other. Shared rare words count more than common ones
+// (IDF over the run's titles). Average link: an item joins the story whose
+// members it is, on average, most alike, so a run of loosely related headlines does not chain into one.
+
+export const CLUSTER_RULE = {
+  /**
+   * Mean (IDF-weighted) likeness to the story's members at least this. Tuned on 469 real Rajasthan
+   * headlines of 28-29 Oct 2026: same-story pairs from different publishers scored 0.30-0.50, different
+   * stories on the same theme (two panchayat-poll reports, two weather columns) 0.24-0.28.
+   */
+  threshold: 0.3,
+  /** Published within this many hours of the story's newest member */
+  hours: 24,
+};
+
+/** Folded title words without stop words or "Rajasthan" (in nearly every headline here; it says nothing about which story) */
+export function storyWords(title: string): Set<string> {
+  return new Set([...titleTokens(title)].filter((t) => !RAJASTHAN_WORDS.has(t)));
+}
+
+/** Character trigrams of each word, padded with a space at both ends */
+export function trigrams(words: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  for (const w of words) {
+    const chars = [...` ${w} `];
+    for (let i = 0; i + 3 <= chars.length; i++) out.add(chars.slice(i, i + 3).join(""));
+  }
+  return out;
+}
+
+export interface StoryKey {
+  words: Set<string>;
+  grams: Set<string>;
+  /** Published, ms; null when the feed gives no date */
+  at: number | null;
+}
+
+export function storyKey(title: string, publishedAt: Date | null): StoryKey {
+  const words = storyWords(title);
+  return { words, grams: trigrams(words), at: publishedAt?.getTime() ?? null };
+}
+
+/** How much a shared word (or trigram) says: rare in the batch counts more. Absent: every term weighs 1. */
+export type TermWeights = { words: Map<string, number>; grams: Map<string, number> };
+
+/**
+ * Inverse document frequency of each word and trigram over a batch of titles: log(1 + (N + prior) / df).
+ * The prior counts as that many unrelated titles, so a small batch (a search, a test) is not dominated by
+ * its own few titles: there the words a story shares would otherwise be the batch's "common" words.
+ */
+export const IDF_PRIOR = 200;
+
+export function termWeights(keys: StoryKey[]): TermWeights {
+  const df = { words: new Map<string, number>(), grams: new Map<string, number>() };
+  for (const k of keys) {
+    for (const w of k.words) df.words.set(w, (df.words.get(w) ?? 0) + 1);
+    for (const g of k.grams) df.grams.set(g, (df.grams.get(g) ?? 0) + 1);
+  }
+  const n = keys.length + IDF_PRIOR;
+  const idf = (m: Map<string, number>) => new Map([...m].map(([t, d]) => [t, Math.log(1 + n / d)]));
+  return { words: idf(df.words), grams: idf(df.grams) };
+}
+
+/** Jaccard with each term weighted (weighted intersection over weighted union) */
+function weightedJaccard(a: Set<string>, b: Set<string>, w?: Map<string, number>): number {
+  if (!a.size || !b.size) return 0;
+  const weight = (t: string) => w?.get(t) ?? 1;
+  let both = 0;
+  let all = 0;
+  for (const t of a) {
+    all += weight(t);
+    if (b.has(t)) both += weight(t);
+  }
+  for (const t of b) if (!a.has(t)) all += weight(t);
+  return all > 0 ? both / all : 0;
+}
+
+/**
+ * 0..1: the better of word Jaccard and trigram Jaccard, each term weighted by how rare it is in the
+ * batch (a shared name like "आसाराम" says more than a shared "मौसम"). Titles of one or two words only
+ * count on identical wording.
+ */
+export function storyLikeness(a: StoryKey, b: StoryKey, weights?: TermWeights): number {
+  if (!a.words.size || !b.words.size) return 0;
+  const words = weightedJaccard(a.words, b.words, weights?.words);
+  if (Math.min(a.words.size, b.words.size) < 3) return similarity(a.words, b.words) >= 0.99 ? 1 : 0;
+  return Math.max(words, weightedJaccard(a.grams, b.grams, weights?.grams));
+}
+
+/**
+ * Story index per item: items with the same index are the same story. Newest first; each item joins
+ * the story with the highest mean likeness (at least the threshold) among those within the time window.
+ */
+export function clusterStories(items: { title: string; publishedAt: Date | null }[], rule = CLUSTER_RULE): number[] {
+  const order = items.map((_, i) => i).sort((x, y) => (items[y]!.publishedAt?.getTime() ?? 0) - (items[x]!.publishedAt?.getTime() ?? 0));
+  const keys = items.map((i) => storyKey(i.title, i.publishedAt));
+  const weights = termWeights(keys);
+  const stories: { members: number[]; newest: number | null }[] = [];
+  const out = new Array<number>(items.length).fill(-1);
+  const span = rule.hours * 3600_000;
+  for (const i of order) {
+    const k = keys[i]!;
+    let best: { s: number; mean: number } | null = null;
+    for (const [s, story] of stories.entries()) {
+      if (k.at !== null && story.newest !== null && Math.abs(story.newest - k.at) > span) continue;
+      let sum = 0;
+      for (const m of story.members) sum += storyLikeness(k, keys[m]!, weights);
+      const mean = sum / story.members.length;
+      if (mean >= rule.threshold && mean > (best?.mean ?? 0)) best = { s, mean };
+    }
+    if (best) {
+      stories[best.s]!.members.push(i);
+      out[i] = best.s;
+    } else {
+      out[i] = stories.length;
+      stories.push({ members: [i], newest: k.at });
+    }
+  }
+  return out;
+}
+
+/** A short stable id: the same lead article (or topic, or hashtag) gives the same id in every run */
+export function clusterIdOf(key: string): string {
+  return createHash("sha256").update(key).digest("hex").slice(0, 16);
+}
+
+/** One source per publisher (its newest article), newest first, at most `max` */
+export function storySources(articles: Pick<RawArticle, "sourceName" | "url" | "publishedAt">[], max = 20): StorySource[] {
+  const by = new Map<string, Pick<RawArticle, "sourceName" | "url" | "publishedAt">>();
+  for (const a of articles) {
+    const had = by.get(a.sourceName);
+    if (!had || (a.publishedAt?.getTime() ?? 0) > (had.publishedAt?.getTime() ?? 0)) by.set(a.sourceName, a);
+  }
+  return [...by.values()]
+    .sort((a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0) || a.sourceName.localeCompare(b.sourceName))
+    .slice(0, max)
+    .map((a) => ({ name: a.sourceName, url: a.url, publishedAt: a.publishedAt?.toISOString() ?? null }));
+}
+
+// ─── Keyword watch ───────────────────────────────────────────────────────────
+
+/**
+ * A keyword as matched: folded like the rest of the matching (one Devanagari spelling: nukta and
+ * chandrabindu variants alike, joiners dropped; Latin lower-cased; punctuation as space). Vowel signs
+ * stay, so "जयपुर" never matches "जैपुर". Empty when nothing matchable is left.
+ */
+export function watchKey(keyword: string): string {
+  return fold(keyword);
+}
+
+/** The keywords whose folded form is a substring of the folded text, as the user wrote them */
+export function watchHits(keywords: readonly string[], text: string): string[] {
+  if (!keywords.length) return [];
+  const folded = ` ${fold(text)} `;
+  return keywords.filter((k) => {
+    const key = watchKey(k);
+    return key.length > 0 && folded.includes(key);
+  });
+}
+
 export interface TrendRow {
   type: TrendType;
   window: TrendWindow;
@@ -608,7 +781,20 @@ export interface TrendRow {
   summary: string;
   /** A disaster warning in force for this district (NDMA Sachet), shown as an "Alert" badge */
   alert: ItemAlert | null;
+  /** Items about the same story (any type) share it; stable across runs for the same lead article */
+  clusterId: string;
+  /** The story's place among the stories of its type and window (1 = top); rows of one story share it */
+  clusterRank: number;
+  /** One per publisher or channel, newest first */
+  sources: StorySource[];
   score: number;
+}
+
+/** A publisher's (or channel's) article about the story */
+export interface StorySource {
+  name: string;
+  url: string;
+  publishedAt: string | null;
 }
 
 /** Up to 2 real headlines, with their publishers */
@@ -669,6 +855,8 @@ export interface TrendInput {
   articles: RawArticle[];
   topics: RawTopic[];
   alerts?: TrendAlert[];
+  /** Keywords someone watches: matching article stories are kept past the pool size */
+  watch?: string[];
 }
 
 /** Headlines from the collected news that share a word with the topic, for topics that bring none (Wikipedia) */
@@ -686,32 +874,63 @@ export function alertFor(row: Pick<TrendRow, "type" | "district" | "superTag">, 
   return { level: a.level, title: cutText(a.text, 200), ...(a.validUntil ? { validUntil: a.validUntil } : {}) };
 }
 
-/** Every type for every window, top 20 each, ranked Rajasthan first. */
+/** Rows ranked by score and numbered; each row is its own story (topics, hashtags) */
+function rankStories(rows: Omit<TrendRow, "rank" | "clusterRank">[]): TrendRow[] {
+  return topN(rows.map((r) => ({ ...r, clusterRank: 0 }))).map((r) => ({ ...r, clusterRank: r.rank }));
+}
+
+/**
+ * Every type for every window, ranked Rajasthan first. Topics and hashtags: top 20. Articles: one row
+ * per article (repeats of the same URL or a near-identical title folded together), grouped into stories
+ * (clusterId); the top TREND_ARTICLE_POOL stories are kept, plus any story matching a watched keyword.
+ */
 export function buildTrends(input: TrendInput, tagger: TrendTagger, now: Date): TrendRow[] {
   const out: TrendRow[] = [];
   const unique = groupArticles(input.articles, DUPLICATE);
-  const leads = unique.map((g) => ({ ...g.lead, dupes: g.articles.length, publishers: g.publishers }));
+  const leads = unique.map((g) => ({ ...g.lead, dupes: g.articles.length, publishers: g.publishers, members: g.articles }));
   const topicGroups = groupArticles(unique.map((g) => g.lead), SAME_TOPIC);
 
+  // Stories across all windows, so an article keeps its story in every window
+  const storyIndex = clusterStories(leads);
+  const stories = new Map<number, typeof leads>();
+  leads.forEach((l, i) => stories.set(storyIndex[i]!, [...(stories.get(storyIndex[i]!) ?? []), l]));
+  const storyOf = new Map<string, { id: string; sources: StorySource[] }>();
+  for (const members of stories.values()) {
+    const oldest = [...members].sort((a, b) => (a.publishedAt?.getTime() ?? Infinity) - (b.publishedAt?.getTime() ?? Infinity))[0]!;
+    const story = { id: clusterIdOf(`story:${canonicalUrl(oldest.url)}`), sources: storySources(members.flatMap((m) => m.members)) };
+    for (const m of members) storyOf.set(m.url, story);
+  }
+  const watched = (input.watch ?? []).filter((k) => watchKey(k));
+
   for (const [window, hours] of Object.entries(TREND_WINDOWS) as [TrendWindow, number][]) {
-    // Articles: one per duplicate set
-    const articles = leads
-      .filter((a) => inWindow(a.publishedAt, hours, now))
-      .map((a): Omit<TrendRow, "rank"> => {
-        const text = `${a.title} ${a.description}`;
-        const relevance = tagger.rajasthan(text) + (a.rajasthanFeed ? 1 : 0);
-        return {
-          type: "articles", window, title: a.title, url: a.url, platform: a.platform, sourceName: a.sourceName,
-          reasonWhy: cutText(a.description, 240), superTag: tagger.superTag(text), subTag: label([a], 3), district: tagger.district(text),
-          volume: a.publishers.size > 1 ? plural(a.publishers.size, "publisher", "publishers") : "", growth: "", shares: "",
-          publishedAt: a.publishedAt, imageUrl: a.imageUrl, imageSource: a.imageSource, headline: a.title, summary: a.description, alert: null,
-          score: score(relevance, a.dupes, a.publishedAt, hours, now),
-        };
-      });
-    out.push(...topN(articles));
+    // Articles: one row per article, grouped into stories
+    const byStory = new Map<string, Omit<TrendRow, "rank" | "clusterRank">[]>();
+    for (const a of leads) {
+      if (!inWindow(a.publishedAt, hours, now)) continue;
+      const text = `${a.title} ${a.description}`;
+      const relevance = tagger.rajasthan(text) + (a.rajasthanFeed ? 1 : 0);
+      const story = storyOf.get(a.url)!;
+      const row: Omit<TrendRow, "rank" | "clusterRank"> = {
+        type: "articles", window, title: a.title, url: a.url, platform: a.platform, sourceName: a.sourceName,
+        reasonWhy: cutText(a.description, 240), superTag: tagger.superTag(text), subTag: label([a], 3), district: tagger.district(text) ?? a.district ?? null,
+        volume: a.publishers.size > 1 ? plural(a.publishers.size, "publisher", "publishers") : "", growth: "", shares: "",
+        publishedAt: a.publishedAt, imageUrl: a.imageUrl, imageSource: a.imageSource, headline: a.title, summary: a.description, alert: null,
+        clusterId: story.id, sources: story.sources,
+        score: score(relevance, Math.max(a.dupes, story.sources.length), a.publishedAt, hours, now),
+      };
+      byStory.set(story.id, [...(byStory.get(story.id) ?? []), row]);
+    }
+    const ranked = [...byStory.values()]
+      .map((rows) => rows.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)))
+      .sort((a, b) => b[0]!.score - a[0]!.score || a[0]!.title.localeCompare(b[0]!.title));
+    const kept = ranked.filter((rows, i) => i < TREND_ARTICLE_POOL || rows.some((r) => watchHits(watched, `${r.title} ${r.summary}`).length));
+    let rank = 0;
+    kept.forEach((rows, i) => {
+      for (const r of rows) out.push({ ...r, rank: ++rank, clusterRank: i + 1 });
+    });
 
     // Topics: groups of articles, and Google Trends searches
-    const topics: Omit<TrendRow, "rank">[] = [];
+    const topics: Omit<TrendRow, "rank" | "clusterRank">[] = [];
     for (const g of topicGroups) {
       const list = g.articles.filter((a) => inWindow(a.publishedAt, hours, now));
       if (!list.length) continue;
@@ -725,9 +944,12 @@ export function buildTrends(input: TrendInput, tagger: TrendTagger, now: Date): 
         // The lead headline names the topic (real text); the shared words are its sub tag
         type: "topics", window, title: lead.title, url: lead.url, platform: lead.platform, sourceName: lead.sourceName,
         // The other publishers' headlines say why; a lone article gives its own
-        reasonWhy: why(list.length > 1 ? list.filter((a) => a !== lead) : [lead]), superTag: tagger.superTag(text), subTag: name, district: tagger.district(text),
+        reasonWhy: why(list.length > 1 ? list.filter((a) => a !== lead) : [lead]), superTag: tagger.superTag(text), subTag: name,
+        district: tagger.district(`${text} \n ${lead.description}`) ?? list.find((a) => a.district)?.district ?? null,
         volume: plural(list.length, "article", "articles"), growth: "", shares: publishers.size > 1 ? plural(publishers.size, "publisher", "publishers") : "",
         publishedAt: newest(list), imageUrl: img?.imageUrl ?? null, imageSource: img?.imageSource ?? null, headline: lead.title, summary: lead.description, alert: null,
+        // The lead article's story, so the topic and its articles share a cluster
+        clusterId: storyOf.get(lead.url)?.id ?? clusterIdOf(`story:${canonicalUrl(lead.url)}`), sources: storySources(list),
         score: score(relevance, list.length + publishers.size, newest(list), hours, now),
       });
     }
@@ -744,10 +966,11 @@ export function buildTrends(input: TrendInput, tagger: TrendTagger, now: Date): 
         shares: t.news.length ? plural(new Set(t.news.map((n) => n.sourceName)).size, "publisher", "publishers") : "",
         publishedAt: t.publishedAt, imageUrl: t.imageUrl ?? lead?.imageUrl ?? null, imageSource: t.imageSource ?? lead?.imageSource ?? null,
         headline: lead?.title ?? t.title, summary: lead?.description ?? "", alert: null,
+        clusterId: clusterIdOf(`topic:${t.platform}:${fold(t.title)}`), sources: storySources(t.news),
         score: score(tagger.rajasthan(text), Math.log10((t.trafficCount ?? 0) + 1) * 5 + t.news.length, t.publishedAt, hours, now),
       });
     }
-    const rankedTopics = topN(topics);
+    const rankedTopics = rankStories(topics);
     out.push(...rankedTopics);
 
     // Hashtags: from the ranked topics' names, districts and the org's topic rules
@@ -768,17 +991,20 @@ export function buildTrends(input: TrendInput, tagger: TrendTagger, now: Date): 
         tags.set(f.latin, entry);
       }
     }
-    const hashtags = [...tags.entries()].map(([tag, e]): Omit<TrendRow, "rank"> => {
+    const hashtags = [...tags.entries()].map(([tag, e]): Omit<TrendRow, "rank" | "clusterRank"> => {
       const lead = e.topics[0]!;
+      const sources = new Map<string, StorySource>();
+      for (const t of e.topics) for (const src of t.sources) if (!sources.has(src.name)) sources.set(src.name, src);
       return {
         type: "hashtags", window, title: tag, url: lead.url, platform: lead.platform, sourceName: lead.sourceName,
         reasonWhy: e.topics.slice(0, 2).map((t) => t.headline).join(" · "), superTag: lead.superTag, subTag: e.devanagari ?? lead.title,
         district: e.district ?? lead.district, volume: plural(e.topics.length, "topic", "topics"), growth: "", shares: "",
         publishedAt: lead.publishedAt, imageUrl: lead.imageUrl, imageSource: lead.imageSource, headline: lead.headline, summary: lead.summary, alert: null,
+        clusterId: clusterIdOf(`tag:${fold(tag)}`), sources: [...sources.values()].slice(0, 20),
         score: e.score,
       };
     });
-    out.push(...topN(hashtags));
+    out.push(...rankStories(hashtags));
   }
   const alerts = input.alerts ?? [];
   for (const r of out) r.alert = alertFor(r, alerts);

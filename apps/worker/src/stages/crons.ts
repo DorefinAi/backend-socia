@@ -1,10 +1,8 @@
-// Scheduled work: housekeeping every 30 s, metrics every 6 h, handles nightly.
+// Scheduled work: housekeeping every 30 s, handles nightly. Post numbers: stages/metrics.ts (role "metrics").
 
-import {
-  expireMediaWaits, handleDirectoryStaging, postMetrics, publishedPosts, releaseExpiredClaims, reviveExpiredJobs, setKv, type Db,
-} from "@socia/db";
-import { WIKIDATA_QUERIES, fetchWikidataHandles, type XClient } from "@socia/providers";
-import { and, gte, isNull, sql } from "drizzle-orm";
+import { expireMediaWaits, handleDirectoryStaging, releaseExpiredClaims, reviveExpiredJobs, setKv, type Db } from "@socia/db";
+import { WIKIDATA_QUERIES, fetchWikidataHandles } from "@socia/providers";
+import { sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 export async function housekeeping(db: Db, log: Logger): Promise<boolean> {
@@ -13,29 +11,6 @@ export async function housekeeping(db: Db, log: Logger): Promise<boolean> {
   const expired = await expireMediaWaits(db);
   if (released || revived || expired) log.info({ released, revived, expired }, "housekeeping");
   return false;
-}
-
-/** Engagement for the last 7 days of posts, in batches of 100 (X's per-call limit). */
-export async function pullMetrics(db: Db, x: XClient, log: Logger): Promise<number> {
-  const posts = await db
-    .select({ id: publishedPosts.id, platformPostId: publishedPosts.platformPostId })
-    .from(publishedPosts)
-    .where(and(gte(publishedPosts.publishedAt, sql`now() - interval '7 days'`), isNull(publishedPosts.recalledAt)));
-  let saved = 0;
-  for (let i = 0; i < posts.length; i += 100) {
-    const batch = posts.slice(i, i + 100);
-    const metrics = await x.metrics(batch.map((p) => p.platformPostId));
-    const rows = batch
-      .filter((p) => metrics[p.platformPostId])
-      .map((p) => {
-        const m = metrics[p.platformPostId]!;
-        return { postId: p.id, impressions: m.impressions, likes: m.likes, comments: m.replies, shares: m.reposts + m.quotes, saves: m.bookmarks };
-      });
-    if (rows.length) await db.insert(postMetrics).values(rows);
-    saved += rows.length;
-  }
-  log.info({ posts: posts.length, saved }, "metrics pulled");
-  return saved;
 }
 
 /** Wikidata into staging. Never into the directory: an editor verifies each handle first. */

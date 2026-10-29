@@ -103,6 +103,11 @@ export function trendsConfig(): TrendsSettings & { userAgent: string } {
   };
 }
 
+/** How often the metrics role looks for posts with a bucket due (METRICS_POLL_SECONDS, default 300, at least 60) */
+export function metricsPollMs(): number {
+  return Math.max(60, num("METRICS_POLL_SECONDS", 300)) * 1000;
+}
+
 /** The channels whose public feeds are read (no key). Edited without a code change; read again every run. */
 export const YOUTUBE_CHANNELS_FILE = fileURLToPath(new URL("../config/youtube-channels.json", import.meta.url));
 

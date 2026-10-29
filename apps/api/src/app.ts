@@ -13,6 +13,7 @@ import Fastify, { type FastifyServerOptions } from "fastify";
 import { COOKIE, HttpError, loadSession } from "./auth";
 import type { ApiConfig } from "./config";
 import { adminRoutes } from "./routes/admin";
+import { analyticsRoutes } from "./routes/analytics";
 import { authRoutes } from "./routes/auth";
 import { deskRoutes } from "./routes/desk";
 import { libraryRoutes } from "./routes/library";
@@ -88,5 +89,6 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   await app.register(statusRoutes, deps);
   await app.register(templateRoutes, deps);
   await app.register(trendRoutes, deps);
+  await app.register(analyticsRoutes, deps);
   return app;
 }

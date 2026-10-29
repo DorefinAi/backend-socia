@@ -4,20 +4,22 @@
 //   socia-render   WORKER_ROLES=render            (Docker, Playwright image)
 //   socia-publish  WORKER_ROLES=publish,maintenance
 //   socia-trends   WORKER_ROLES=trends            (singleton: the Web Scraper's free public sources)
+//   socia-metrics  WORKER_ROLES=metrics           (singleton: post numbers at 1h/6h/24h/3d/7d; fake unless METRICS_*_MODE=live)
 //   crons          node dist/index.js --once metrics | --once handles
 
 import { SamvadiaReader, createDb, recordIngestPoll } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
 import { CardRenderer } from "./card/renderer";
-import { politeGet } from "@socia/providers";
-import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, samvadiaConfig, trendsConfig } from "./config";
+import { makeMetricsProviders, politeGet } from "@socia/providers";
+import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, metricsPollMs, samvadiaConfig, trendsConfig } from "./config";
+import { MetricsJob } from "./stages/metrics";
 
 import { SamvadiaIngest } from "./stages/samvadia";
 import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
 import { convertNext } from "./stages/convert";
-import { housekeeping, pullMetrics, syncHandles } from "./stages/crons";
+import { housekeeping, syncHandles } from "./stages/crons";
 import { Ingest } from "./stages/ingest";
 import { Publisher } from "./stages/publish";
 import { renderNext } from "./stages/render";
@@ -32,8 +34,12 @@ async function main(): Promise<void> {
   const cfg = loadConfig(once ? [once] : args.filter((a) => !a.startsWith("--")));
   const { db, close } = createDb(cfg.databaseUrl, 5);
 
+  const metricsJob = () => {
+    const x = process.env.METRICS_X_MODE?.trim().toLowerCase() === "live" ? makeXClient() : undefined;
+    return new MetricsJob({ db, providers: makeMetricsProviders(process.env, x), pollMs: metricsPollMs(), log });
+  };
   if (once === "metrics") {
-    await pullMetrics(db, makeXClient(), log);
+    await metricsJob().run();
     await close();
     return;
   }
@@ -108,6 +114,12 @@ async function main(): Promise<void> {
     log.info({ pollSeconds: settings.pollMs / 1000, feeds: settings.plan.feeds.map((f) => f.name), gdelt: settings.plan.gdelt }, "trends: free public sources");
     // Checks every 5 s whether a run is due or the desk asked for one; a run itself takes a few seconds
     loops.start({ name: "trends", idleMs: 5000, log, tick: () => job.tick() });
+  }
+
+  if (cfg.roles.includes("metrics")) {
+    const job = metricsJob();
+    log.info({ pollSeconds: metricsPollMs() / 1000 }, "metrics: post numbers by age bucket");
+    loops.start({ name: "metrics", idleMs: 5000, log, tick: () => job.tick() });
   }
 
   if (cfg.roles.includes("maintenance")) {

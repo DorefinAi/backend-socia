@@ -50,6 +50,13 @@
       "when": 1793215731843,
       "tag": "0006_trend_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793248936753,
+      "tag": "0007_analytics_watch_clusters",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,8 @@
 // Clock rules shared by the API and the workers.
 
 export const UNDO_SECONDS = 10;
+/** "Copy & Posted" can be taken back this long after (the post on X itself is deleted by hand) */
+export const COPY_UNDO_SECONDS = 5 * 60;
 export const LEASE_SECONDS = 5 * 60;
 export const MAX_PUBLISH_ATTEMPTS = 5;
 

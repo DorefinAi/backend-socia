@@ -252,7 +252,7 @@ export const trendRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db,
       const item = await getTrendItem(db, user.orgId, req.params.id);
       if (!item) throw new HttpError(404, "not_found", "This trend is gone (runs are kept for 7 days). Refresh the list.");
       const { composer } = await loadRuleComposer(db, user.orgId);
-      const { draftId, created, rewrite, rewriteError } = await createTrendDraft(db, actor(user), item, composer, rewriter);
+      const { draftId, created, rewrite, rewriteError } = await createTrendDraft(db, actor(user), item, composer, rewriter, new Date(), { cardOnDemand: config.phase === 1 });
       // The draft still exists (publisher's text, tooClose); the reason is for the logs only
       if (rewriteError) req.log.warn({ trendItemId: item.id, draftId, rewriteError }, "trend draft: rewording failed, kept the source text");
       return { draftId, created, rewrite };

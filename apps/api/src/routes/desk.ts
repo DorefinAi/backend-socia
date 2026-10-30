@@ -1,15 +1,16 @@
 // The X console: queue, draft, claim, edit, approve, undo, reject, recall.
 
-import { DRAFT_STATUSES, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, X_LIMIT } from "@socia/core";
+import { DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, xLen, X_LIMIT } from "@socia/core";
 import {
-  approveDraft, assets, capUsage, claimDraft, clearCustomCard, extendClaim, markPosted, postDrafts, publishedPosts,
-  rejectDraft, releaseDraft, requestRecall, restoreDraft, retryFailed, setCustomCard, stories, undoPost, updateDraft, users, type Actor,
+  approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, copyPosted, extendClaim, markPosted, postDrafts, postedView, publishedPosts,
+  rejectDraft, releaseDraft, requestCardRender, requestRecall, restoreDraft, retryFailed, setCustomCard, stories, undoCopyPosted, undoPost, updateDraft,
+  users, type Actor,
 } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
-import { and, count, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
-import { cardUrl, draftView, storyLabels } from "../views";
+import { breakingFields, cardUrl, draftView, storyLabels } from "../views";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
@@ -51,9 +52,46 @@ const QUEUE_VIEWS = {
   sending: ["queued", "publishing"],
   rejected: ["rejected"],
   failed: ["failed", "render_failed"],
+  /** Marked posted (Copy & Posted, or a recorded manual / API post), newest first */
+  posted: ["published"],
 } as const;
+type QueueViewName = keyof typeof QUEUE_VIEWS;
+const ViewName = Type.Union(Object.keys(QUEUE_VIEWS).map((k) => Type.Literal(k)));
 
-export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage }) => {
+/** The phase-1 filters (handoff/phase1-contract.md §1); all optional, combined with AND */
+const QueueFilters = {
+  /** English district as in item.district; "none" for stories without one */
+  district: Type.Optional(Type.String({ minLength: 1, maxLength: 60 })),
+  big: Type.Optional(Type.Boolean()),
+  update: Type.Optional(Type.Boolean()),
+  desk: Type.Optional(Type.String({ pattern: "^[A-Za-z]{2,10}$" })),
+  needsCheck: Type.Optional(Type.Boolean()),
+};
+
+/** The posted view's window: from the start of the IST day `days - 1` days back */
+function postedSince(days: number): Date {
+  return new Date(istDayStart(new Date()).getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+}
+
+/** WHERE parts for the filters, on the joined stories row */
+function filterWhere(q: { district?: string; big?: boolean; update?: boolean; desk?: string; needsCheck?: boolean }): (SQL | undefined)[] {
+  // Compared as text: a hand-edited or malformed value never makes the cast fail the whole query
+  const flag = (key: "big" | "update", on: boolean) => (on ? sql`(${stories.fileTags}->>${key}) = 'true'` : sql`(${stories.fileTags}->>${key}) IS DISTINCT FROM 'true'`);
+  return [
+    q.district === undefined ? undefined : q.district === "none" ? isNull(stories.district) : eq(stories.district, q.district),
+    q.big === undefined ? undefined : flag("big", q.big),
+    q.update === undefined ? undefined : flag("update", q.update),
+    q.desk === undefined ? undefined : sql`${stories.fileTags}->>'desk' = ${q.desk.toUpperCase()}`,
+    q.needsCheck === undefined ? undefined : q.needsCheck ? sql`cardinality(${stories.needsCheck}) > 0` : sql`cardinality(${stories.needsCheck}) = 0`,
+  ];
+}
+
+export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage, config }) => {
+  /** Phase 1 posts by hand: nothing that would reach the X API is accepted */
+  const xApiOff = () => {
+    if (config.phase === 1) throw new HttpError(409, "phase_off", PHASE_OFF_MESSAGE);
+  };
+
   async function loadDraft(orgId: string, id: string) {
     const [row] = await db
       .select({ d: postDrafts, s: stories })
@@ -74,18 +112,21 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     {
       schema: {
         querystring: Type.Object({
-          view: Type.Optional(Type.Union(Object.keys(QUEUE_VIEWS).map((k) => Type.Literal(k)))),
+          view: Type.Optional(ViewName),
           /** A nextCursor from the previous page ("<time>|<id>"), or an ISO time (older clients) */
           before: Type.Optional(Type.String({ maxLength: 80 })),
           limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+          /** view=posted only: how many IST days back, today included (default 1 = today) */
+          days: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
+          ...QueueFilters,
         }),
       },
     },
     async (req) => {
       const { user } = guard(req);
-      const viewName = (req.query.view ?? "inbox") as keyof typeof QUEUE_VIEWS;
-      // Rejected news pages by when it was rejected (its last change); the other views by when the draft was made
-      const sortCol = viewName === "rejected" ? postDrafts.updatedAt : postDrafts.createdAt;
+      const viewName = (req.query.view ?? "inbox") as QueueViewName;
+      // Rejected and posted page by when that happened (the draft's last change); the other views by when it was made
+      const sortCol = viewName === "rejected" || viewName === "posted" ? postDrafts.updatedAt : postDrafts.createdAt;
       const cursor = parseQueueCursor(req.query.before);
       const limit = req.query.limit ?? 100;
       const rows = await db
@@ -94,6 +135,18 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           status: postDrafts.status,
           version: postDrafts.version,
           bodyText: postDrafts.bodyText,
+          hashtags: postDrafts.hashtags,
+          mentions: postDrafts.mentions,
+          cardRev: postDrafts.cardRev,
+          cardRenderedRev: postDrafts.cardRenderedRev,
+          renderedKey: postDrafts.cardKey,
+          customCardKey: postDrafts.customCardKey,
+          renderError: postDrafts.renderError,
+          town: stories.town,
+          fileTags: stories.fileTags,
+          needsCheck: stories.needsCheck,
+          deskNote: stories.deskNote,
+          updateOfDraftId: stories.updateOfDraftId,
           cardKey: sql<string | null>`coalesce(${postDrafts.customCardKey}, ${postDrafts.cardKey})`,
           claimedBy: postDrafts.claimedBy,
           claimExpiresAt: postDrafts.claimExpiresAt,
@@ -124,6 +177,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
             inArray(postDrafts.status, [...QUEUE_VIEWS[viewName]]),
             cursor?.id ? sql`(${sortCol}, ${postDrafts.id}) < (${cursor.at.toISOString()}::timestamptz, ${cursor.id}::uuid)` : undefined,
             cursor && !cursor.id ? lt(sortCol, cursor.at) : undefined,
+            viewName === "posted" ? gte(postDrafts.updatedAt, postedSince(req.query.days ?? 1)) : undefined,
+            ...filterWhere(req.query),
           ),
         )
         .orderBy(desc(sortCol), desc(postDrafts.id))
@@ -132,12 +187,14 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const nextCursor = rows.length === limit && last ? `${last.sortAt.toISOString()}|${last.id}` : null;
 
       const now = new Date();
+      const posted = viewName === "posted" ? await postedBy(rows.map((r) => r.id)) : new Map<string, ReturnType<typeof postedView>>();
       return {
         cap: await capUsage(db, user.orgId),
         nextCursor,
         items: await Promise.all(
           rows.map(async (r) => {
             const held = r.status === "claimed" && !!r.claimExpiresAt && r.claimExpiresAt > now;
+            const text = assemblePostText(r.bodyText, r.hashtags, r.mentions);
             return {
               id: r.id,
               status: held || r.status !== "claimed" ? r.status : "ready",
@@ -156,12 +213,81 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               rejectReason: r.rejectReason,
               rejectNote: r.rejectNote,
               flags: { lowConfidence: r.lowConfidence, needsReview: r.needsReview },
+              ...breakingFields({ town: r.town, fileTags: r.fileTags, needsCheck: r.needsCheck, deskNote: r.deskNote }),
+              /** Exactly what Copy & Posted copies, and its X length */
+              postText: text,
+              length: xLen(text),
+              card: { state: cardState({ cardRev: r.cardRev, cardRenderedRev: r.cardRenderedRev, cardKey: r.renderedKey, customCardKey: r.customCardKey, renderError: r.renderError }) },
+              posted: posted.get(r.id) ?? null,
+              /** A file saved again after its post went out: the posted draft this one updates */
+              updateOfDraftId: r.updateOfDraftId,
             };
           }),
         ),
       };
     },
   );
+
+  /** Who marked each draft posted and when (the newest post record of each), for the posted view */
+  async function postedBy(draftIds: string[]) {
+    const out = new Map<string, ReturnType<typeof postedView>>();
+    if (!draftIds.length) return out;
+    const rows = await db
+      .selectDistinctOn([publishedPosts.draftId], { draftId: publishedPosts.draftId, at: publishedPosts.publishedAt, byId: publishedPosts.publishedBy, byName: users.name })
+      .from(publishedPosts)
+      .leftJoin(users, eq(users.id, publishedPosts.publishedBy))
+      .where(and(inArray(publishedPosts.draftId, draftIds), isNull(publishedPosts.recalledAt)))
+      .orderBy(publishedPosts.draftId, desc(publishedPosts.publishedAt));
+    for (const r of rows) out.set(r.draftId, postedView(r));
+    return out;
+  }
+
+  /** Numbers for the filter dropdowns over a whole view (no paging); the posted view counts today (IST) only */
+  app.get("/x/queue/facets", { schema: { querystring: Type.Object({ view: Type.Optional(ViewName) }) } }, async (req) => {
+    const { user } = guard(req);
+    const viewName = (req.query.view ?? "inbox") as QueueViewName;
+    const scope = and(
+      eq(postDrafts.orgId, user.orgId),
+      eq(postDrafts.platform, "x"),
+      inArray(postDrafts.status, [...QUEUE_VIEWS[viewName]]),
+      viewName === "posted" ? gte(postDrafts.updatedAt, postedSince(1)) : undefined,
+    );
+    const desk = sql<string | null>`${stories.fileTags}->>'desk'`;
+    const [[totals], districts, desks] = await Promise.all([
+      db
+        .select({
+          total: sql<number>`count(*)::int`,
+          big: sql<number>`(count(*) FILTER (WHERE ${and(...filterWhere({ big: true }))}))::int`,
+          update: sql<number>`(count(*) FILTER (WHERE ${and(...filterWhere({ update: true }))}))::int`,
+          needsCheck: sql<number>`(count(*) FILTER (WHERE ${and(...filterWhere({ needsCheck: true }))}))::int`,
+        })
+        .from(postDrafts)
+        .innerJoin(stories, eq(stories.id, postDrafts.storyId))
+        .where(scope),
+      db
+        .select({ name: stories.district, n: sql<number>`count(*)::int` })
+        .from(postDrafts)
+        .innerJoin(stories, eq(stories.id, postDrafts.storyId))
+        .where(scope)
+        .groupBy(stories.district)
+        .orderBy(desc(count()), stories.district),
+      db
+        .select({ code: desk, n: sql<number>`count(*)::int` })
+        .from(postDrafts)
+        .innerJoin(stories, eq(stories.id, postDrafts.storyId))
+        .where(and(scope, sql`${desk} IS NOT NULL`))
+        .groupBy(desk)
+        .orderBy(desc(count())),
+    ]);
+    return {
+      districts: districts.map((d) => ({ name: d.name, n: Number(d.n) })),
+      desks: desks.map((d) => ({ code: d.code, n: Number(d.n) })),
+      big: Number(totals?.big ?? 0),
+      update: Number(totals?.update ?? 0),
+      needsCheck: Number(totals?.needsCheck ?? 0),
+      total: Number(totals?.total ?? 0),
+    };
+  });
 
   app.get("/drafts/:id", { schema: { params: Id } }, async (req) => view(guard(req).user, req.params.id));
 
@@ -253,6 +379,31 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     },
   );
 
+  /**
+   * Copy & Posted (phase 1): the desk copied postText and pasted it on X by hand. Records who and when, no
+   * permalink; can be taken back for COPY_UNDO_SECONDS by the same person (or anyone allowed to undo posts).
+   */
+  app.post("/drafts/:id/copy-posted", { schema: { params: Id, body: Type.Object({ version: Type.Integer() }) } }, async (req) => {
+    const { user } = guard(req);
+    requirePermission(user, "post.mark_posted", "x");
+    return copyPosted(db, actor(user), req.params.id, req.body.version);
+  });
+
+  app.post("/drafts/:id/copy-posted/undo", { schema: { params: Id } }, async (req) => {
+    const { user } = guard(req);
+    requirePermission(user, ["post.mark_posted", "post.undo"], "x");
+    const draft = await undoCopyPosted(db, actor(user), req.params.id, user.permissions.has("post.undo"));
+    return view(user, draft.id);
+  });
+
+  /** "Add card": phase-1 drafts have no card until someone asks; the render worker draws it (202, then draft.updated) */
+  app.post("/drafts/:id/card/render", { schema: { params: Id } }, async (req, reply) => {
+    const { user } = guard(req);
+    requirePermission(user, "draft.card", "x");
+    await requestCardRender(db, actor(user), req.params.id);
+    return reply.status(202).send(await view(user, req.params.id));
+  });
+
   /** The live counter while typing: same rules as approve, no database. */
   app.post(
     "/x/check",
@@ -267,6 +418,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.post("/drafts/:id/approve", { schema: { params: Id, body: Type.Object({ version: Type.Integer() }) } }, async (req) => {
     const { user } = guard(req);
+    xApiOff();
     requirePermission(user, "post.publish", "x");
     const { job } = await approveDraft(db, actor(user), req.params.id, req.body.version);
     return { jobId: job.id, sendAt: job.nextAttemptAt };
@@ -304,6 +456,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.post("/drafts/:id/retry", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);
+    xApiOff();
     requirePermission(user, "post.publish", "x");
     const job = await retryFailed(db, actor(user), req.params.id);
     return { jobId: job.id };
@@ -369,6 +522,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           headline,
           slug,
           manual: p.manual,
+          /** Copy & Posted: pasted on X by hand, no link recorded */
+          copied: p.manual && !p.permalink,
         }))),
       };
     },
@@ -379,6 +534,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     { schema: { params: Id, body: Type.Object({ reason: Type.String({ minLength: 3, maxLength: 500 }) }) } },
     async (req) => {
       const { user } = guard(req);
+      xApiOff();
       requirePermission(user, "post.undo", "x");
       const job = await requestRecall(db, actor(user), req.params.id, req.body.reason);
       return { jobId: job.id };

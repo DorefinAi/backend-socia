@@ -7,6 +7,7 @@ import { and, asc, count, desc, eq, ilike, inArray, isNotNull, lt, ne, or, sql }
 import { audit } from "./audit";
 import type { Db } from "./client";
 import type { Actor } from "./desk";
+import { notify } from "./events";
 import { getKv, setKv } from "./kv";
 import { postDrafts, stories, trendItems, trendRuns, trendWatches, type DraftRewrite, type TREND_RUN_TRIGGERS, type TrendSourceHealth } from "./schema";
 
@@ -204,10 +205,11 @@ export function rewriteInput(item: TrendItem, siblings: TrendItem[]): RewriteInp
  * draft. The headline and body are reworded from the item and up to 2 other publishers of the same story
  * (rules, no AI), checked for copying, then laid out by the normal composer (#District line, "....", tags,
  * X's 280). The publishers' own text stays in the story's sourceText. The draft waits for its automatic
- * card like any other. Drafting the same news item again returns the existing draft.
+ * card like any other (phase 1, `cardOnDemand`: no card, straight to the queue). Drafting the same news item
+ * again returns the existing draft.
  */
 export async function createTrendDraft(
-  db: Db, actor: Actor, item: TrendItem, composer: Composer, rewriter: Rewriter, now = new Date(),
+  db: Db, actor: Actor, item: TrendItem, composer: Composer, rewriter: Rewriter, now = new Date(), opts: { cardOnDemand?: boolean } = {},
 ): Promise<{ draftId: string; created: boolean; rewrite: DraftRewrite | null; rewriteError?: string }> {
   const externalId = trendExternalId(item);
   const existingDraft = async (q: Pick<Db, "select">) => {
@@ -293,7 +295,8 @@ export async function createTrendDraft(
     const [draft] = await tx
       .insert(postDrafts)
       .values({
-        orgId: actor.orgId, storyId: story.id, platform: "x", status: "rendering", bodyText: content.bodyText, cardHeadline: headline,
+        orgId: actor.orgId, storyId: story.id, platform: "x", status: opts.cardOnDemand ? "ready" : "rendering", ...(opts.cardOnDemand && { cardRev: 0 }),
+        bodyText: content.bodyText, cardHeadline: headline,
         hashtags: content.hashtags, mentionSuggestions: content.mentionSuggestions, composeMethod: content.composeMethod, composeVersion: content.composeVersion,
         rewrite,
       })
@@ -305,6 +308,8 @@ export async function createTrendDraft(
         rewrite: { mode: rewrite.mode, similarity: rewrite.similarity, tooClose: rewrite.tooClose, sources: rewrite.sources.map((s) => s.name), attempts, failed: rewriteError ?? null },
       },
     });
+    // With no card to wait for, the draft is in the queue now (otherwise the render worker announces it)
+    if (opts.cardOnDemand) await notify(tx, actor.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft!.id] });
     return { draftId: draft!.id, created: true, rewrite, rewriteError };
   });
 }

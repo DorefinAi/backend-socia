@@ -2,8 +2,10 @@
 
 import { LOW_CONFIDENCE, X_LIMIT, checkXPost } from "@socia/core";
 import {
-  asCategory, asPriority, assets, ingestedFiles, postDrafts, postText, postedCardKey, publishJobs, stories, users, type Db, type StoryExternal, type StoryPriority,
+  asCategory, asPriority, assets, cardState, copiedPostInfo, ingestedFiles, postDrafts, postText, postedCardKey, publishJobs, stories, users, type Db, type StoryExternal,
+  type StoryPriority,
 } from "@socia/db";
+import { asFileTags } from "@socia/core";
 import type { Storage } from "@socia/providers";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
@@ -13,6 +15,20 @@ type Story = typeof stories.$inferSelect;
 /** Samvadia's priority and category for colouring the desk; shared-folder stories and older rows are normal / null. */
 export function storyLabels(external: StoryExternal | null | undefined): { priority: StoryPriority; category: string | null } {
   return { priority: asPriority(external?.priority), category: asCategory(external?.category) };
+}
+
+/** A breaking story's file-name tags and checks, for the queue row and the draft (phase 1); null tags elsewhere */
+export function breakingFields(s: { town: string | null; fileTags: unknown; needsCheck: string[]; deskNote: string | null }) {
+  // file_tags is JSON from the database: checked, never trusted to have the right shape
+  const tags = asFileTags(s.fileTags);
+  return {
+    town: s.town,
+    tags,
+    desk: tags?.desk ?? null,
+    reporter: tags?.reporter ?? null,
+    deskNoteRemoved: !!s.deskNote,
+    needsCheck: s.needsCheck,
+  };
 }
 
 export async function cardUrl(storage: Storage, key: string | null): Promise<string | null> {
@@ -55,6 +71,7 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
   const text = postText(draft);
   const check = checkXPost(text);
   const leaseLive = !!draft.claimExpiresAt && draft.claimExpiresAt > new Date();
+  const [file] = story.fileId ? await db.select({ name: ingestedFiles.fileName }).from(ingestedFiles).where(eq(ingestedFiles.id, story.fileId)) : [];
 
   return {
     id: draft.id,
@@ -78,7 +95,12 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
       custom: !!draft.customCardKey,
       /** The rendered card, kept so the editor can start from it or go back to it */
       autoUrl: await cardUrl(storage, draft.cardKey),
+      /** none (phase 1: not asked for yet), rendering, ready, failed */
+      state: cardState(draft),
+      requested: draft.cardRev > 0 || !!draft.customCardKey,
     },
+    /** When and by whom it was marked posted (Copy & Posted or a recorded manual post); null before */
+    posted: draft.status === "published" ? await copiedPostInfo(db, draft.orgId, draft.id) : null,
     claim:
       draft.claimedBy && draft.status === "claimed" && leaseLive
         ? { userId: draft.claimedBy, name: holder?.name ?? "Someone", until: draft.claimExpiresAt, mine: draft.claimedBy === viewerId }
@@ -109,6 +131,13 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
       district: story.district,
       ...storyLabels(story.external),
       external: story.external ?? null,
+      /** "breaking" for the newsroom's breaking files (phase 1); null otherwise */
+      layout: story.layout ?? null,
+      fileName: file?.name ?? null,
+      deskNote: story.deskNote,
+      /** A file saved again after its post went out: the posted draft this one updates; null otherwise */
+      updateOfDraftId: story.updateOfDraftId ?? null,
+      ...breakingFields(story),
     },
     media: await storyMedia(db, storage, story.id),
   };

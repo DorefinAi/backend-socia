@@ -2,7 +2,7 @@
 // audit row, and the live event commit together or not at all.
 
 import {
-  LEASE_SECONDS, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus,
+  COPY_UNDO_SECONDS, LEASE_SECONDS, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus,
   type DraftAction, type DraftStatus, type RejectReason,
 } from "@socia/core";
 import { randomUUID } from "node:crypto";
@@ -22,11 +22,11 @@ export interface Actor {
 
 export type DeskErrorCode =
   | "not_found" | "held_by_other" | "lease_lost" | "stale_version" | "invalid_state"
-  | "card_not_ready" | "post_invalid" | "cap_full" | "too_late" | "bad_mention" | "duplicate_post";
+  | "card_not_ready" | "post_invalid" | "cap_full" | "too_late" | "bad_mention" | "duplicate_post" | "forbidden" | "already_posted" | "cooldown";
 
 const HTTP_STATUS: Record<DeskErrorCode, number> = {
   not_found: 404, held_by_other: 409, lease_lost: 409, stale_version: 409, invalid_state: 409,
-  card_not_ready: 409, post_invalid: 422, cap_full: 429, too_late: 409, bad_mention: 422, duplicate_post: 409,
+  card_not_ready: 409, post_invalid: 422, cap_full: 429, too_late: 409, bad_mention: 422, duplicate_post: 409, forbidden: 403, already_posted: 409, cooldown: 429,
 };
 
 export class DeskError extends Error {
@@ -162,7 +162,8 @@ export async function updateDraft(db: Db, actor: Actor, draftId: string, version
 
     if (patch.mentions) await assertVerifiedMentions(tx, actor.orgId, patch.mentions, draft);
 
-    const cardChanged = patch.cardHeadline !== undefined && patch.cardHeadline.trim() !== draft.cardHeadline;
+    // A draft with no card asked for (phase 1, card_rev 0) stays without one when its card text changes
+    const cardChanged = patch.cardHeadline !== undefined && patch.cardHeadline.trim() !== draft.cardHeadline && draft.cardRev > 0;
     const [updated] = await tx
       .update(postDrafts)
       .set({
@@ -448,6 +449,7 @@ export async function requestRecall(db: Db, actor: Actor, postId: string, reason
       .for("update");
     if (!post) throw new DeskError("not_found", "This post does not exist.");
     if (post.recalledAt) throw new DeskError("invalid_state", "This post has already been recalled.");
+    if (!post.platformPostId) throw new DeskError("invalid_state", "This post was pasted on X by hand, so Socia cannot delete it. Delete it on X yourself.");
     const [pendingDelete] = await tx
       .select({ id: publishJobs.id })
       .from(publishJobs)
@@ -461,4 +463,163 @@ export async function requestRecall(db: Db, actor: Actor, postId: string, reason
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "post.recall_requested", entityType: "published_post", entityId: postId, after: { reason, jobId: job!.id } });
     return job!;
   });
+}
+
+// ─── Phase 1: Copy & Posted, card on demand ─────────────────────────────────
+
+export interface CopyPosted {
+  postId: string;
+  draftId: string;
+  text: string;
+  postedAt: Date;
+  postedBy: { id: string; name: string };
+  undoUntil: Date;
+}
+
+/**
+ * The operator copied the post text and pasted it on X by hand. No claim needed first: from the queue a
+ * ready draft goes straight to published, unless someone else is holding it. The version is the one whose
+ * text was copied, so a colleague's edit in between is caught (409) instead of recorded as posted.
+ */
+export async function copyPosted(db: Db, actor: Actor, draftId: string, version: number): Promise<CopyPosted> {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    // Before the version check: a colleague's Copy & Posted bumps the version too, and "copy again" would be wrong
+    if (draft.status === "published") {
+      const [post] = await tx
+        .select({ at: publishedPosts.publishedAt, name: users.name })
+        .from(publishedPosts)
+        .leftJoin(users, eq(users.id, publishedPosts.publishedBy))
+        .where(and(eq(publishedPosts.draftId, draftId), isNull(publishedPosts.recalledAt)))
+        .orderBy(sql`${publishedPosts.publishedAt} DESC`)
+        .limit(1);
+      const by = post?.name ?? "Someone";
+      throw new DeskError("already_posted", `${by} already posted this. Do not post it again.`, { postedBy: by, postedAt: post?.at ?? null });
+    }
+    if (draft.version !== version) throw new DeskError("stale_version", "This post changed after you copied it. Copy it again.", { current: draft });
+    const holder = draft.claimedBy;
+    if (draft.status === "claimed" && holder !== null && holder !== actor.id && holdsLease(draft, { ...actor, id: holder })) {
+      const name = await holderName(tx, draft.claimedBy);
+      throw new DeskError("held_by_other", `${name} is working on this.`, { heldBy: name, until: draft.claimExpiresAt });
+    }
+    const status = move(draft, "copy_posted");
+    const text = postText(draft);
+    const check = checkXPost(text);
+    if (!check.ok) throw new DeskError("post_invalid", check.problems[0]!, { problems: check.problems });
+
+    const [row] = await tx
+      .insert(publishedPosts)
+      .values({ orgId: actor.orgId, draftId, platform: draft.platform, platformPostId: null, permalink: null, text, publishedBy: actor.id, cardKey: postedCardKey(draft), manual: true })
+      .returning();
+    await tx
+      .update(postDrafts)
+      .set({ status, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      .where(eq(postDrafts.id, draftId));
+    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.copy_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status, version }, after: { status, postId: row!.id, text } });
+    await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row!.id, permalink: null });
+    const cap = await capUsage(tx, actor.orgId, draft.platform);
+    await notify(tx, actor.orgId, { type: "cap.changed", platform: draft.platform, used: cap.used, cap: cap.cap });
+    return {
+      postId: row!.id, draftId, text, postedAt: row!.publishedAt, postedBy: { id: actor.id, name: actor.name },
+      undoUntil: new Date(row!.publishedAt.getTime() + COPY_UNDO_SECONDS * 1000),
+    };
+  });
+}
+
+/** The newest Copy & Posted record of a draft (no link, not recalled), locked; null when there is none */
+async function copiedPost(tx: Executor, orgId: string, draftId: string) {
+  const [post] = await tx
+    .select()
+    .from(publishedPosts)
+    .where(and(eq(publishedPosts.orgId, orgId), eq(publishedPosts.draftId, draftId), eq(publishedPosts.manual, true), isNull(publishedPosts.permalink), isNull(publishedPosts.recalledAt)))
+    .orderBy(sql`${publishedPosts.publishedAt} DESC`)
+    .limit(1)
+    .for("update");
+  return post ?? null;
+}
+
+/**
+ * Take back a Copy & Posted within COPY_UNDO_SECONDS: the record goes and the draft returns to the queue.
+ * Only the person who marked it, or someone allowed to undo posts (`canUndoOthers`).
+ */
+export async function undoCopyPosted(db: Db, actor: Actor, draftId: string, canUndoOthers: boolean): Promise<Draft> {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    const post = draft.status === "published" ? await copiedPost(tx, actor.orgId, draftId) : null;
+    if (!post) throw new DeskError("invalid_state", "This draft was not marked posted with Copy & Posted.", { status: draft.status });
+    if (post.publishedBy !== actor.id && !canUndoOthers) throw new DeskError("forbidden", "Only the person who marked it posted can take it back.");
+    if (Date.now() - post.publishedAt.getTime() > COPY_UNDO_SECONDS * 1000) {
+      throw new DeskError("too_late", `"Posted" can be taken back for ${COPY_UNDO_SECONDS / 60} minutes. Delete the post on X by hand if it is wrong.`);
+    }
+    const status = move(draft, "undo_copy_posted");
+    await tx.delete(publishedPosts).where(eq(publishedPosts.id, post.id));
+    const [updated] = await tx
+      .update(postDrafts)
+      .set({ status, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      .where(eq(postDrafts.id, draftId))
+      .returning();
+    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.copy_posted_undo", entityType: "post_draft", entityId: draftId, before: { status: draft.status, postId: post.id, postedBy: post.publishedBy }, after: { status } });
+    await notify(tx, actor.orgId, { type: "draft.updated", draftId, status, version: updated!.version });
+    return updated!;
+  });
+}
+
+/** When a Copy & Posted was made and by whom, with its undo deadline; null for any other draft */
+export async function copiedPostInfo(db: Executor, orgId: string, draftId: string) {
+  const [row] = await db
+    .select({ id: publishedPosts.id, at: publishedPosts.publishedAt, byId: publishedPosts.publishedBy, byName: users.name })
+    .from(publishedPosts)
+    .leftJoin(users, eq(users.id, publishedPosts.publishedBy))
+    .where(and(eq(publishedPosts.orgId, orgId), eq(publishedPosts.draftId, draftId), isNull(publishedPosts.recalledAt)))
+    .orderBy(sql`${publishedPosts.publishedAt} DESC`)
+    .limit(1);
+  return row ? postedView(row) : null;
+}
+
+export function postedView(row: { at: Date; byId: string | null; byName: string | null }) {
+  return { at: row.at, by: row.byId ? { id: row.byId, name: row.byName ?? "Someone" } : null, undoUntil: new Date(row.at.getTime() + COPY_UNDO_SECONDS * 1000) };
+}
+
+/**
+ * "Add card": ask the render worker for a card (phase 1 drafts start with none). Already rendering or
+ * rendered: nothing to do. After a failure it starts again from zero attempts.
+ */
+export async function requestCardRender(db: Db, actor: Actor, draftId: string): Promise<Draft> {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    if (!["ready", "claimed", "rendering", "render_failed"].includes(draft.status)) {
+      throw new DeskError("invalid_state", `A ${draft.status} draft cannot get a new card.`, { status: draft.status });
+    }
+    const state = cardState(draft);
+    if (state === "ready" || state === "rendering") return draft;
+    // After a failed render the worker waits before trying again (render lease); a click inside that wait is refused
+    const wait = draft.renderLeaseUntil ? Math.ceil((draft.renderLeaseUntil.getTime() - Date.now()) / 1000) : 0;
+    if (state === "failed" && wait > 0) {
+      throw new DeskError("cooldown", `The card could not be drawn just now. Try again in ${wait} seconds.`, { retryAfter: wait, renderError: draft.renderError });
+    }
+    // Attempts are kept, so a card that keeps failing still ends in render_failed instead of looping
+    const [updated] = await tx
+      .update(postDrafts)
+      .set({
+        cardRev: sql`${postDrafts.cardRenderedRev} + 1`, renderError: null, renderLeaseUntil: null,
+        // A draft parked in render_failed waits for its card again
+        ...(draft.status === "render_failed" && { status: "rendering" }),
+        version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()`,
+      })
+      .where(eq(postDrafts.id, draftId))
+      .returning();
+    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.card_requested", entityType: "post_draft", entityId: draftId, before: { cardRev: draft.cardRev }, after: { cardRev: updated!.cardRev } });
+    await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
+    return updated!;
+  });
+}
+
+export type CardState = "none" | "rendering" | "ready" | "failed";
+
+/** The card as the desk sees it: none (not asked for), rendering, ready, failed */
+export function cardState(d: Pick<Draft, "cardRev" | "cardRenderedRev" | "cardKey" | "customCardKey" | "renderError">): CardState {
+  if (d.customCardKey) return "ready";
+  if (d.cardRev === 0) return "none";
+  if (d.cardKey && d.cardRenderedRev === d.cardRev) return "ready";
+  return d.renderError ? "failed" : "rendering";
 }

@@ -170,7 +170,7 @@ const URL = process.env.TEST_DATABASE_URL;
   it("counts drafts per state and view, and posts today", async () => {
     const { body } = await get("/x/counts");
     expect(body.byStatus).toMatchObject({ ready: 1, published: 1, claimed: 0, failed: 0 });
-    expect(body.byView).toEqual({ inbox: 1, sending: 0, rejected: 1, failed: 0 });
+    expect(body.byView).toEqual({ inbox: 1, sending: 0, rejected: 1, failed: 0, posted: 1 });
     expect(body.publishedToday).toBe(1);
     expect(body.cap).toMatchObject({ platform: "x", cap: 800 });
   });

@@ -22,7 +22,11 @@ export type DraftAction =
   | "start_publish" | "published" | "retry_later" | "give_up" | "retry"
   | "reject" | "restore" | "recall"
   /** The operator posted by hand on X and records the permalink */
-  | "mark_posted";
+  | "mark_posted"
+  /** Phase 1: the operator copied the text, pasted it on X by hand and said so (no permalink) */
+  | "copy_posted"
+  /** ... and took that back inside the undo window */
+  | "undo_copy_posted";
 
 const DRAFT_MOVES: Record<DraftAction, [DraftStatus[], DraftStatus]> = {
   rendered: [["rendering"], "ready"],
@@ -41,6 +45,8 @@ const DRAFT_MOVES: Record<DraftAction, [DraftStatus[], DraftStatus]> = {
   restore: [["rejected"], "ready"],
   recall: [["published"], "recalled"],
   mark_posted: [["claimed"], "published"],
+  copy_posted: [["ready", "claimed"], "published"],
+  undo_copy_posted: [["published"], "ready"],
 };
 
 /** The status after the action, or null when the action is not allowed from here. */

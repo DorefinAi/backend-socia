@@ -107,7 +107,7 @@ describe("sameText", () => {
 
     const [post] = await h.db.select().from(publishedPosts);
     expect(post!.permalink).toMatch(/^https:\/\/x\.com\/1stIndiaNews\/status\/\d+$/);
-    expect(x.posts.get(post!.platformPostId)!.text).toBe("जयपुर मेट्रो को मंजूरी\n\nमुख्यमंत्री भजनलाल शर्मा ने कहा।\n\n#1stIndiaNews");
+    expect(x.posts.get(post!.platformPostId!)!.text).toBe("जयपुर मेट्रो को मंजूरी\n\nमुख्यमंत्री भजनलाल शर्मा ने कहा।\n\n#1stIndiaNews");
     expect((await h.db.select().from(ingestedFiles)).length).toBe(2);
   }, 60_000);
 

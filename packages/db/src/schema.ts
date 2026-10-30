@@ -1,9 +1,10 @@
 // Tables: spec v1.1 §6.8 plus the Phase 1 additions in the backend architecture doc §10.
 // org_id is on every table from day one: Socia is meant to run for more than one media house.
 
+import type { FileTags } from "@socia/core";
 import { sql } from "drizzle-orm";
 import {
-  bigint, bigserial, boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid,
+  type AnyPgColumn, bigint, bigserial, boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -175,7 +176,12 @@ export const ingestedFiles = pgTable(
     seq: integer("seq"),
     ingestedAt: timestamp("ingested_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("ingested_files_sha256_key").on(t.orgId, t.sha256), index("ingested_files_slug_idx").on(t.orgId, t.slug)],
+  (t) => [
+    uniqueIndex("ingested_files_sha256_key").on(t.orgId, t.sha256),
+    index("ingested_files_slug_idx").on(t.orgId, t.slug),
+    // Breaking share: is this path done, and which story is it (re-saves)
+    index("ingested_files_path_idx").on(t.orgId, t.sourcePath, t.ingestedAt),
+  ],
 );
 
 export const STORY_STATUSES = ["ingested", "converted", "composed", "failed", "archived"] as const;
@@ -186,6 +192,9 @@ export const MEDIA_STATES = ["awaiting", "attached", "none"] as const;
 /** file: the shared folder / FTP; samvadia: its database; trend: a Web Scraper item turned into a story */
 export const STORY_SOURCES = ["file", "samvadia", "trend"] as const;
 export type StorySource = (typeof STORY_SOURCES)[number];
+
+export const STORY_LAYOUTS = ["breaking"] as const;
+export type StoryLayout = (typeof STORY_LAYOUTS)[number];
 
 /** What Samvadia told us about a story; shown on the draft, never edited here. */
 export interface StoryExternal {
@@ -231,6 +240,18 @@ export const stories = pgTable(
     parseNote: text("parse_note"),
     mediaState: text("media_state").$type<(typeof MEDIA_STATES)[number]>().notNull().default("awaiting"),
     lastError: text("last_error"),
+    /** How the text file is laid out: "breaking" (the newsroom's breaking files, phase 1); null = line 1 is the headline */
+    layout: text("layout").$type<StoryLayout>(),
+    /** Hindi town from a breaking file's place line ("रावतभाटा"); null when none */
+    town: text("town"),
+    /** Tags from a breaking file's name (district code, BIG/FULL/UPDATE, desk, reporter); null for other stories */
+    fileTags: jsonb("file_tags").$type<FileTags>(),
+    /** Why a breaking story wants a human look (core NEEDS_CHECK codes); empty when fine */
+    needsCheck: text("needs_check").array().notNull().default(sql`'{}'::text[]`),
+    /** The desk instruction taken out of the text ("नोट-: ... फुलस्क्रीन करावें"); null when none */
+    deskNote: text("desk_note"),
+    /** A breaking file saved again after its post went out: the posted draft this story updates (migration 0016) */
+    updateOfDraftId: uuid("update_of_draft_id").references((): AnyPgColumn => postDrafts.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -323,6 +344,8 @@ export const postDrafts = pgTable(
   (t) => [
     uniqueIndex("post_drafts_story_platform_key").on(t.storyId, t.platform),
     index("post_drafts_queue_idx").on(t.orgId, t.platform, t.status, t.createdAt),
+    // The rejected and posted views page by last change, newest first, keyset (updated_at, id)
+    index("post_drafts_queue_updated_idx").on(t.orgId, t.platform, t.status, t.updatedAt.desc(), t.id.desc()),
     index("post_drafts_render_idx").on(t.cardRenderedRev, t.cardRev),
   ],
 );
@@ -360,8 +383,9 @@ export const publishedPosts = pgTable(
     orgId: orgId(),
     draftId: uuid("draft_id").notNull().references(() => postDrafts.id),
     platform: text("platform").notNull(),
-    platformPostId: text("platform_post_id").notNull(),
-    permalink: text("permalink").notNull(),
+    /** Null for a "Copy & Posted" post: pasted on X by hand, no link recorded (migration 0015) */
+    platformPostId: text("platform_post_id"),
+    permalink: text("permalink"),
     text: text("text").notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
     publishedBy: uuid("published_by").references(() => users.id),
@@ -376,6 +400,10 @@ export const publishedPosts = pgTable(
   (t) => [
     uniqueIndex("published_posts_platform_id_key").on(t.platform, t.platformPostId),
     index("published_posts_day_idx").on(t.orgId, t.platform, t.publishedAt),
+    // Who posted a draft and when (posted view, Copy & Posted undo)
+    index("published_posts_draft_idx").on(t.draftId, t.publishedAt),
+    // At most one live Copy & Posted record per draft, whatever two clicks race
+    uniqueIndex("published_posts_copied_draft_key").on(t.draftId).where(sql`${t.permalink} IS NULL AND ${t.recalledAt} IS NULL`),
   ],
 );
 
@@ -592,6 +620,8 @@ export const auditLog = pgTable(
     id: bigserial("id", { mode: "number" }).primaryKey(),
     orgId: uuid("org_id").notNull(),
     actorId: uuid("actor_id"),
+    /** Who acted when it was not a user: "owner:<name>" for the owner console (actorId is then null) */
+    actor: text("actor"),
     action: text("action").notNull(),
     entityType: text("entity_type").notNull(),
     entityId: text("entity_id").notNull(),
@@ -603,6 +633,8 @@ export const auditLog = pgTable(
     index("audit_log_entity_idx").on(t.entityType, t.entityId, t.at),
     // The change history of roles and users (GET /admin/audit), newest first
     index("audit_log_org_type_idx").on(t.orgId, t.entityType, t.at, t.id),
+    // The owner console's history (GET /owner/history): user changes across orgs, newest first, keyset (at, id)
+    index("audit_log_type_at_idx").on(t.entityType, t.at.desc(), t.id.desc()),
   ],
 );
 
@@ -612,7 +644,3 @@ export const kv = pgTable("kv", {
   value: jsonb("value").notNull(),
   updatedAt: updatedAt(),
 });
-    /** Who acted when it was not a user: "owner:<name>" for the owner console (actorId is then null) */
-    actor: text("actor"),
-    // The owner console's history (GET /owner/history): user changes across orgs, newest first, keyset (at, id)
-    index("audit_log_type_at_idx").on(t.entityType, t.at.desc(), t.id.desc()),

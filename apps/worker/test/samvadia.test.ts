@@ -306,6 +306,6 @@ describe("mapping a Samvadia story", () => {
     const x = new FakeXClient("1stIndiaNews");
     await new Publisher({ db: h.db, storage: store, x, bucket: new MemoryBucket(10, 60), account: "1stIndiaNews", log, active: () => true }).tick();
     const [post] = await h.db.select().from(publishedPosts).where(eq(publishedPosts.draftId, ready!.id));
-    expect(x.posts.get(post!.platformPostId)!.text).toBe("#Baran: नई सड़क का लोकार्पण\n\nमंत्री ने फीता काटा।\n\n#1stIndiaNews");
+    expect(x.posts.get(post!.platformPostId!)!.text).toBe("#Baran: नई सड़क का लोकार्पण\n\nमंत्री ने फीता काटा।\n\n#1stIndiaNews");
   }, 60_000);
 });

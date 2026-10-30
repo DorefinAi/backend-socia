@@ -14,7 +14,8 @@ export type SociaEvent =
   | { type: "draft.released"; draftId: string }
   | { type: "post.queued"; draftId: string; jobId: string; sendAt: string }
   | { type: "post.cancelled"; draftId: string; jobId: string }
-  | { type: "post.sent"; draftId: string; postId: string; permalink: string }
+  /** permalink null: "Copy & Posted" (pasted on X by hand, no link) */
+  | { type: "post.sent"; draftId: string; postId: string; permalink: string | null }
   | { type: "post.failed"; draftId: string; jobId: string; error: string; final: boolean }
   | { type: "post.recalled"; draftId: string; postId: string }
   | { type: "cap.changed"; platform: string; used: number; cap: number }

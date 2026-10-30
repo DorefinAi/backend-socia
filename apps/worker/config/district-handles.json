@@ -1,0 +1,721 @@
+{
+  "version": 1,
+  "generated": "2026-10-30",
+  "district_list_note": "41 districts: 33 pre-2023 + 8 of the 2023 districts kept (Balotra, Beawar, Deeg, Didwana-Kuchaman, Khairthal-Tijara, Kotputli-Behror, Phalodi, Salumber) after the 28 Dec 2024 cabinet decision abolished Dudu, Kekri, Shahpura, Neem Ka Thana, Gangapur City, Jaipur Rural, Jodhpur Rural, Anupgarh, Sanchore.",
+  "state": [
+    {
+      "handle": "@RajGovOfficial",
+      "role": "govt",
+      "verified": true,
+      "source": "https://cdn.syndication.twimg.com/tweet-result?id=2089947971765059722&token=52drjoww8srysm&lang=en",
+      "note": "Government of Rajasthan; X embed endpoint: author 'Government of Rajasthan' @RajGovOfficial, verified_type=Government (tweet https://x.com/RajGovOfficial/status/2089947971765059722); profile name 'Government of Rajasthan', bio: \"Official handle of Government of Rajasthan, राजस्थान सरकार का आधिकारिक अकाउंट\", X grey Government badge [https://api.fxtwitter.com/RajGovOfficial]"
+    },
+    {
+      "handle": "@BhajanlalBjp",
+      "role": "cm",
+      "verified": true,
+      "source": "https://cdn.syndication.twimg.com/tweet-result?id=1908006863817343478&token=4mi6hq8n72aira2&lang=en",
+      "note": "Chief Minister Bhajanlal Sharma (bio: 'Chief Minister of Rajasthan'); X embed endpoint: author 'Bhajanlal Sharma' @BhajanlalBjp, verified_type=Government (tweet https://x.com/BhajanlalBjp/status/1908006863817343478); profile name 'Bhajanlal Sharma', bio: \"Chief Minister of Rajasthan\", X grey Government badge [https://api.fxtwitter.com/BhajanlalBjp]"
+    },
+    {
+      "handle": "@PoliceRajasthan",
+      "role": "police",
+      "verified": true,
+      "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=967&isOtherDept=false",
+      "note": "Rajasthan Police HQ; linked as the office's X account (https://twitter.com/PoliceRajasthan) on official site https://policedepartment.rajasthan.gov.in/ (portal API = source); X embed endpoint: author 'Rajasthan Police' @PoliceRajasthan, verified_type=Government (tweet https://x.com/PoliceRajasthan/status/2105981588177875298); profile name 'Rajasthan Police', bio: \"Official Handle of Rajasthan Police, India. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Use @RajPoliceHelp to re\", X grey Government badge [https://api.fxtwitter.com/PoliceRajasthan]"
+    }
+  ],
+  "districts": {
+    "Ajmer": [
+      {
+        "handle": "@AjmerpoliceR",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/AjmerpoliceR",
+        "note": "profile name 'Ajmer Police', bio: \"Official handle of Ajmer Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/AjmerpoliceR]"
+      },
+      {
+        "handle": "@Dmajmer",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=22&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/Dmajmer) on official site https://ajmer.rajasthan.gov.in/ (portal API = source)"
+      }
+    ],
+    "Alwar": [
+      {
+        "handle": "@AlwarPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/AlwarPolice",
+        "note": "profile name 'Alwar Police', bio: \"Official handle of Alwar Police,#Rajasthan.\", X grey Government badge [https://api.fxtwitter.com/AlwarPolice]"
+      },
+      {
+        "handle": "@DMDCAlwar",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=23&isOtherDept=false",
+        "note": "linked as the office's X account (https://www.twitter.com/DMDCAlwar) on official site https://alwar.rajasthan.gov.in/ (portal API = source); profile name 'Alwar District Collector & Magistrate', bio: \"Official Handle of District Collector and District Magistrate, #Alwar, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DMDCAlwar]"
+      }
+    ],
+    "Balotra": [
+      {
+        "handle": "@BalotraPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/BalotraPolice",
+        "note": "New district (2023); profile name 'Balotra Police', bio: \"The official handle of Balotra Police, Rajasthan, India.\", X grey Government badge [https://api.fxtwitter.com/BalotraPolice]"
+      },
+      {
+        "handle": "@DCDMBALOTRA",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DCDMBALOTRA",
+        "note": "New district (2023); balotra.rajasthan.gov.in lists no X link; profile name 'District Collector & Magistrate, Balotra', bio: \"Official Handle of District Collector and District Magistrate, #Balotra, #Rajasthan. Citizens of Balotra District can re\", no Government badge [https://api.fxtwitter.com/DCDMBALOTRA]"
+      }
+    ],
+    "Banswara": [
+      {
+        "handle": "@BanswaraPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/BanswaraPolice",
+        "note": "profile name 'Banswara Police', bio: \"Official handle of Banswara Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/BanswaraPolice]"
+      },
+      {
+        "handle": "@Dmbanswara",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=24&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/dmbanswara) on official site https://banswara.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Banswara', bio: \"Official Handle of District Collector and District Magistrate, #Banswara, #Rajasthan. Citizens can report their queries \", no Government badge [https://api.fxtwitter.com/dmbanswara]"
+      }
+    ],
+    "Baran": [
+      {
+        "handle": "@BaranPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/BaranPolice",
+        "note": "profile name 'Baran Police', bio: \"Official handle of Baran Police. \", X grey Government badge [https://api.fxtwitter.com/BaranPolice]"
+      },
+      {
+        "handle": "@DcDmBaran_",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DcDmBaran_",
+        "note": "Primary (most active, 24k posts); baran.rajasthan.gov.in lists no X link; profile name 'District Collector & Magistrate - Baran', bio: \"Official Handle of District Collector and District Magistrate, #Baran, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DcDmBaran_]"
+      },
+      {
+        "handle": "@DcDmBaran",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DcDmBaran",
+        "note": "Older second account with the same bio (created 2018, ~4.5k posts); prefer @DcDmBaran_; profile name 'District Collector & Magistrate, Baran', bio: \"Official Handle of District Collector and District Magistrate, #Baran, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DcDmBaran]"
+      }
+    ],
+    "Barmer": [
+      {
+        "handle": "@Barmer_Police",
+        "role": "police",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=415&isOtherDept=false",
+        "note": "linked as the office's X account (twtter.com/barmer_police) on official site https://barmerpolice.rajasthan.gov.in/ (portal API = source); X embed endpoint: author 'Barmer Police' @Barmer_Police, verified_type=Government (tweet https://x.com/Barmer_Police/status/1948015813753184280); profile name 'Barmer Police', bio: \"Official handle of Barmer Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/barmer_police]"
+      },
+      {
+        "handle": "@BarmerDm",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=26&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/BarmerDm) on official site https://barmer.rajasthan.gov.in/ (portal API = source); profile name 'Barmer District Collector & Magistrate', bio: \"Official Handle of District Collector and District Magistrate, #Barmer, #Rajasthan. Citizens can report their queries he\", no Government badge [https://api.fxtwitter.com/BarmerDm]"
+      }
+    ],
+    "Beawar": [
+      {
+        "handle": "@BeawarPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/BeawarPolice",
+        "note": "New district (2023); profile name 'BEAWAR POLICE', bio: \"Official X Account of Beawar Police, Rajasthan.\", no Government badge [https://api.fxtwitter.com/BeawarPolice]"
+      },
+      {
+        "handle": "@BeawarDCDM",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/BeawarDCDM",
+        "note": "New district (2023); display name 'dmbeawar'; profile name 'dmbeawar', bio: \"Official Account of District Collector & Magistrate, Beawar (Rajasthan)\", no Government badge [https://api.fxtwitter.com/BeawarDCDM]"
+      }
+    ],
+    "Bharatpur": [
+      {
+        "handle": "@BharatpurPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=1895381491649257598&token=4leilh33f37nr1t&lang=en",
+        "note": "X embed endpoint: author 'Bharatpur Police' @BharatpurPolice, verified_type=Government (tweet https://x.com/BharatpurPolice/status/1895381491649257598); profile name 'Bharatpur Police', bio: \"Official handle of Bharatpur Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/BharatpurPolice]"
+      },
+      {
+        "handle": "@DmBharatpur",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=27&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmBharatpur) on official site https://bharatpur.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Bharatpur', bio: \"Official Handle of District Collector and District Magistrate, #Bharatpur, #Rajasthan. Citizens can report their queries\", no Government badge [https://api.fxtwitter.com/DmBharatpur]"
+      }
+    ],
+    "Bhilwara": [
+      {
+        "handle": "@Bhilwara_Police",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/Bhilwara_Police",
+        "note": "Not @BhilwaraPolice (dormant, 0 posts); profile name 'Bhilwara Police', bio: \"Official handle of #Bhilwara Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Emergency #Police H\", X grey Government badge [https://api.fxtwitter.com/Bhilwara_Police]"
+      },
+      {
+        "handle": "@DmBhilwara",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=28&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmBhilwara) on official site https://bhilwara.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Bhilwara', bio: \"Official Handle of District Collector and District Magistrate, #Bhilwara, #Rajasthan. Citizens can report their queries \", no Government badge [https://api.fxtwitter.com/DmBhilwara]"
+      }
+    ],
+    "Bikaner": [
+      {
+        "handle": "@Bikaner_Police",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/Bikaner_Police",
+        "note": "Not @BikanerPolice (reserved, 0 posts); profile name 'Bikaner Police', bio: \"Official Handle of Bikaner Police. Rajasthan. India \", X grey Government badge [https://api.fxtwitter.com/Bikaner_Police]"
+      },
+      {
+        "handle": "@BikanerDm",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=29&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/BikanerDm) on official site https://bikaner.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate - Bikaner', bio: \"Official Handle of District Collector and District Magistrate, #Bikaner, #Rajasthan. Citizens can report their queries h\", no Government badge [https://api.fxtwitter.com/BikanerDm]"
+      }
+    ],
+    "Bundi": [
+      {
+        "handle": "@BundiPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/BundiPolice",
+        "note": "profile name 'Bundipolice', bio: \"Official handle of Bundi Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/BundiPolice]"
+      },
+      {
+        "handle": "@DmBundii",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=30&isOtherDept=false",
+        "note": "Note double 'i'; linked as the office's X account (https://twitter.com/DmBundii) on official site https://bundi.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & District Magistrate, Bundi', bio: \"Official Handle of District Collector and District Magistrate, #Bundi, #Rajasthan. \", no Government badge [https://api.fxtwitter.com/DmBundii]"
+      }
+    ],
+    "Chittorgarh": [
+      {
+        "handle": "@ChghPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/ChghPolice",
+        "note": "profile name 'Chittorgarh Police', bio: \"Official handle of Chittorgarh Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report cri\", X grey Government badge [https://api.fxtwitter.com/ChghPolice]"
+      },
+      {
+        "handle": "@DmChittorgarh",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=31&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DMChittorgarh) on official site https://chittorgarh.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Chittorgarh', bio: \"Official Handle of District Collector and District Magistrate, #Chittorgarh, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/DmChittorgarh]"
+      }
+    ],
+    "Churu": [
+      {
+        "handle": "@ChuruPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/ChuruPolice",
+        "note": "profile name 'Churu Police', bio: \"Official Handle of Churu Police, Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Emergency #Dial 100/112\", X grey Government badge [https://api.fxtwitter.com/ChuruPolice]"
+      },
+      {
+        "handle": "@DmChuru",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=32&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmChuru) on official site https://churu.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Churu', bio: \"Official Handle of District Collector and District Magistrate, #Churu, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DmChuru]"
+      }
+    ],
+    "Dausa": [
+      {
+        "handle": "@DausaPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DausaPolice",
+        "note": "profile name 'Dausa Police', bio: \"Official handle of Dausa Police,\", X grey Government badge [https://api.fxtwitter.com/DausaPolice]"
+      },
+      {
+        "handle": "@DmDausa",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=33&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmDausa) on official site https://dausa.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Dausa', bio: \"Official Handle of District Collector and District Magistrate, #Dausa, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/DmDausa]"
+      }
+    ],
+    "Deeg": [
+      {
+        "handle": "@DeegPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DeegPolice",
+        "note": "New district (2023); profile name 'Deeg Police', bio: \"Official Handle of Deeg Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/DeegPolice]"
+      },
+      {
+        "handle": "@DeegDm24013",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DeegDm24013",
+        "note": "New district (2023); auto-generated-looking handle but name/bio state the office. Beware parody @Dm_Deeg; profile name 'District Collector & Magistrate, Deeg', bio: \"Official Handle of District Collector and District Magistrate, #Deeg, #Rajasthan. Citizens can report their queries here\", no Government badge [https://api.fxtwitter.com/DeegDm24013]"
+      }
+    ],
+    "Dholpur": [
+      {
+        "handle": "@DholpurPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DholpurPolice",
+        "note": "Also exists: @PoliceDholpur (older, no Government badge); profile name 'Dholpur Police', bio: \"Official handle of Dholpur Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crime h\", X grey Government badge [https://api.fxtwitter.com/DholpurPolice]"
+      },
+      {
+        "handle": "@DmDholpur",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=34&isOtherDept=false",
+        "note": "Portal link has typo 'twittter.com'; linked as the office's X account (https://twittter.com/dmdholpur) on official site https://dholpur.rajasthan.gov.in/ (portal API = source); profile name 'Dholpur District Collector & Magistrate', bio: \"Official Handle of District Collector and District Magistrate, #Dholpur, #Rajasthan. Citizens can report their queries h\", no Government badge [https://api.fxtwitter.com/dmdholpur]"
+      }
+    ],
+    "DidwanaKuchaman": [
+      {
+        "handle": "@Didwanapolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DidwanaPolice",
+        "note": "New district (2023); spelling varies Didwana/Deedwana; profile name 'DIDWANA-KUCHAMAN POLICE', bio: \"Rajasthan Police : District Didwana-Kuchaman\", X grey Government badge [https://api.fxtwitter.com/DidwanaPolice]"
+      },
+      {
+        "handle": "@DMDeedwanaKucha",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DMDeedwanaKucha",
+        "note": "New district (2023); profile name 'District Collector & Magistrate-Deedwana Kuchaman', bio: \"Official Handle of District Collector and District Magistrate #Didwana_Kuchaman #Rajasthan. Citizen can report their que\", no Government badge [https://api.fxtwitter.com/DMDeedwanaKucha]"
+      }
+    ],
+    "Dungarpur": [
+      {
+        "handle": "@DungarpurP",
+        "role": "police",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=2056443893881934131&token=4zgibpa5p5jguhi&lang=en",
+        "note": "X embed endpoint: author 'DUNGARPUR POLICE' @DungarpurP, verified_type=Government (tweet https://x.com/DungarpurP/status/2056443893881934131); profile name 'DUNGARPUR POLICE', bio: \"Official handle of Dungarpur Police, Rajasthan India\", X grey Government badge [https://api.fxtwitter.com/DungarpurP]"
+      },
+      {
+        "handle": "@DmDungarpur",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=35&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmDungarpur) on official site https://dungarpur.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Dungarpur', bio: \"Official Handle of District Collector and District Magistrate, #Dungarpur, #Rajasthan. Citizens can report their queries\", no Government badge [https://api.fxtwitter.com/DmDungarpur]"
+      }
+    ],
+    "Hanumangarh": [
+      {
+        "handle": "@HmghPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/HmghPolice",
+        "note": "profile name 'Hanumangarh Police', bio: \"Official handle of Hanumangarh Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).Do not report crim\", X grey Government badge [https://api.fxtwitter.com/HmghPolice]"
+      },
+      {
+        "handle": "@DmHanumangarh",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=36&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmHanumangarh) on official site https://hanumangarh.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Hanumangarh', bio: \"Official Handle of District Collector and District Magistrate, #Hanumangarh, #Rajasthan. Citizens can report their queri\", no Government badge [https://api.fxtwitter.com/DmHanumangarh]"
+      }
+    ],
+    "Jaipur": [
+      {
+        "handle": "@jaipur_police",
+        "role": "police",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=2043381156339724649&token=4ybgypo67cpnxm2&lang=en",
+        "note": "Police Commissionerate Jaipur (city); X embed endpoint: author 'Jaipur Police' @jaipur_police, verified_type=Government (tweet https://x.com/jaipur_police/status/2043381156339724649); profile name 'Jaipur Police', bio: \"Official Handle of Jaipur Police \", X grey Government badge [https://api.fxtwitter.com/jaipur_police]"
+      },
+      {
+        "handle": "@JprRuralPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/JprRuralPolice",
+        "note": "Jaipur Rural (Gramin) police district, SP Jaipur Rural; still a police district although the Jaipur Rural revenue district was abolished Dec 2024; profile name 'Jaipur Rural Police', bio: \"Official Handle of (Jaipur Rural Police ) Our motto ~ सेवार्थ कटिबद्धता ( Committed to Serve) For Emergency #Dial 100/11\", X grey Government badge [https://api.fxtwitter.com/JprRuralPolice]"
+      },
+      {
+        "handle": "@DcDmJaipur",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=37&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/dcdmjaipur) on official site https://jaipur.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Jaipur', bio: \"Official Handle of District Collector and District Magistrate, Jaipur, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DcDmJaipur]"
+      }
+    ],
+    "Jaisalmer": [
+      {
+        "handle": "@JaisalmerPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/JaisalmerPolice",
+        "note": "profile name 'Jaisalmer Police', bio: \"Official handle of Jaisalmer Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/JaisalmerPolice]"
+      },
+      {
+        "handle": "@DmJaisalmer",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=38&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmJaisalmer?t=FoHCCYZpuydj7dXkGrcAaQ&s=08) on official site https://jaisalmer.rajasthan.gov.in/ (portal API = source); profile name 'Jaisalmer District Collector & Magistrate', bio: \"Official Handle of District Collector and District Magistrate, #Jaisalmer, #Rajasthan. Citizens can report their queries\", no Government badge [https://api.fxtwitter.com/DmJaisalmer]"
+      }
+    ],
+    "Jalore": [
+      {
+        "handle": "@JalorePolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/JalorePolice",
+        "note": "profile name 'Jalore Police', bio: \"Official handle of Jalore Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crime he\", X grey Government badge [https://api.fxtwitter.com/JalorePolice]"
+      },
+      {
+        "handle": "@DmJalore",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=39&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmJalore) on official site https://jalore.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Jalore', bio: \"Official Handle of District Collector and District Magistrate, #Jalore, #Rajasthan. Citizens can report their queries he\", no Government badge [https://api.fxtwitter.com/DmJalore]"
+      }
+    ],
+    "Jhalawar": [
+      {
+        "handle": "@JhalawarPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/JhalawarPolice",
+        "note": "profile name 'Jhalawar Police', bio: \"Official handle of Jhalawar Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crime \", X grey Government badge [https://api.fxtwitter.com/JhalawarPolice]"
+      },
+      {
+        "handle": "@DmJhalawar",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=40&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmJhalawar) on official site https://jhalawar.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Jhalawar', bio: \"Official Handle of District Collector and District Magistrate, #Jhalawar, #Rajasthan. Citizens can report their queries \", no Government badge [https://api.fxtwitter.com/DmJhalawar]"
+      }
+    ],
+    "Jhunjhunu": [
+      {
+        "handle": "@JhunjhunuPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/JhunjhunuPolice",
+        "note": "profile name 'Jhunjhunu Police', bio: \"Official handle of Jhunjhunu Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/JhunjhunuPolice]"
+      },
+      {
+        "handle": "@DMJhunjhunu",
+        "role": "collector",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=1921992146736882146&token=4nq46v5hkpxk8kb&lang=en",
+        "note": "jhunjhunu.rajasthan.gov.in lists no X link; @DCJhunjhunu also exists but has 0 posts - do not use; X embed endpoint: author 'District Magistrate and Collector, Jhunjhunu' @DMJhunjhunu, verified_type=None (tweet https://x.com/DMJhunjhunu/status/1921992146736882146); profile name 'District Magistrate and Collector, Jhunjhunu', bio: \"जिला प्रशासन, झुंझुनू के आधिकारिक सोशल मीडिया हैंडल्स एक्स में आपका स्वागत है।\", no Government badge [https://api.fxtwitter.com/DMJhunjhunu]"
+      }
+    ],
+    "Jodhpur": [
+      {
+        "handle": "@CP_Jodhpur",
+        "role": "police",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=1935584688858390881&token=4owtgyfx5bakrx&lang=en",
+        "note": "Police Commissionerate Jodhpur (city); X embed endpoint: author 'Jodhpur Police' @CP_Jodhpur, verified_type=Government (tweet https://x.com/CP_Jodhpur/status/1935584688858390881); profile name 'Jodhpur Police', bio: \"Official handle of Police Commissionerate Jodhpur. Our motto सेवार्थ कटिबद्धता (Committed to Serve). Don't report crime \", X grey Government badge [https://api.fxtwitter.com/CP_Jodhpur]"
+      },
+      {
+        "handle": "@JdprRuralPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/JdprRuralPolice",
+        "note": "Jodhpur Rural police district (SP Jodhpur Rural); old @SPOJodhpurRural is dormant (10 posts); profile name 'Jodhpur Rural Police', bio: \"Official handle of JodhpurRural Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report cr\", X grey Government badge [https://api.fxtwitter.com/JdprRuralPolice]"
+      },
+      {
+        "handle": "@JodhpurDm",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=42&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/JodhpurDm) on official site https://jodhpur.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Jodhpur', bio: \"Official Handle of District Collector and District Magistrate, #Jodhpur, #Rajasthan. Citizens can report their queries h\", no Government badge [https://api.fxtwitter.com/JodhpurDm]"
+      }
+    ],
+    "Karauli": [
+      {
+        "handle": "@KarauliPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/KarauliPolice",
+        "note": "profile name 'Karauli Police', bio: \"Official handle of Karauli Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/KarauliPolice]"
+      },
+      {
+        "handle": "@DmKarauli",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=43&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmKarauli) on official site https://karauli.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Karauli', bio: \"Official Handle of District Collector and District Magistrate, #Karauli, #Rajasthan. Citizens can report their queries h\", no Government badge [https://api.fxtwitter.com/DmKarauli]"
+      }
+    ],
+    "KhairthalTijara": [
+      {
+        "handle": "@KhairthalPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/KhairthalPolice",
+        "note": "New district (2023): Khairthal-Tijara district police; profile name 'KHAIRTHAL POLICE', bio: \"Official Twitter account of Khairthal Police. plz do not report crime here . In case of emergency #Dial 100 . # सेवार्थ_\", X grey Government badge [https://api.fxtwitter.com/KhairthalPolice]"
+      },
+      {
+        "handle": "@Bhiwadipolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/BhiwadiPolice",
+        "note": "Bhiwadi police district (SP Bhiwadi) covers the Bhiwadi/Tijara side of Khairthal-Tijara; profile name 'Bhiwadi Police', bio: \"Official account of Bhiwadi Police. For emergency call Control Room 01493-221100/294100/100/112/87648 74393 गोपनीय सूचना\", X grey Government badge [https://api.fxtwitter.com/BhiwadiPolice]"
+      },
+      {
+        "handle": "@DistrictCo95708",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DistrictCo95708",
+        "note": "New district (2023); auto-generated handle; name 'District Collector, Khairthal-tijara'; profile name 'District Collector, Khairthal-tijara', bio: \"official page of District Administration Khairthal-Tijara\", no Government badge [https://api.fxtwitter.com/DistrictCo95708]"
+      }
+    ],
+    "Kota": [
+      {
+        "handle": "@KotaPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=2024405564386922698&token=4wnuvigx7vonnif&lang=en",
+        "note": "Kota City Police (SP Kota City); X embed endpoint: author 'Kota City Police' @KotaPolice, verified_type=Government (tweet https://x.com/KotaPolice/status/2024405564386922698); profile name 'Kota City Police', bio: \"Official handle of Kota City Police .\", X grey Government badge [https://api.fxtwitter.com/KotaPolice]"
+      },
+      {
+        "handle": "@spkotarural",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/SPKotaRural",
+        "note": "Kota Rural Police (SP Kota Rural); profile name 'kota rural police', bio: \"Official handle of kota rural Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crim\", X grey Government badge [https://api.fxtwitter.com/SPKotaRural]"
+      },
+      {
+        "handle": "@Dcdmkota",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=44&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/Dcdmkota) on official site https://kota.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Kota', bio: \"Official Handle of District Collector and District Magistrate, #Kota, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/Dcdmkota]"
+      }
+    ],
+    "KotputliBehror": [
+      {
+        "handle": "@SpktpBehror",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/SpktpBehror",
+        "note": "New district (2023); profile name 'SP Kotputli-Behror', bio: \"Official \"X\" account of Kotputli- Behror Police. plz do not report crime here . In case of emergency #Dial 100 .\", no Government badge [https://api.fxtwitter.com/SpktpBehror]"
+      },
+      {
+        "handle": "@DmKotputli_B",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/DmKotputli_B",
+        "note": "New district (2023); profile name 'District Collector & Magistrate Kotputli-Behror', bio: \"Official Handle of District Collector & Magistrate, Kotputli-Behror\", no Government badge [https://api.fxtwitter.com/DmKotputli_B]"
+      }
+    ],
+    "Nagaur": [
+      {
+        "handle": "@NagaurPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=1249996120400396289&token=312z8awp873q17o&lang=en",
+        "note": "X embed endpoint: author 'Nagaur Police' @NagaurPolice, verified_type=Government (tweet https://x.com/NagaurPolice/status/1249996120400396289); profile name 'Nagaur Police', bio: \"Official handle of Nagaur Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).   Mob. 8764521201\", X grey Government badge [https://api.fxtwitter.com/NagaurPolice]"
+      },
+      {
+        "handle": "@DmNagaur",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=45&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/dmnagaur) on official site https://nagaur.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Nagaur', bio: \"Official Handle of District Collector and District Magistrate, #Nagaur, #Rajasthan. Citizens can report their queries he\", no Government badge [https://api.fxtwitter.com/DmNagaur]"
+      }
+    ],
+    "Pali": [
+      {
+        "handle": "@PaliPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/PaliPolice",
+        "note": "profile name 'Pali Police', bio: \"Official handle of Pali Police, Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crime here. Emergency \", no Government badge [https://api.fxtwitter.com/PaliPolice]"
+      },
+      {
+        "handle": "@DcDmPali",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=46&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DcDmPali) on official site https://pali.rajasthan.gov.in/ (portal API = source); profile name 'Pali District Collector & Magistrate', bio: \"Official Handle of District Collector and District Magistrate, #Pali, #Rajasthan. Citizens can report their queries here\", no Government badge [https://api.fxtwitter.com/DcDmPali]"
+      }
+    ],
+    "Phalodi": [
+      {
+        "handle": "@Phalodi_Police",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/Phalodi_Police",
+        "note": "New district (2023); bio 'Superintendent of Police, Phalodi'; profile name 'Phalodi Police', bio: \"Superintendent of Police, Phalodi\", X grey Government badge [https://api.fxtwitter.com/Phalodi_Police]"
+      },
+      {
+        "handle": "@Phalodidmdc",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/Phalodidmdc",
+        "note": "New district (2023); profile name 'District Collector & District Magistrate Phalodi', bio: \"Official Handle Of District Collector And Magistrate,Phalodi, Rajasthan.\", no Government badge [https://api.fxtwitter.com/Phalodidmdc]"
+      }
+    ],
+    "Pratapgarh": [
+      {
+        "handle": "@PratapgrhPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/PratapgrhPolice",
+        "note": "Note spelling 'Pratapgrh'. Do NOT use @PratapgarhPol (Pratapgarh, Uttar Pradesh); profile name 'Pratapgarh police', bio: \"Official handle of Pratapgarh Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crim\", X grey Government badge [https://api.fxtwitter.com/PratapgrhPolice]"
+      },
+      {
+        "handle": "@PratapgarhDm",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=47&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/PratapgarhDm) on official site https://pratapgarh.rajasthan.gov.in/ (portal API = source); profile name 'District Collector Pratapgarh', bio: \"Official Handle of District Collector and District Magistrate, #Pratapgarh, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/PratapgarhDm]"
+      }
+    ],
+    "Rajsamand": [
+      {
+        "handle": "@RajsamandPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://cdn.syndication.twimg.com/tweet-result?id=1241290098106200065&token=3bmlp494y73oi7&lang=en",
+        "note": "X embed endpoint: author 'Rajsamand Police' @RajsamandPolice, verified_type=Government (tweet https://x.com/RajsamandPolice/status/1241290098106200065); profile name 'Rajsamand Police', bio: \"Official handle of Rajsamand Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crime\", X grey Government badge [https://api.fxtwitter.com/RajsamandPolice]"
+      },
+      {
+        "handle": "@DmRajsamand",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=48&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DmRajsamand) on official site https://rajsamand.rajasthan.gov.in/ (portal API = source); profile name 'Rajsamand District Collector', bio: \"Official Handle of District Collector, #Rajsamand, #Rajasthan. Handle updated by DIPR Office, Rajsamand.\", no Government badge [https://api.fxtwitter.com/DmRajsamand]"
+      }
+    ],
+    "Salumber": [
+      {
+        "handle": "@salumberpolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/SalumberPolice",
+        "note": "New district (2023); Salumbar/Salumber spellings both used; profile name 'SALUMBER POLICE', bio: \"Official Handle of SALUMBER POLICE Our motto - सेवार्थ कटिबद्धता (Committed to Serve ) For Emergency #Dial 100/112.\", X grey Government badge [https://api.fxtwitter.com/SalumberPolice]"
+      },
+      {
+        "handle": "@DMSalumbar",
+        "role": "collector",
+        "verified": false,
+        "source": "https://api.fxtwitter.com/DmSalumbar",
+        "note": "New district (2023); UNVERIFIED: display name 'District Collector & Magistrate, Salumbar' but empty bio, not linked on salumber.rajasthan.gov.in, no second confirmation; profile name 'District Collector & Magistrate, Salumbar', empty bio, no Government badge [https://api.fxtwitter.com/DmSalumbar]"
+      }
+    ],
+    "SawaiMadhopur": [
+      {
+        "handle": "@SPsawaimadhopur",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/SPSawaiMadhopur",
+        "note": "Display name 'Sawai Madhopur Police'; profile name 'Sawai Madhopur Police', bio: \"People’s police. Tourist friendly police. For emergency dial 100/112/07462-222999\", X grey Government badge [https://api.fxtwitter.com/SPSawaiMadhopur]"
+      },
+      {
+        "handle": "@dmsawaimadhopur",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=52&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/dmsawaimadhopur) on official site https://sawaimadhopur.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Sawai Madhopur', bio: \"Official Handle of District Collector and District Magistrate,#SawaiMadhopur #Rajasthan\", no Government badge [https://api.fxtwitter.com/dmsawaimadhopur]"
+      }
+    ],
+    "Sikar": [
+      {
+        "handle": "@SikarPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/SikarPolice",
+        "note": "profile name 'Sikar Police', bio: \"Official handle of Sikar Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Emergency #Police Helpl\", X grey Government badge [https://api.fxtwitter.com/SikarPolice]"
+      },
+      {
+        "handle": "@DcDmSikar",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=49&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DcDmSikar) on official site https://sikar.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Sikar', bio: \"Official Handle of District Collector &  Magistrate #Sikar. Citizens can report their queries here.\", no Government badge [https://api.fxtwitter.com/DcDmSikar]"
+      }
+    ],
+    "Sirohi": [
+      {
+        "handle": "@SirohiPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/SirohiPolice",
+        "note": "profile name 'Police Sirohi', bio: \"Official handle of Sirohi Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/SirohiPolice]"
+      },
+      {
+        "handle": "@Dmsirohi",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=50&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/dmsirohi) on official site https://sirohi.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Sirohi', bio: \"Official Handle of District Collector and District Magistrate, #Sirohi, #Rajasthan. Citizens can report their queries he\", no Government badge [https://api.fxtwitter.com/dmsirohi]"
+      }
+    ],
+    "SriGanganagar": [
+      {
+        "handle": "@sgnrpolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=444&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/sgnrpolice) on official site https://sriganganagarpolice.rajasthan.gov.in/ (portal API = source); X embed endpoint: author 'Ganganagar Police' @sgnrpolice, verified_type=Government (tweet https://x.com/sgnrpolice/status/1930504996807733446); profile name 'Ganganagar Police', bio: \"Official handle of SriGanganagar Police, #Rajasthan\", X grey Government badge [https://api.fxtwitter.com/sgnrpolice]"
+      },
+      {
+        "handle": "@SriGanganagarDM",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=51&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/SriGanganagarDM) on official site https://sriganganagar.rajasthan.gov.in/ (portal API = source)"
+      }
+    ],
+    "Tonk": [
+      {
+        "handle": "@TonkPolice_",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/TonkPolice_",
+        "note": "Note trailing underscore; @TonkPolice is an unrelated personal account; profile name 'Tonk Police Rajasthan', bio: \"Official handle of Tonk Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve).\", X grey Government badge [https://api.fxtwitter.com/TonkPolice_]"
+      },
+      {
+        "handle": "@DCDMTonk",
+        "role": "collector",
+        "verified": true,
+        "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=194&isOtherDept=false",
+        "note": "linked as the office's X account (https://twitter.com/DcDmTonk) on official site https://tonk.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Tonk', bio: \"Official Handle of District Collector and District Magistrate, #Tonk, #Rajasthan. Citizens can report their queries here\", no Government badge [https://api.fxtwitter.com/DcDmTonk]"
+      }
+    ],
+    "Udaipur": [
+      {
+        "handle": "@UdaipurPolice",
+        "role": "police",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/UdaipurPolice",
+        "note": "profile name 'Udaipur Police', bio: \"Official handle of Udaipur Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). \", X grey Government badge [https://api.fxtwitter.com/UdaipurPolice]"
+      },
+      {
+        "handle": "@UdaipurDm",
+        "role": "collector",
+        "verified": true,
+        "source": "https://api.fxtwitter.com/UdaipurDm",
+        "note": "udaipur.rajasthan.gov.in links @prokamlesh, which no longer exists (oEmbed 404); profile bio confirms @UdaipurDm; profile name 'Udaipur District Collector & Magistrate', bio: \"Official Handle of District Collector and District Magistrate, #Udaipur, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/UdaipurDm]"
+      }
+    ]
+  }
+}

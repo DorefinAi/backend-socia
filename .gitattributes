@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.png binary
+# Newsroom sample files: keep their Windows line endings byte for byte
+packages/core/test/fixtures/** -text

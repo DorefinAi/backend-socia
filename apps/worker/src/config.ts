@@ -4,7 +4,7 @@ import {
   FakeXClient, FolderFootage, FolderSource, FtpFootage, FtpSource, LocalStorage, OAuth1Auth, S3Storage, XApiClient,
   type FileSource, type FootageSource, type Storage, type XClient,
 } from "@socia/providers";
-import { TRENDS_USER_AGENT, parseFeedList } from "@socia/core";
+import { TRENDS_USER_AGENT, parseFeedList, phaseFrom, type Phase } from "@socia/core";
 import { fileURLToPath } from "node:url";
 import type { MediaSettings } from "./stages/samvadia";
 import type { TrendsSettings } from "./stages/trends";
@@ -12,7 +12,7 @@ import type { TrendsSettings } from "./stages/trends";
 export const ROLES = ["ingest", "pipeline", "render", "publish", "maintenance", "handles", "trends"] as const;
 export type Role = (typeof ROLES)[number];
 
-function need(name: string): string {
+export function need(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} is not set`);
   return v;
@@ -26,8 +26,16 @@ function num(name: string, fallback: number): number {
 export const SOURCE_MODES = ["samvadia", "folder", "ftp"] as const;
 export type SourceMode = (typeof SOURCE_MODES)[number];
 
+/** How the text files are laid out: flat (line 1 = headline, as before) or the newsroom's breaking share */
+export const SOURCE_LAYOUTS = ["flat", "breaking"] as const;
+export type SourceLayout = (typeof SOURCE_LAYOUTS)[number];
+
 export interface WorkerConfig {
   databaseUrl: string;
+  /** PHASE: 1 = breaking files + Copy & Posted (publish role and Samvadia off); 2 (default) = everything */
+  phase: Phase;
+  /** SOURCE_LAYOUT; "breaking" by default in phase 1 */
+  sourceLayout: SourceLayout;
   /** Where stories come from: Samvadia's database (+ FTP footage), or text files in a folder / on the FTP */
   sourceMode: SourceMode;
   orgId: string;
@@ -43,9 +51,16 @@ export function loadConfig(argvRoles?: string[]): WorkerConfig {
   const roles = (argvRoles?.length ? argvRoles : (process.env.WORKER_ROLES ?? "").split(",")).map((r) => r.trim()).filter(Boolean);
   const bad = roles.filter((r) => !ROLES.includes(r as Role));
   if (bad.length || !roles.length) throw new Error(`WORKER_ROLES must list some of: ${ROLES.join(", ")} (got "${roles.join(",")}")`);
+  const phase = phaseFrom(process.env.PHASE);
+  const mode = sourceMode(phase);
+  const layout = sourceLayout(phase);
+  if (phase === 1 && mode === "samvadia") throw new Error("SOURCE_MODE=samvadia is phase 2. With PHASE=1 use SOURCE_MODE=folder (the breaking share).");
+  if (layout === "breaking" && mode !== "folder") throw new Error("SOURCE_LAYOUT=breaking reads a folder: set SOURCE_MODE=folder and SOURCE_DIR to the share.");
   return {
     databaseUrl: need("DATABASE_URL"),
-    sourceMode: sourceMode(),
+    phase,
+    sourceLayout: layout,
+    sourceMode: mode,
     orgId: need("ORG_ID"),
     roles: roles as Role[],
     pollSeconds: num("FTP_POLL_SECONDS", 5),
@@ -56,12 +71,20 @@ export function loadConfig(argvRoles?: string[]): WorkerConfig {
   };
 }
 
-/** SOURCE_MODE, or the old behaviour when it is unset: SOURCE_DIR means folder, otherwise FTP. */
-export function sourceMode(): SourceMode {
+/** SOURCE_MODE, or when it is unset: folder in phase 1, else the old rule (SOURCE_DIR means folder, otherwise FTP). */
+export function sourceMode(phase: Phase = 2): SourceMode {
   const v = process.env.SOURCE_MODE?.trim().toLowerCase();
-  if (!v) return process.env.SOURCE_DIR ? "folder" : "ftp";
+  if (!v) return phase === 1 || process.env.SOURCE_DIR ? "folder" : "ftp";
   if (!SOURCE_MODES.includes(v as SourceMode)) throw new Error(`SOURCE_MODE must be one of ${SOURCE_MODES.join(", ")} (got "${v}")`);
   return v as SourceMode;
+}
+
+/** SOURCE_LAYOUT, or breaking in phase 1 and flat otherwise */
+export function sourceLayout(phase: Phase = 2): SourceLayout {
+  const v = process.env.SOURCE_LAYOUT?.trim().toLowerCase();
+  if (!v) return phase === 1 ? "breaking" : "flat";
+  if (!SOURCE_LAYOUTS.includes(v as SourceLayout)) throw new Error(`SOURCE_LAYOUT must be one of ${SOURCE_LAYOUTS.join(", ")} (got "${v}")`);
+  return v as SourceLayout;
 }
 
 export interface SamvadiaConfig {

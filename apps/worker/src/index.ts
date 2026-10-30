@@ -5,17 +5,21 @@
 //   socia-publish  WORKER_ROLES=publish,maintenance
 //   socia-trends   WORKER_ROLES=trends            (singleton: the Web Scraper's free public sources)
 //   crons          node dist/index.js --once handles
+// PHASE=1: the breaking share (SOURCE_LAYOUT=breaking), drafts with no card until asked for, the publish role
+// does not start, and Samvadia ingest is refused at config load.
 
-import { SamvadiaReader, createDb, recordIngestPoll } from "@socia/db";
+import { SamvadiaReader, createDb, readApiPhase, recordDataFileStatus, recordIngestPoll } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
 import { CardRenderer } from "./card/renderer";
 import { politeGet } from "@socia/providers";
-import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, samvadiaConfig, trendsConfig } from "./config";
+import { BreakingShareSource, ShareUnreachable } from "./breaking-source";
+import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, need, samvadiaConfig, trendsConfig } from "./config";
 
 import { SamvadiaIngest } from "./stages/samvadia";
 import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
+import { phaseOneData } from "./data-files";
 import { convertNext } from "./stages/convert";
 import { housekeeping, syncHandles } from "./stages/crons";
 import { Ingest } from "./stages/ingest";
@@ -51,11 +55,15 @@ async function main(): Promise<void> {
     log.info({ footage: footage.kind, media: sc.media, rescanSeconds: sc.rescanMs / 1000 }, "ingest: Samvadia approved stories + FTP footage (read only)");
     loops.start({ name: "ingest", idleMs: cfg.pollSeconds * 1000, log, tick: async () => (await ingest.poll(), false) });
   } else if (cfg.roles.includes("ingest")) {
-    const source = makeSource(cfg.sourceMode);
+    const breaking = cfg.sourceLayout === "breaking";
+    const share = breaking ? new BreakingShareSource(need("SOURCE_DIR"), { log }) : null;
+    const source = share ?? makeSource(cfg.sourceMode);
     cleanups.push(() => source.close());
-    const ingest = new Ingest({ db, storage: storage!, source, orgId: cfg.orgId, log });
+    // The breaking share holds the whole day already: a first start takes only what arrives from then on
+    const ingest = new Ingest({ db, storage: storage!, source, orgId: cfg.orgId, log, ...(breaking && { layout: "breaking" as const, startFromNow: true }) });
     const mode = cfg.sourceMode;
-    log.info({ mode }, "ingest: text files from the share");
+    log.info({ mode, layout: cfg.sourceLayout }, breaking ? "ingest: breaking files from the share (read only)" : "ingest: text files from the share");
+    let wasDown = false;
     loops.start({
       name: "ingest",
       idleMs: cfg.pollSeconds * 1000,
@@ -63,10 +71,21 @@ async function main(): Promise<void> {
       tick: async () => {
         try {
           const taken = await ingest.scan();
-          await recordIngestPoll(db, cfg.orgId, { mode, taken, cursor: null });
+          await recordIngestPoll(db, cfg.orgId, { mode, taken, cursor: null, ...(share && { source: share.health() }) }).catch((e) => log.error({ err: e }, "could not record the ingest status"));
+          if (wasDown) log.info("the share is readable again");
+          wasDown = false;
         } catch (err) {
-          await recordIngestPoll(db, cfg.orgId, { mode, taken: 0, error: String((err as Error)?.message ?? err).slice(0, 500), cursor: null }).catch(() => undefined);
-          throw err;
+          const unreachable = err instanceof ShareUnreachable;
+          // Shown to the desk: plain words, never a server path (the log below keeps the details)
+          const message = unreachable ? err.message : "The last scan failed; see the worker log.";
+          await recordIngestPoll(db, cfg.orgId, { mode, taken: 0, error: share ? message : String((err as Error)?.message ?? err).slice(0, 500), cursor: null, ...(share && { source: share.health(), quietRepeats: true }) }).catch(
+            (e) => log.error({ err: e }, "could not record the ingest status"),
+          );
+          // A share that is down stays down for a while: say so once, not every few seconds. Anything else (the
+          // database, storage, a bug) goes to the loop, which logs it and backs off.
+          if (!unreachable) throw err;
+          if (!wasDown) log.error({ err }, "the share cannot be read; waiting for it");
+          wasDown = true;
         }
         return false;
       },
@@ -75,8 +94,10 @@ async function main(): Promise<void> {
 
   if (cfg.roles.includes("pipeline")) {
     const dictionaries = new Dictionaries(db, cfg.orgId);
-    loops.start({ name: "convert", idleMs: 1000, log, tick: () => convertNext(db, storage!, log) });
-    loops.start({ name: "compose", idleMs: 1000, log, tick: () => composeNext(db, dictionaries, log) });
+    const data = phaseOneData(log, (status) => recordDataFileStatus(db, status));
+    const composeOpts = { cardOnDemand: cfg.phase === 1, data };
+    loops.start({ name: "convert", idleMs: 1000, log, tick: () => convertNext(db, storage!, log, data) });
+    loops.start({ name: "compose", idleMs: 1000, log, tick: () => composeNext(db, dictionaries, log, composeOpts) });
   }
 
   if (cfg.roles.includes("render")) {
@@ -88,7 +109,15 @@ async function main(): Promise<void> {
     }
   }
 
-  if (cfg.roles.includes("publish")) {
+  // Phase 1 posts by hand (Copy & Posted): nothing may reach the X API, whatever the roles say. PHASE is set on the
+  // API and the worker separately, so the API's value (written at its start) is checked too.
+  const apiPhase = cfg.roles.includes("publish") ? await readApiPhase(db) : null;
+  if (apiPhase && apiPhase.phase !== cfg.phase) {
+    log.error({ workerPhase: cfg.phase, apiPhase: apiPhase.phase, apiStartedAt: apiPhase.at }, "PHASE differs between the API and this worker: set the same PHASE on both");
+  }
+  if (cfg.roles.includes("publish") && (cfg.phase === 1 || apiPhase?.phase === 1)) {
+    log.error({ workerPhase: cfg.phase, apiPhase: apiPhase?.phase ?? null }, "PHASE=1: the publish role is NOT started (posting is Copy & Posted by hand); maintenance still runs");
+  } else if (cfg.roles.includes("publish")) {
     const x = makeXClient();
     if (x.mode === "fake") log.warn("X_MODE=fake: nothing is really posted to X");
     const bucket: RateBucket = cfg.redisUrl ? new RedisBucket(cfg.redisUrl, cfg.xRate.tokens, cfg.xRate.windowSeconds) : new MemoryBucket(cfg.xRate.tokens, cfg.xRate.windowSeconds);
@@ -122,7 +151,7 @@ async function main(): Promise<void> {
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
-  log.info({ roles: cfg.roles }, "worker started");
+  log.info({ roles: cfg.roles, phase: cfg.phase }, "worker started");
 }
 
 main().catch((err) => {

@@ -7,6 +7,8 @@ import { auditLog } from "./schema";
 export interface AuditEntry {
   orgId: string;
   actorId: string | null;
+  /** When no user acted (actorId null): "owner:<name>" for the owner console */
+  actor?: string | null;
   action: string;
   entityType: string;
   entityId: string;

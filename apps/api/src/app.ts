@@ -11,11 +11,12 @@ import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyServerOptions } from "fastify";
 import { COOKIE, HttpError, loadSession } from "./auth";
-import type { ApiConfig } from "./config";
+import { ownerKeyFrom, type ApiConfig } from "./config";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes, type AuthLimits } from "./routes/auth";
 import { deskRoutes } from "./routes/desk";
 import { libraryRoutes } from "./routes/library";
+import { ownerRoutes, type OwnerLimits } from "./routes/owner";
 import { statusRoutes } from "./routes/status";
 import { templateRoutes } from "./routes/templates";
 import { trendRoutes } from "./routes/trends";
@@ -30,6 +31,8 @@ export interface AppDeps {
   pace?: PaceStore;
   /** Sign-in throttling (routes/auth.ts); tests pass small numbers. Default: AUTH_LIMITS */
   authLimits?: Partial<AuthLimits>;
+  /** Owner API failure limit (routes/owner.ts); tests pass small numbers. Default: OWNER_LIMITS */
+  ownerLimits?: Partial<OwnerLimits>;
 }
 
 /**
@@ -121,5 +124,8 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   await app.register(statusRoutes, deps);
   await app.register(templateRoutes, deps);
   await app.register(trendRoutes, deps);
+  // The owner console's API exists only with a long enough OWNER_API_KEY; otherwise every /owner path is a 404
+  const ownerKey = ownerKeyFrom(deps.config.ownerApiKey ?? undefined);
+  if (ownerKey) await app.register(ownerRoutes, { ...deps, ownerKey });
   return app;
 }

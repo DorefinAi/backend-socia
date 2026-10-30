@@ -19,8 +19,8 @@ import { randomBytes } from "node:crypto";
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   accessChanged, assertActorCovers, assertActorCoversScope, assertAdminRemains, assertLabelFree, assertScopeWithinOwn, assertWithinOwn,
-  builtInDefaults, effectiveOf, getRole, isFullAdmin, listRoleViews, lockAccess, oneRoleView, parsePermissionList, reloadActor, roleAllowed,
-  rolePlatforms, roleUserIds, userPermissionView, writeRolePermissions, type RoleRow,
+  builtInDefaults, effectiveOf, getRole, isFullAdmin, listRoleViews, lockAccess, oneRoleView, parsePermissionList, reloadActor, replaceOverrides,
+  roleAllowed, rolePlatforms, roleUserIds, userPermissionView, writeRolePermissions, type RoleRow,
 } from "../access";
 import { HttpError, guard, hashPassword, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
@@ -241,21 +241,7 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
         const targetRole = await getRole(tx, user.orgId, target.role);
         assertActorCoversScope(user, { platformScoped: targetRole?.platformScoped ?? false, platforms: target.platforms }, target.name);
         assertWithinOwn(user, await effectiveOf(tx, target, wanted), "give exceptions");
-        const before = new Map(
-          (await tx.select().from(userPermissionOverrides).where(eq(userPermissionOverrides.userId, target.id))).map((o) => [o.permission, o.allowed]),
-        );
-        const after = new Map(wanted.map((o) => [o.permission, o.allowed]));
-        // Unchanged exceptions keep who set them and when
-        const removed = [...before.keys()].filter((k) => !after.has(k) || after.get(k) !== before.get(k));
-        if (removed.length) await tx.delete(userPermissionOverrides).where(and(eq(userPermissionOverrides.userId, target.id), inArray(userPermissionOverrides.permission, removed)));
-        const added = [...after].filter(([k, v]) => before.get(k) !== v);
-        if (added.length) await tx.insert(userPermissionOverrides).values(added.map(([permission, allowed]) => ({ userId: target.id, permission, allowed, setBy: user.id })));
-        for (const [permission, allowed] of added) {
-          await audit(tx, entry(user, "user.override_set", "user", target.id, before.has(permission) ? { permission, allowed: before.get(permission) } : null, { permission, allowed }));
-        }
-        for (const permission of [...before.keys()].filter((k) => !after.has(k))) {
-          await audit(tx, entry(user, "user.override_cleared", "user", target.id, { permission, allowed: before.get(permission) }, null));
-        }
+        await replaceOverrides(tx, target.id, wanted, { orgId: user.orgId, actorId: user.id });
         await assertAdminRemains(tx, user.orgId);
         return userPermissionView(tx, target);
       });
@@ -469,7 +455,13 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
         // A user id may come in upper case; role keys and other ids are matched as sent
         const entityId = q.entityId && type === "user" ? q.entityId.toLowerCase() : q.entityId;
         const items = await db
-          .select({ a: auditLog, actor: users.name })
+          // A change from the owner console has no user: its actor is the text "owner:<name>". actorKind tells it
+          // from a user whose (free-text) name merely looks like that
+          .select({
+            a: auditLog,
+            actor: sql<string | null>`coalesce(${auditLog.actor}, ${users.name})`,
+            actorKind: sql<"owner" | "user" | null>`CASE WHEN ${auditLog.actor} IS NOT NULL THEN 'owner' WHEN ${auditLog.actorId} IS NOT NULL THEN 'user' END`,
+          })
           .from(auditLog)
           .leftJoin(users, eq(users.id, auditLog.actorId))
           .where(

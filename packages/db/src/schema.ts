@@ -612,3 +612,7 @@ export const kv = pgTable("kv", {
   value: jsonb("value").notNull(),
   updatedAt: updatedAt(),
 });
+    /** Who acted when it was not a user: "owner:<name>" for the owner console (actorId is then null) */
+    actor: text("actor"),
+    // The owner console's history (GET /owner/history): user changes across orgs, newest first, keyset (at, id)
+    index("audit_log_type_at_idx").on(t.entityType, t.at.desc(), t.id.desc()),

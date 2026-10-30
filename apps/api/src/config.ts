@@ -26,6 +26,19 @@ export interface ApiConfig {
   trustProxy: TrustProxy;
 }
 
+  /**
+   * OWNER_API_KEY: the bearer key of the owner console's server-to-server API (/owner, routes/owner.ts).
+   * null (unset or shorter than OWNER_KEY_MIN) turns every /owner route off (404).
+   */
+  ownerApiKey?: string | null;
+}
+
+export const OWNER_KEY_MIN = 32;
+
+/** OWNER_API_KEY, or null when unset or too short to be safe (the /owner routes are then off) */
+export function ownerKeyFrom(value: string | undefined): string | null {
+  const v = (value ?? "").trim();
+  return v.length >= OWNER_KEY_MIN ? v : null;
 export type TrustProxy = false | number | string[];
 
 /** Parses TRUST_PROXY; an unusable value stops startup instead of trusting the wrong hops */
@@ -65,6 +78,7 @@ export function loadConfig(): ApiConfig {
 }
 
 export function makeStorage(cfg: ApiConfig): Storage {
+    ownerApiKey: ownerKeyFrom(process.env.OWNER_API_KEY),
   if (cfg.storageDir) return new LocalStorage(cfg.storageDir, process.env.STORAGE_PUBLIC_BASE ?? `http://localhost:${cfg.port}/dev-files`);
   return new S3Storage({
     endpoint: need("S3_ENDPOINT"),

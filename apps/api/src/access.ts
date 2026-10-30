@@ -5,8 +5,8 @@ import {
   BUILT_IN_ROLE_INFO, DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, effectivePermissionSet, isBuiltInRole, isPermissionKey,
   permissionLabel, rolePermissionSet, type PermissionKey,
 } from "@socia/core";
-import { notify, rolePermissions, roles, userPermissionOverrides, users, type Executor } from "@socia/db";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { audit, notify, rolePermissions, roles, userPermissionOverrides, users, type Executor } from "@socia/db";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { HttpError, type SessionUser } from "./auth";
 
 export type RoleRow = typeof roles.$inferSelect;
@@ -238,6 +238,41 @@ export async function userPermissionView(ex: Executor, target: { id: string; org
     })),
     overrides,
   };
+}
+
+/** Who made a change, as written to the audit trail: a user (actorId), or the owner console (actor "owner:<name>") */
+export interface ChangeBy {
+  orgId: string;
+  actorId: string | null;
+  actor?: string | null;
+}
+
+/**
+ * Replaces a user's exceptions with `wanted` (keys already checked) and audits each change. Unchanged
+ * exceptions keep who set them and when. Inside the change's transaction, under lockAccess; the caller
+ * runs assertAdminRemains afterwards.
+ */
+export async function replaceOverrides(
+  tx: Executor,
+  targetId: string,
+  wanted: readonly { permission: string; allowed: boolean }[],
+  by: ChangeBy,
+): Promise<void> {
+  const before = new Map(
+    (await tx.select().from(userPermissionOverrides).where(eq(userPermissionOverrides.userId, targetId))).map((o) => [o.permission, o.allowed]),
+  );
+  const after = new Map(wanted.map((o) => [o.permission, o.allowed]));
+  const removed = [...before.keys()].filter((k) => !after.has(k) || after.get(k) !== before.get(k));
+  if (removed.length) await tx.delete(userPermissionOverrides).where(and(eq(userPermissionOverrides.userId, targetId), inArray(userPermissionOverrides.permission, removed)));
+  const added = [...after].filter(([k, v]) => before.get(k) !== v);
+  if (added.length) await tx.insert(userPermissionOverrides).values(added.map(([permission, allowed]) => ({ userId: targetId, permission, allowed, setBy: by.actorId })));
+  const entry = (action: string, b: unknown, a: unknown) => ({ ...by, action, entityType: "user", entityId: targetId, before: b, after: a });
+  for (const [permission, allowed] of added) {
+    await audit(tx, entry("user.override_set", before.has(permission) ? { permission, allowed: before.get(permission) } : null, { permission, allowed }));
+  }
+  for (const permission of [...before.keys()].filter((k) => !after.has(k))) {
+    await audit(tx, entry("user.override_cleared", { permission, allowed: before.get(permission) }, null));
+  }
 }
 
 /** The user's exception, else their role's setting (SQL, for every user at once). Only for ADMIN_ALWAYS keys. */

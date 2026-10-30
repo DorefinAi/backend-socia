@@ -1,4 +1,4 @@
-import { PERMISSIONS, PERMISSION_KEYS, matchTotpStep, newTotpSecret, totpUri } from "@socia/core";
+import { PERMISSIONS, PERMISSION_KEYS, matchTotpStep, newTotpSecret, phaseFeatures, totpUri } from "@socia/core";
 import { audit, sessions, users } from "@socia/db";
 import { decryptSecret, encryptSecret } from "@socia/providers";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
@@ -216,6 +216,9 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     next: s.verified ? "done" : s.user.totpEnabled ? "totp" : "totp_setup",
     /** The pre-0009 "permissions" object, for clients that have not moved to the list */
     access: legacyAccess(s.user),
+    /** The backend's PHASE: the desk's one switch (handoff/phase1-contract.md §0) */
+    phase: config.phase ?? 2,
+    features: phaseFeatures(config.phase ?? 2),
   });
 
   app.get("/me", async (req) => meView(guard(req)));

@@ -1,8 +1,10 @@
-import { rewriteModeFrom, type RewriteMode } from "@socia/core";
+import { phaseFrom, rewriteModeFrom, type Phase, type RewriteMode } from "@socia/core";
 import { LocalStorage, S3Storage, type Storage } from "@socia/providers";
 
 export interface ApiConfig {
   databaseUrl: string;
+  /** PHASE: 1 = Copy & Posted only (X API posting refused); 2 or unset = everything. Absent means 2. */
+  phase?: Phase;
   port: number;
   /** Browser origins allowed to call the API with cookies, e.g. https://digital.<domain> */
   corsOrigins: string[];
@@ -24,8 +26,6 @@ export interface ApiConfig {
    * its own IP.
    */
   trustProxy: TrustProxy;
-}
-
   /**
    * OWNER_API_KEY: the bearer key of the owner console's server-to-server API (/owner, routes/owner.ts).
    * null (unset or shorter than OWNER_KEY_MIN) turns every /owner route off (404).
@@ -39,6 +39,8 @@ export const OWNER_KEY_MIN = 32;
 export function ownerKeyFrom(value: string | undefined): string | null {
   const v = (value ?? "").trim();
   return v.length >= OWNER_KEY_MIN ? v : null;
+}
+
 export type TrustProxy = false | number | string[];
 
 /** Parses TRUST_PROXY; an unusable value stops startup instead of trusting the wrong hops */
@@ -64,6 +66,8 @@ function need(name: string): string {
 export function loadConfig(): ApiConfig {
   return {
     databaseUrl: need("DATABASE_URL"),
+    // An unknown phase stops startup rather than running the wrong product
+    phase: phaseFrom(process.env.PHASE),
     port: Number(process.env.PORT ?? 4000),
     corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:3000").split(",").map((s) => s.trim()).filter(Boolean),
     cookieSecure: process.env.COOKIE_SECURE !== "false",
@@ -74,11 +78,11 @@ export function loadConfig(): ApiConfig {
     // An unknown mode stops startup instead of drafting with the wrong rewriter
     rewriteMode: rewriteModeFrom(process.env.REWRITE_MODE),
     trustProxy: trustProxyFrom(process.env.TRUST_PROXY),
+    ownerApiKey: ownerKeyFrom(process.env.OWNER_API_KEY),
   };
 }
 
 export function makeStorage(cfg: ApiConfig): Storage {
-    ownerApiKey: ownerKeyFrom(process.env.OWNER_API_KEY),
   if (cfg.storageDir) return new LocalStorage(cfg.storageDir, process.env.STORAGE_PUBLIC_BASE ?? `http://localhost:${cfg.port}/dev-files`);
   return new S3Storage({
     endpoint: need("S3_ENDPOINT"),

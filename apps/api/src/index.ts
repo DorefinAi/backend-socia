@@ -1,4 +1,4 @@
-import { createDb } from "@socia/db";
+import { createDb, recordApiPhase } from "@socia/db";
 import { buildApp } from "./app";
 import { loadConfig, makeStorage } from "./config";
 import { attachRealtime } from "./realtime";
@@ -6,6 +6,8 @@ import { attachRealtime } from "./realtime";
 const config = loadConfig();
 const { db, close } = createDb(config.databaseUrl, 10);
 const app = await buildApp({ db, storage: makeStorage(config), config });
+// The worker compares its own PHASE with this before it starts anything that posts to X
+await recordApiPhase(db, config.phase ?? 2);
 
 await app.listen({ host: "0.0.0.0", port: config.port });
 const closeRealtime = attachRealtime(app.server, { db, databaseUrl: config.databaseUrl, corsOrigins: config.corsOrigins, log: app.log });

@@ -15,6 +15,12 @@ export interface Storage {
   url(key: string, seconds?: number): Promise<string>;
 }
 
+/** The object is not there: S3 NoSuchKey / 404, or a missing local file. Anything else is a real failure. */
+export function isMissingObject(e: unknown): boolean {
+  const err = e as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } } | null;
+  return !!err && (err.name === "NoSuchKey" || err.name === "NotFound" || err.$metadata?.httpStatusCode === 404 || err.code === "ENOENT");
+}
+
 export interface S3Config {
   endpoint: string;
   bucket: string;

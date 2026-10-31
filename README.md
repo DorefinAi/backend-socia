@@ -132,6 +132,8 @@ Run `node --env-file=.env.live --import tsx packages/db/scripts/migrate.ts` (or 
 | `0014_audit_type_at_idx` | Index for the owner console's history |
 | `0015_phase1_breaking` | `published_posts.platform_post_id` and `permalink` become nullable (Copy & Posted has no X id yet). New `stories` columns: `layout`, `town`, `file_tags`, `needs_check`, `desk_note` |
 | `0016_phase1_review` | `stories.update_of_draft_id` (a file saved again after its post). Indexes for the share and the queue. One live Copy & Posted record per draft |
+| `0017_org_card_templates` | New table `org_card_templates` (the shared X card designs, see below). Its down script drops the table |
+| `0018_org_card_templates_created_by` | `org_card_templates.created_by` (who uploaded it; null for seeded ones, set null when that user is deleted). Its down script drops the column |
 
 All are additive. Existing rows keep working.
 
@@ -139,10 +141,23 @@ All are additive. Existing rows keep working.
 
 The down scripts are in `packages/db/migrations/down/`. The migrator does not run them. Run them by hand, with the pre-phase-1 code deployed, newest first (0016, then 0015, and so on).
 
-- `0016` refuses unless it is the newest applied migration.
+- `0018`, `0017` and `0016` refuse unless they are the newest applied migration.
 - `0015` refuses while any story still has phase 1 data (file tags, town, desk note, needs-check reasons). To drop it anyway, set the session setting `socia.force_rollback`:
   `PGOPTIONS="-c socia.force_rollback=on" psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <down file>`
 - `0013` copies each owner row's actor into the audit JSON before dropping the column.
+
+## Shared card templates
+
+The desk's two house designs are the X card templates for the whole org (contract: `C:\vartmaan\code\dev-docs\org-card-templates-contract.md`). The per-user background (`/me/card-template`) stays as it is.
+
+- Images ship in `apps/api/assets/card-templates/`: `breaking-square.jpeg` (1080x1080, "BREAKING NEWS", default for `breaking`) and `badi-khabar.jpeg` (1080x1350, "बड़ी ख़बर", default for `big_breaking`, no date).
+- Seed once per org, from the repo root so `STORAGE_DIR` resolves like the API's:
+  `node --env-file=.env --import tsx apps/api/src/cli.ts seed-card-templates --org <ORG_ID>`
+  Safe to run again: unchanged files and rows are left alone. An existing template keeps its name, default tags, order and layout (`--reset-layout` puts the default layout back); only a changed image file is stored, under a new key, and the old file removed.
+- API: `GET /card-templates?platform=x` (anyone signed in) · `GET /card-templates/:slug/background?v=` (same org only, else 404).
+- Uploads (v2): `POST /card-templates?label=<1-40 chars>` with a raw PNG/JPEG body (≤ 5 MB, each side 600 to 4000 px), anyone with "Edit drafts" on X → `201 {template}`, slug from the label plus a random suffix, no default tags.
+- `PATCH /card-templates/:slug {label?, layout?, defaultFor?}`: label/layout by the uploader or an admin; `defaultFor` admin only, and a tag set on one template is removed from the others (one default per tag). `DELETE /card-templates/:slug` admin only (204; the image file stays). "Admin" is the built-in `admin` role.
+- Every template carries `createdBy`, `canEdit`, `canDelete`, `canSetDefault` for the requesting user. Uploads, renames, layout and default changes and deletes are audited.
 
 ## Owner API (`/owner`)
 
@@ -182,6 +197,7 @@ Every request sends cookies (`credentials: "include"`). Every POST, PATCH and DE
 | Reject and restore | `POST /drafts/:id/reject {reason, note?}` · `POST /drafts/:id/restore` |
 | Published | `GET /posts?before=` · `POST /drafts/:id/mark-posted` (with a permalink; phase 2) |
 | Dashboard | `GET /x/counts` · `GET /ingest/status` (state, source health, data files; paths and last errors for users with Settings) |
+| Card templates | `GET /card-templates` · `GET /card-templates/:slug/background?v=` · `POST /card-templates?label=` (raw image) · `PATCH /card-templates/:slug {label?, layout?, defaultFor?}` · `DELETE /card-templates/:slug` (admin) |
 | Library | `GET/POST/PATCH/DELETE /hashtag-rules` · `GET /handles?q=` · `POST/PATCH/DELETE /handles` · `GET /handles/staging` · `POST /handles/staging/:id/promote` · `.../dismiss` |
 | Admin | `GET/POST/PATCH /users` · `GET /audit?entityType=&entityId=` |
 | Live | `io(API, { withCredentials: true })`. Events include `story.arrived`, `draft.updated`, `draft.claimed`, `post.sent`, `post.cancelled`, `cap.changed`, `ingest.status`, and `resync` |

@@ -156,6 +156,43 @@ export const cardTemplates = pgTable(
   (t) => [uniqueIndex("card_templates_user_platform_key").on(t.userId, t.platform)],
 );
 
+/** An org template's layout: as CardLayout, but a design may have no date (date null: none is drawn). */
+export type OrgCardLayout = Omit<CardLayout, "date"> & { date: CardLayout["date"] | null };
+
+/** The story tags an org template can open by default on */
+export const ORG_TEMPLATE_DEFAULT_FOR = ["big_breaking", "breaking"] as const;
+export type OrgTemplateDefaultFor = (typeof ORG_TEMPLATE_DEFAULT_FOR)[number];
+
+/**
+ * The org's shared card designs (contract: dev-docs/org-card-templates-contract.md). Seeded by the CLI
+ * (seed-card-templates); anyone signed in reads them, Settings may move the drawing areas.
+ */
+export const orgCardTemplates = pgTable(
+  "org_card_templates",
+  {
+    id: id(),
+    orgId: orgId(),
+    platform: text("platform").notNull().default("x"),
+    slug: text("slug").notNull(),
+    label: text("label").notNull(),
+    backgroundKey: text("background_key").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    layout: jsonb("layout").$type<OrgCardLayout>().notNull(),
+    defaultFor: text("default_for").array().$type<OrgTemplateDefaultFor[]>().notNull().default(sql`'{}'::text[]`),
+    sort: integer("sort").notNull().default(0),
+    /** Who uploaded it (v2); null for seeded templates and when that user is deleted */
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("org_card_templates_org_platform_slug_key").on(t.orgId, t.platform, t.slug),
+    check("org_card_templates_slug_check", sql`${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length(${t.slug}) <= 40`),
+    check("org_card_templates_default_for_check", sql`${t.defaultFor} <@ ARRAY['big_breaking', 'breaking']::text[]`),
+  ],
+);
+
 // ─── Ingest ──────────────────────────────────────────────────────────────────
 
 export const FILE_KINDS = ["text", "image", "video", "other"] as const;

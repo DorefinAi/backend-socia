@@ -82,7 +82,7 @@ export function loadConfig(): ApiConfig {
   };
 }
 
-export function makeStorage(cfg: ApiConfig): Storage {
+export function makeStorage(cfg: Pick<ApiConfig, "storageDir" | "port">): Storage {
   if (cfg.storageDir) return new LocalStorage(cfg.storageDir, process.env.STORAGE_PUBLIC_BASE ?? `http://localhost:${cfg.port}/dev-files`);
   return new S3Storage({
     endpoint: need("S3_ENDPOINT"),

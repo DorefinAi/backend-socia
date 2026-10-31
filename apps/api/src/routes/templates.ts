@@ -31,17 +31,30 @@ const Color = Type.String({ pattern: "^#[0-9A-Fa-f]{6}$" });
 const Rect = { x: Fraction, y: Fraction, w: Fraction, h: Fraction };
 const FontPx = Type.Integer({ minimum: 6, maximum: 400 });
 
-export const Layout = Type.Object(
-  {
-    date: Type.Object({ ...Rect, color: Color, format: Type.String({ minLength: 1, maxLength: 40 }) }, { additionalProperties: false }),
-    box: Type.Object(Rect, { additionalProperties: false }),
-    headline: Type.Object({ color: Color }, { additionalProperties: false }),
-    body: Type.Object({ color: Color }, { additionalProperties: false }),
-    fontMinPx: FontPx,
-    fontMaxPx: FontPx,
-  },
-  { additionalProperties: false },
-);
+const DateSlot = Type.Object({ ...Rect, color: Color, format: Type.String({ minLength: 1, maxLength: 40 }) }, { additionalProperties: false });
+const layoutFields = {
+  box: Type.Object(Rect, { additionalProperties: false }),
+  headline: Type.Object({ color: Color }, { additionalProperties: false }),
+  body: Type.Object({ color: Color }, { additionalProperties: false }),
+  fontMinPx: FontPx,
+  fontMaxPx: FontPx,
+};
+
+export const Layout = Type.Object({ date: DateSlot, ...layoutFields }, { additionalProperties: false });
+/** An org template's layout: the same, except a design may have no date (null) */
+export const OrgLayout = Type.Object({ date: Type.Union([DateSlot, Type.Null()]), ...layoutFields }, { additionalProperties: false });
+
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** The rules the schema cannot say: font range in order, every area non-empty and inside the image. 400 otherwise. */
+export function checkLayout(layout: { date: Rect | null; box: Rect; fontMinPx: number; fontMaxPx: number }): void {
+  if (layout.fontMinPx > layout.fontMaxPx) throw new HttpError(400, "invalid", "fontMinPx cannot be larger than fontMaxPx.");
+  for (const [name, r] of [["date", layout.date], ["box", layout.box]] as const) {
+    // A zero-size area breaks font fitting
+    if (r && (r.w <= 0 || r.h <= 0)) throw new HttpError(400, "invalid", `The ${name} area has no width or height.`);
+    if (r && (r.x + r.w > 1.0001 || r.y + r.h > 1.0001)) throw new HttpError(400, "invalid", `The ${name} area runs off the image.`);
+  }
+}
 
 /** EXIF orientation (tag 0x0112) from an APP1 "Exif" segment; 1 when absent or unreadable. */
 function exifOrientation(buf: Buffer, start: number, end: number): number {
@@ -105,7 +118,7 @@ export function jpegSize(buf: Buffer): { width: number; height: number } | null 
 }
 
 /** The image's type from its first bytes (not from the header the client sent) and its size. */
-function readImage(buf: Buffer): { contentType: "image/png" | "image/jpeg"; width: number; height: number } {
+export function readImage(buf: Buffer): { contentType: "image/png" | "image/jpeg"; width: number; height: number } {
   const png = pngSize(buf);
   const jpeg = png === null ? jpegSize(buf) : null;
   const size = png ?? jpeg;
@@ -161,10 +174,7 @@ export const templateRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { 
     const { user } = guard(req);
     requirePermission(user, "card_template.own");
     const { layout } = req.body;
-    if (layout.fontMinPx > layout.fontMaxPx) throw new HttpError(400, "invalid", "fontMinPx cannot be larger than fontMaxPx.");
-    for (const [name, r] of [["date", layout.date], ["box", layout.box]] as const) {
-      if (r.x + r.w > 1.0001 || r.y + r.h > 1.0001) throw new HttpError(400, "invalid", `The ${name} area runs off the image.`);
-    }
+    checkLayout(layout);
     const t = await updateCardLayout(db, actor(user), req.query.platform ?? "x", layout);
     if (!t) throw new HttpError(404, "not_found", "Upload a card background first.");
     return { template: templateView(t) };

@@ -91,9 +91,9 @@ export async function recordIngestPoll(db: Db, orgId: string, result: PollResult
 
 export const DATA_STATUS_KEY = "phase1.data_files";
 
-/** Whether the worker could read its places / handles files (written when that changes) */
+/** Whether the worker could read its places / handles / subjects files (written when that changes) */
 export interface DataFileStatus {
-  file: "places" | "handles";
+  file: "places" | "handles" | "subjects";
   ok: boolean;
   at: string;
   /** Why not, in plain words (no path) */

@@ -4,18 +4,26 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  PlaceBook, assemblePostText, composeBreaking, daysToScan, dayFolderName, fileTags, isBreakingFileName, matchDayFolder, matchMonthFolder,
-  parseBreaking, parseHandleRules, parsePlacesData, phaseFeatures, phaseFrom, pickHandles, xLen, EMPTY_HANDLE_RULES,
+  CATEGORY_SEED_RULES, EMPTY_HANDLE_RULES, LINKING_WORDS, PlaceBook, actingAgents, assemblePostText, composeBreaking, daysToScan, dayFolderName,
+  fileTags, hashtagGazetteer, isBreakingFileName, joinPoints, linkingCuts, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
+  parsePlacesData, parseSubjectHandles, phaseFeatures, phaseFrom, pickCategoryTags, pickHandles, xLen,
 } from "../src";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/breaking/${name}`, import.meta.url), "utf8");
 const json = (rel: string) => JSON.parse(readFileSync(new URL(rel, import.meta.url), "utf8"));
 const book = new PlaceBook(parsePlacesData(json("../../../apps/worker/config/rajasthan-places.json")));
 const rules = parseHandleRules(json("../../../apps/worker/config/district-handles.json"));
+/** The org's topic rules as the category seed installs them */
+const topics = hashtagGazetteer(
+  CATEGORY_SEED_RULES.map((r, i) => ({
+    id: `seed${i}`, matchType: "entity" as const, name: r.name, aliases: [...r.aliases], hashtagLatin: r.tag, hashtagDevanagari: null,
+    priority: r.priority, negativePhrases: [...(r.negativePhrases ?? [])],
+  })),
+);
 const parse = (name: string) => parseBreaking(fixture(name), name, book);
 const post = (name: string) => {
   const s = parse(name);
-  const d = composeBreaking(s, rules, book);
+  const d = composeBreaking(s, rules, book, { topics });
   return { s, d, text: assemblePostText(d.bodyText, d.hashtags, d.mentions) };
 };
 
@@ -123,49 +131,217 @@ describe("parseBreaking", () => {
 });
 
 describe("composeBreaking", () => {
-  it("writes the house layout with the district police on crime news", () => {
-    const { text } = post("btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt");
+  it("writes the house layout: a category tag, and the district police because the story has them acting", () => {
+    const { text, d } = post("btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt");
     expect(text.startsWith("#Kota: कोटा में हिस्ट्रीशीटर")).toBe(true);
-    expect(text.endsWith("\n\n#RajasthanWithFirstIndia @KotaPolice")).toBe(true);
+    // "वारदात" → #RajasthanPolice; "दादाबाड़ी थाना पुलिस कर रही बदमाशों की तलाश" → @KotaPolice
+    expect(text.endsWith("\n\n#RajasthanWithFirstIndia #RajasthanPolice @KotaPolice")).toBe(true);
     expect(text).toContain("तलवारे और डंडे लेकर आए बदमाशों ने किया हमला, दादाबाड़ी");
+    expect(d.composeVersion).toBe("b2.0");
   });
 
-  it("adds the Hindi town tag and cuts the points on a word with ...", () => {
+  it("adds the Hindi town tag and cuts the points right after a linking word with ...", () => {
     const { text } = post("BTN_RJ_BREAKING_6072_29OCT_US_CONTROL_REPORTER_karari_big.txt");
     expect(text.split("\n")[0]).toBe("#Chittorgarh #निम्बाहेड़ा: काश, पहले भी जारी हो जाती ऐसी एडवाइजरी !");
-    expect(text.split("\n\n")[1]!.endsWith("...")).toBe(true);
+    const body = text.split("\n\n")[1]!;
+    expect(body.endsWith("...")).toBe(true);
+    expect(LINKING_WORDS.has(body.slice(0, -3).split(" ").pop()!)).toBe(true);
     expect(xLen(text)).toBeLessThanOrEqual(280);
   });
 
   it("stays within 280 even for a huge headline", () => {
     const s = parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(40)}\nबिंदु`, "x_breaking.txt", book);
-    const d = composeBreaking(s, rules, book);
+    const d = composeBreaking(s, rules, book, { topics });
     expect(d.headlineCut).toBe(true);
     expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(280);
   });
 
-  it("uses #FirstIndiaNews outside Rajasthan and tags nobody there", () => {
+  it("uses #FirstIndiaNews outside Rajasthan, only national-safe category tags, and tags nobody there", () => {
     const s = parseBreaking("x\nदिल्ली\nभाजपा मुख्यालय में बैठक\nबिंदु एक", "x_breaking.txt", book);
-    const d = composeBreaking(s, rules, book);
+    const d = composeBreaking(s, rules, book, { topics });
     expect(d.bodyText.startsWith("#Delhi: ")).toBe(true);
-    expect([d.hashtags, d.mentions]).toEqual([["#FirstIndiaNews"], []]);
+    expect([d.hashtags, d.mentions]).toEqual([["#FirstIndiaNews", "#BJP"], []]);
+    const crime = composeBreaking(parseBreaking("x\nदिल्ली\nहत्या का आरोपी गिरफ्तार\nपुलिस ने की कार्रवाई", "x_breaking.txt", book), rules, book, { topics });
+    expect([crime.hashtags, crime.mentions]).toEqual([["#FirstIndiaNews"], []]);
+  });
+
+  it("carries at most 3 hashtags, the footer first, and stays within 280 with tags and handles", () => {
+    const points = Array.from({ length: 8 }, (_, i) => `सड़क हादसे में ${i} लोग घायल, मानसून की भारी बारिश के बाद ट्रेन रद्द`);
+    const s = parseBreaking(`जयपुर\nपुलिस ने हत्या के आरोपी को किया गिरफ्तार\n${points.join("\n")}`, "x_breaking.txt", book);
+    const d = composeBreaking(s, rules, book, { topics });
+    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia", "#RajasthanPolice", "#RoadAccident"]); // the headline's tag first
+    expect(d.mentions).toEqual(["@jaipur_police"]);
+    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(280);
+  });
+
+  it("adds no dots when every point fits, and no category tag without topic rules", () => {
+    const d = composeBreaking(parseBreaking("जयपुर\nहत्या के आरोपी से पूछताछ\nदो बिंदु\nतीन बिंदु", "x_breaking.txt", book), rules, book);
+    expect(d.bodyText).toBe("#Jaipur: हत्या के आरोपी से पूछताछ\n\nदो बिंदु, तीन बिंदु");
+    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
+  });
+
+  it("never tags another district's police: 'बूंदी SP ने' in a Jaipur story", () => {
+    const d = composeBreaking(parseBreaking("जयपुर\nDGP ने ली अधिकारियों की बैठक\nबूंदी SP ने की मुलाकात", "x_breaking.txt", book), rules, book, { topics });
+    expect(d.mentions).toEqual(["@PoliceRajasthan"]);
+    const own = composeBreaking(parseBreaking("जयपुर\nचोरी का खुलासा\nजयपुर पुलिस ने आरोपी को पकड़ा", "x_breaking.txt", book), rules, book, { topics });
+    expect(own.mentions).toEqual(["@jaipur_police"]);
+  });
+
+  it("never tags another district's police named in two words or with 'जिले के'", () => {
+    const jaipur = (point: string) => composeBreaking(parseBreaking(`जयपुर
+चोरी का खुलासा
+${point}`, "x_breaking.txt", book), rules, book, { topics }).mentions;
+    expect(jaipur("सवाई माधोपुर एसपी ने आरोपी को पकड़ा")).toEqual([]);
+    expect(jaipur("बूंदी जिले के एसपी ने आरोपी को पकड़ा")).toEqual([]);
+    expect(jaipur("बूंदी जिला पुलिस ने आरोपी को पकड़ा")).toEqual([]);
+    expect(jaipur("जयपुर जिले के एसपी ने आरोपी को पकड़ा")).toEqual(["@jaipur_police"]);
+  });
+
+  it("tags no district police when the story has no district: 'बूंदी SP ने' fails safe", () => {
+    const story = { headline: "बूंदी SP ने की मुलाकात", points: ["बूंदी SP ने आरोपी को पकड़ा"], district: null, rajasthan: true, leaderPost: false };
+    expect(pickHandles(story, rules).map((h) => h.reason)).not.toContain("police");
+  });
+});
+
+describe("the catchy cut", () => {
+  const p1 = "पहला बिंदु पूरा";
+  const p2 = "बदमाशों ने युवक पर चाकू से किया हमला";
+  const whole = `${p1}, ${p2}`;
+
+  it("cuts the next point right after a linking word, preferring the latest that hides 2+ content words", () => {
+    expect(joinPoints([p1, p2], xLen(whole) - 1)).toBe(`${p1}, बदमाशों ने युवक पर चाकू से...`);
+    // Less room: the latest cut that still fits
+    expect(joinPoints([p1, p2], xLen(`${p1}, बदमाशों ने युवक पर`) + 3)).toBe(`${p1}, बदमाशों ने युवक पर...`);
+    expect(joinPoints([p1, p2], xLen(whole))).toBe(whole); // everything fits: no dots
+  });
+
+  it("never cuts inside a number range, before an auxiliary or another link, or with no content before the link", () => {
+    expect(linkingCuts("10 से 15 लोग घायल")).toEqual([]);
+    const cuts = (p: string) => linkingCuts(p).map((c) => p.slice(0, c.end));
+    expect(cuts("मामले की जांच की गई और रिपोर्ट सौंपी")).toEqual(["मामले की जांच की गई और", "मामले की"]);
+    expect(cuts("हादसे के बाद पुलिस पहुंची")).toEqual(["हादसे के बाद"]);
+    expect(cuts("और फिर बात बढ़ी")).toEqual([]);
+  });
+
+  it("falls back to a word cut when no linking word fits, never leaving a dangling comma", () => {
+    expect(joinPoints(["पहला", "अलफा बीटा गामा डेल्टा"], xLen("पहला, अलफा बीटा") + 3)).toBe("पहला, अलफा बीटा...");
+    expect(joinPoints(["पहला", "दूसरा, तीसरा चौथा पांचवां"], xLen("पहला, दूसरा") + 5)).toBe("पहला, दूसरा...");
+  });
+
+  it("never ends on a completed point: with no room for the next point, the last whole one is cut", () => {
+    const first = "राजस्थान समेत 10 राज्यों में खनिज ब्लॉकों की नीलामी और संचालन की होनी थी समीक्षा";
+    expect(joinPoints([first, "लंबित मंजूरियों"], xLen(first) + 5)).toBe("राजस्थान समेत 10 राज्यों में खनिज ब्लॉकों की नीलामी और संचालन की...");
+  });
+
+  it("measures Devanagari the way X does and never goes over the budget", () => {
+    const points = Array.from({ length: 12 }, (_, i) => `क्षेत्र में ${i} श्रद्धालुओं के लिए व्यवस्था की गई और प्रशासन ने निर्देश दिए`);
+    for (const budget of [40, 90, 150, 200, 240]) {
+      const out = joinPoints(points, budget);
+      expect(xLen(out)).toBeLessThanOrEqual(budget);
+      expect(out.endsWith("...")).toBe(true);
+      expect(out).not.toMatch(/[,्]\.\.\.$/u);
+    }
+  });
+});
+
+describe("category hashtags", () => {
+  const footer = ["#RajasthanWithFirstIndia"];
+  const tags = (headline: string, points: string[] = [], rajasthan = true) => pickCategoryTags({ headline, points, rajasthan }, topics, footer);
+
+  it("maps the desk's keywords to one tag each, never twice", () => {
+    expect(tags("चाकूबाजी की वारदात", ["हत्या के आरोपी गिरफ्तार"])).toEqual(["#RajasthanPolice"]);
+    expect(tags("तेज रफ्तार कार की टक्कर से युवक की मौत")).toEqual(["#RoadAccident"]);
+    expect(tags("RPSC ने जारी किया परीक्षा कार्यक्रम")).toEqual(["#RajasthanJobs"]);
+    expect(tags("IAS अधिकारियों के तबादले")).toEqual(["#RajasthanIAS"]);
+    expect(tags("स्कूल को बम से उड़ाने की धमकी")).toEqual(["#BombThreat"]);
+    expect(tags("भजनलाल शर्मा ने किया लोकार्पण")).toEqual(["#BhajanlalSharma"]);
+    expect(tags("जयपुर में भारी बारिश")).toEqual(["#HeavyRain"]); // not #Monsoon as well: "भारी बारिश" is one match
+    expect(tags("बारिश से किसानों के चेहरे खिले")).toEqual(["#Monsoon"]);
+  });
+
+  it("ranks headline matches first, then priority, at most 2", () => {
+    expect(tags("ट्रेन से कटकर युवक की मौत", ["भाजपा नेता पहुंचे"])).toEqual(["#Train", "#BJP"]);
+    expect(tags("भाजपा और कांग्रेस के बीच हाईकोर्ट में बहस", ["हत्या का मामला"])).toHaveLength(2);
+    expect(tags("बैठक", ["रेलवे स्टेशन पर भाजपा नेता"])).toEqual(["#BJP", "#Train"]);
+  });
+
+  it("gives national stories only national-safe tags", () => {
+    expect(tags("हाईकोर्ट ने गिरफ्तार आरोपी को दी जमानत, भाजपा ने उठाए सवाल", [], false)).toEqual(["#BJP"]);
+    expect(tags("IAS अफसरों के तबादले, RPSC परीक्षा", [], false)).toEqual([]);
+  });
+
+  it("skips the look-alikes: a patient, a close contest, an averted accident, a threat that is not a bomb, other Gehlots", () => {
+    expect(tags("घायल युवक को अस्पताल में भर्ती कराया")).toEqual([]);
+    expect(tags("दोनों प्रत्याशियों में कांटे की टक्कर")).toEqual([]);
+    expect(tags("बड़ा हादसा टल गया")).toEqual([]);
+    expect(tags("युवक को जान से मारने की धमकी")).toEqual([]);
+    expect(tags("हाईकोर्ट से मुकेश गहलोत को राहत")).toEqual(["#RajasthanHighCourt"]);
+    expect(tags("पायलट प्रोजेक्ट शुरू")).toEqual([]);
+  });
+
+  it("matches aliases as whole words only: a compound that contains one is not it", () => {
+    expect(tags("युवक ने की आत्महत्या")).toEqual([]); // not हत्या
+    expect(tags("सीमा पर बमबारी")).toEqual([]); // not बम
+    expect(tags("भर्तीकर्ता कंपनी का दफ्तर")).toEqual([]); // not भर्ती
+    expect(tags("आत्महत्या के बाद हत्या का केस")).toEqual(["#RajasthanPolice"]); // the whole word still counts
+  });
+
+  it("keeps the recruitment tag for a hospital's recruitment, not for a patient admitted", () => {
+    expect(tags("RPSC ने अस्पताल में नर्स भर्ती परीक्षा की तारीख घोषित की")).toEqual(["#RajasthanJobs"]);
+    expect(tags("घायल को अस्पताल में भर्ती कराया")).toEqual([]);
+    expect(tags("मरीज अस्पताल में भर्ती")).toEqual([]);
+  });
+
+  it("matches decomposed Devanagari (NFD nukta) the same, and needs topic rules", () => {
+    expect(tags("सड़क हादसे में दो की मौत")).toEqual(["#RoadAccident"]);
+    expect(pickCategoryTags({ headline: "हत्या", points: [], rajasthan: true }, null)).toEqual([]);
+    expect(pickCategoryTags({ headline: "हत्या", points: [], rajasthan: true }, hashtagGazetteer([]))).toEqual([]);
   });
 });
 
 describe("handle rules", () => {
-  const story = (headline: string, district = "Jaipur") => ({ headline, points: [], district, rajasthan: true, leaderPost: false });
+  const story = (headline: string, district = "Jaipur", points: string[] = []) => ({ headline, points, district, rajasthan: true, leaderPost: false });
+  const acting = (text: string) => [...actingAgents(text)].sort();
 
-  it("tags police on crime, the collector on administration, the government on its decisions", () => {
-    expect(pickHandles(story("जयपुर में चोरी का आरोपी गिरफ्तार"), rules).map((h) => h.handle)).toEqual(["jaipur_police"]);
+  it("tags police and the collector when the story has them acting, the government on its decisions", () => {
+    expect(pickHandles(story("जयपुर में चोरी का आरोपी गिरफ्तार"), rules)).toEqual([]); // crime words alone tag nobody
+    expect(pickHandles(story("पुलिस ने चोरी के आरोपी को किया गिरफ्तार"), rules).map((h) => h.handle)).toEqual(["jaipur_police"]);
     expect(pickHandles(story("जिला कलेक्टर ने की जनसुनवाई"), rules).map((h) => h.handle)).toEqual(["DcDmJaipur"]);
     expect(pickHandles(story("राज्य सरकार ने जारी किए आदेश"), rules).map((h) => h.handle)).toEqual(["RajGovOfficial"]);
     expect(pickHandles(story("मुख्यमंत्री भजनलाल शर्मा ने किया लोकार्पण"), rules).map((h) => h.handle)).toEqual(["BhajanlalBjp"]);
   });
 
+  it("knows when the police or the collector are the ones acting", () => {
+    expect(acting("पुलिस ने आरोपी को पकड़ा")).toEqual(["police"]);
+    expect(acting("दादाबाड़ी थाना पुलिस कर रही बदमाशों की तलाश")).toEqual(["police"]);
+    expect(acting("पुलिस मामले की जांच में जुटी")).toEqual(["police"]);
+    expect(acting("शिप्रापथ थाना पुलिस की बड़ी कार्रवाई")).toEqual(["police"]);
+    expect(acting("पुलिस को मिली बड़ी सफलता")).toEqual(["police"]);
+    expect(acting("थाना प्रभारी रामलाल मीणा ने बताया")).toEqual(["police"]);
+    expect(acting("कलेक्टर टीना डाबी ने किया निरीक्षण")).toEqual(["collector"]);
+    expect(acting("जिला प्रशासन ने जारी किए आदेश")).toEqual(["collector"]);
+    expect(acting("कलेक्टर की अध्यक्षता में बैठक")).toEqual(["collector"]);
+    expect(acting("पुलिस व प्रशासन ने हटाया अतिक्रमण")).toEqual(["police"]);
+    expect(acting("पुलिस और कलेक्टर ने किया दौरा")).toEqual(["collector", "police"]);
+  });
+
+  it("does not count the police as acting when they are the object, the place, a former officer or another force", () => {
+    expect(acting("बदमाशों ने पुलिस पर किया हमला")).toEqual([]);
+    expect(acting("पुलिस थाने में हंगामा कर रहे ग्रामीण")).toEqual([]);
+    expect(acting("पुलिस की लापरवाही से गई जान")).toEqual([]);
+    expect(acting("सेवानिवृत्त ASP विपिन शर्मा ने भी दी जानकारी")).toEqual([]);
+    expect(acting("ACB सीआई सुरजीत सिंह ने दिया कार्रवाई को अंजाम")).toEqual([]);
+    expect(acting("पुलिसकर्मी के घर चोरी")).toEqual([]);
+    expect(acting("SP को सौंपा ज्ञापन")).toEqual([]);
+  });
+
   it("never tags anyone on party or election news, or in a leader's post", () => {
     expect(pickHandles(story("मुख्यमंत्री भजनलाल शर्मा ने भाजपा प्रत्याशी के लिए किया जनसंपर्क"), rules)).toEqual([]);
     expect(pickHandles({ ...story("पुलिस ने किया गिरफ्तार"), leaderPost: true }, rules)).toEqual([]);
-    expect(pickHandles(story("चोरी का आरोपी गिरफ्तार", "Tonk"), rules)).toEqual([]); // no verified Tonk police handle
+    // Not because Tonk has no handle (it has a verified one): the police are not named as acting
+    expect(rules.districts.tonk?.police.length).toBeGreaterThan(0);
+    expect(pickHandles(story("चोरी का आरोपी गिरफ्तार", "Tonk"), rules)).toEqual([]);
+    expect(pickHandles(story("टोंक पुलिस ने चोरी का आरोपी किया गिरफ्तार", "Tonk"), rules).map((h) => h.reason)).toEqual(["police"]);
   });
 
   it("skips unverified handles and refuses a malformed file", () => {
@@ -175,12 +351,73 @@ describe("handle rules", () => {
       districts: { "Sawai Madhopur": [{ handle: "@SwmPolice", role: "police", verified: true }, { handle: "@SwmDm", role: "collector", verified: false }] },
     });
     expect(r.state.government).toEqual([]);
-    expect(pickHandles(story("हत्या का आरोपी गिरफ्तार", "Sawai Madhopur"), r).map((h) => h.handle)).toEqual(["SwmPolice"]);
+    expect(pickHandles(story("हत्या का आरोपी पुलिस ने किया गिरफ्तार", "Sawai Madhopur"), r).map((h) => h.handle)).toEqual(["SwmPolice"]);
     expect(pickHandles(story("कलेक्टर ने किया दौरा", "Sawai Madhopur"), r)).toEqual([]);
     expect(() => parseHandleRules({ state: [{ handle: "not a handle!", role: "govt", verified: true }] })).toThrow(/not an X handle/);
     expect(() => parseHandleRules({ state: [{ handle: "@x", role: "mayor", verified: true }] })).toThrow(/role/);
     expect(() => parsePlacesData({ nope: true })).toThrow(/districts/);
-    expect(pickHandles(story("चोरी"), EMPTY_HANDLE_RULES)).toEqual([]);
+    expect(pickHandles(story("पुलिस ने चोरी पकड़ी"), EMPTY_HANDLE_RULES)).toEqual([]);
+  });
+});
+
+describe("subject handles", () => {
+  const problems: string[] = [];
+  const subjects = parseSubjectHandles(
+    {
+      version: 1,
+      entries: [
+        { handle: "@NWRailways", kind: "department", title: "North Western Railway", names_hi: ["उत्तर पश्चिम रेलवे"], keywords_hi: ["रेलवे"], verified: true },
+        { handle: "@INCRajasthan", kind: "party", names_hi: ["राजस्थान कांग्रेस"], verified: true },
+        { handle: "@SomeoneX", kind: "person", names_hi: ["फलां सिंह"], verified: false },
+        { handle: "not a handle!", kind: "person", names_hi: ["कोई"], verified: true },
+        { handle: "@NoKind", kind: "mayor", names_hi: ["महापौर"], verified: true },
+        { handle: "@NoNames", kind: "company", verified: true },
+        { handle: "ashokgehlot51", kind: "person", names_hi: ["अशोक गहलोत"], names_en: ["Ashok Gehlot"], verified: true, source: "x", checkedAt: "2026-10-31" },
+      ],
+    },
+    (m) => problems.push(m),
+  );
+  const story = (headline: string, points: string[] = [], rajasthan = true) => ({ headline, points, district: "Jaipur", rajasthan, leaderPost: false });
+  const handles = (headline: string, points: string[] = [], rajasthan = true) => pickHandles(story(headline, points, rajasthan), rules, subjects).map((h) => h.handle);
+
+  it("keeps only verified, non-party entries and reports malformed ones instead of failing", () => {
+    expect(subjects.count).toBe(2);
+    expect(problems).toHaveLength(3);
+    expect(() => parseSubjectHandles({ version: 1 })).toThrow(/entries/);
+    const shipped: string[] = [];
+    expect(parseSubjectHandles(json("../../../apps/worker/config/subject-handles.json"), (m) => shipped.push(m)).count).toBeGreaterThan(0); // the shipped file
+    expect(shipped).toEqual([]);
+    expect(handles("राजस्थान कांग्रेस के नेता बोले")).toEqual([]); // party news: nobody, and never a party handle
+  });
+
+  it("tags the subject, headline first, at most 2, matching Hindi and English names", () => {
+    expect(handles("रेलवे ने रद्द की ट्रेन, स्टेशन पर पुलिस ने पकड़ा चोर")).toEqual(["NWRailways", "jaipur_police"]);
+    expect(handles("रेलवे स्टेशन पर पुलिस ने पकड़ा चोर")).toEqual(["jaipur_police"]); // a department only when it acts
+    expect(handles("पुलिस ने पकड़ा चोर", ["उत्तर पश्चिम रेलवे ने जारी की सूचना"])).toEqual(["jaipur_police", "NWRailways"]);
+    expect(handles("ASHOK GEHLOT met railway officials")).toEqual(["ashokgehlot51"]);
+    expect(handles("मुख्यमंत्री भजनलाल शर्मा और अशोक गहलोत रेलवे स्टेशन पहुंचे")).toEqual(["BhajanlalBjp", "ashokgehlot51"]);
+    expect(handles("रेलवे स्टेशन पर भीड़", [], false)).toEqual([]); // national: nobody
+    const pick = pickHandles(story("उत्तर पश्चिम रेलवे ने चलाई नई ट्रेन"), rules, subjects)[0];
+    expect(pick).toEqual({ handle: "NWRailways", reason: "subject", title: "North Western Railway" });
+  });
+
+  it("with the shipped file, tags no police or department that is not acting, and no person on a common or partial name", () => {
+    const shipped = parseSubjectHandles(json("../../../apps/worker/config/subject-handles.json"));
+    const real = (headline: string, points: string[] = []) => pickHandles(story(headline, points), rules, shipped).map((h) => h.handle);
+    expect(real("जयपुर पुलिस पर पथराव")).toEqual([]); // the police are the target
+    expect(real("राजस्थान पुलिस के जवान की हादसे में मौत")).toEqual([]);
+    expect(real("DGP से मिले अधिकारी")).toEqual([]); // Police HQ too: only acting
+    expect(real("डीजीपी राजीव शर्मा ने ली बैठक")).toEqual(["PoliceRajasthan"]);
+    expect(real("राज्य सरकार के खिलाफ धरना")).toEqual([]);
+    expect(real("राज्य सरकार का बड़ा फैसला")).toEqual(["RajGovOfficial"]); // deciding: still the government
+    expect(real("ट्रेन से कटकर युवक की मौत", ["रेलवे ट्रैक पर मिला शव"])).toEqual([]);
+    expect(real("खींवसर में सड़क हादसा")).toEqual([]); // a town, not the minister
+    expect(real("संजय शर्मा नाम के आरोपी को पकड़ा")).toEqual([]); // a common name
+    expect(real("शिवराज और हेमंत मीणा पहुंचे")).toEqual([]);
+    // Still tagged: a named person, a department acting, the police acting
+    expect(real("गजेंद्र सिंह खींवसर ने किया अस्पताल का दौरा")).toEqual(["GajendraKhimsar"]);
+    expect(real("आरपीएससी ने जारी किया परिणाम")).toEqual(["RPSC1"]);
+    expect(real("जयपुर पुलिस ने पकड़ा चोर")).toEqual(["jaipur_police"]);
   });
 });
 

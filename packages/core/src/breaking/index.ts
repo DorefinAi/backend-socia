@@ -5,3 +5,5 @@ export * from "./parse";
 export * from "./handles";
 export * from "./compose";
 export * from "./folders";
+export * from "./categories";
+export * from "./subjects";

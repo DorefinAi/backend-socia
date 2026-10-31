@@ -9,7 +9,8 @@
 //   corepack pnpm local:dev samvadia-late    A story approved "now", a late file in an existing folder, and
 //                                            a footage path filled in for a story that had none.
 //   corepack pnpm local:dev socia-setup      Org, an admin and an operator login (local.credentials.md),
-//                                            fixed #RajasthanWithFirstIndia, district and topic hashtag rules;
+//                                            fixed #RajasthanWithFirstIndia, district, topic and phase-1 category
+//                                            hashtag rules (only missing ones are added);
 //                                            writes ORG_ID into .env.
 
 import { randomBytes, randomUUID } from "node:crypto";
@@ -22,6 +23,7 @@ import { createDb, hashtagRules, orgs, users, type OrgSettings } from "@socia/db
 import { and, eq } from "drizzle-orm";
 import pg from "pg";
 import { hashPassword } from "../src/auth";
+import { seedCategoryHashtags } from "../src/category-seed";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const ENV_FILE = join(ROOT, ".env");
@@ -474,6 +476,8 @@ async function sociaSetup(): Promise<void> {
       // Older local rows: add the negative phrases unless the desk already set some
       else if (negativePhrases.length && !r.negativePhrases.length) await db.update(hashtagRules).set({ negativePhrases, updatedAt: new Date() }).where(eq(hashtagRules.id, r.id));
     }
+    const categories = await seedCategoryHashtags(db, orgId!);
+    if (categories.inserted.length) console.log(`Added ${categories.inserted.length} phase-1 category hashtag rules.`);
 
     if (logins.some((l) => l.password)) {
       const prev = existsSync(CREDENTIALS_FILE) ? await readFile(CREDENTIALS_FILE, "utf8") : "";

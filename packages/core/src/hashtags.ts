@@ -103,6 +103,11 @@ export const FALLBACK_TOPIC_TAG = "#FirstIndiaNews";
 /** Which rules feed which part of the First India post: places go in line 1, topics in the tag line */
 const PLACE_TYPES: ReadonlySet<MatchType> = new Set(["city", "district"]);
 
+/** Topic (entity) rules named in the text, negative phrases applied; place rules left out. Ranked as gazetteer.find. */
+export function topicMatches(text: string, gazetteer: HashtagGazetteer): ReturnType<HashtagGazetteer["find"]> {
+  return findRules(text, gazetteer).filter((m) => !PLACE_TYPES.has(m.entry.data.matchType));
+}
+
 /**
  * The district as line 1's hashtag, always in Latin script (Sawai Madhopur → #SawaiMadhopur). The
  * gazetteer's tag when the place is in it, else built from the name: words capitalised, spaces dropped.

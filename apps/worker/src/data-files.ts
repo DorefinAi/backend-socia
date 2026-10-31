@@ -1,8 +1,11 @@
-// The phase-1 data files (config/rajasthan-places.json, config/district-handles.json): edited without a code
+// The phase-1 data files (config/rajasthan-places.json, config/district-handles.json, config/subject-handles.json):
+// edited without a code
 // change and read again when they change (checked at most once a minute). A broken edit keeps the last good
 // copy and logs why, so a typo never stops the desk. Whether each file is readable goes to /ingest/status.
 
-import { EMPTY_HANDLE_RULES, PlaceBook, parseHandleRules, parsePlacesData, type HandleRules } from "@socia/core";
+import {
+  EMPTY_HANDLE_RULES, EMPTY_SUBJECT_RULES, PlaceBook, parseHandleRules, parsePlacesData, parseSubjectHandles, type HandleRules, type SubjectRules,
+} from "@socia/core";
 import type { DataFileStatus } from "@socia/db";
 import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -12,6 +15,7 @@ const RECHECK_MS = 60_000;
 
 export const PLACES_FILE = fileURLToPath(new URL("../config/rajasthan-places.json", import.meta.url));
 export const DISTRICT_HANDLES_FILE = fileURLToPath(new URL("../config/district-handles.json", import.meta.url));
+export const SUBJECT_HANDLES_FILE = fileURLToPath(new URL("../config/subject-handles.json", import.meta.url));
 
 /** A data file the pipeline needs is not readable: retry later, do not fail the story */
 export class DataUnavailable extends Error {
@@ -80,6 +84,8 @@ export class JsonDataFile<T> {
 export interface PhaseOneData {
   places: JsonDataFile<PlaceBook>;
   handles: JsonDataFile<HandleRules>;
+  /** The people and organisations stories are about, and their handles */
+  subjects: JsonDataFile<SubjectRules>;
 }
 
 export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process.env): PhaseOneData {
@@ -87,5 +93,7 @@ export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process
     places: new JsonDataFile("places", env.PLACES_FILE ?? PLACES_FILE, (j, problem) => new PlaceBook(parsePlacesData(j, problem)), log, undefined, onStatus),
     // No handles file: posts go out without handles rather than wait
     handles: new JsonDataFile("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j), log, EMPTY_HANDLE_RULES, onStatus),
+    // No subjects file (or a broken one at start): no subject handles
+    subjects: new JsonDataFile("subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j, problem) => parseSubjectHandles(j, problem), log, EMPTY_SUBJECT_RULES, onStatus),
   };
 }

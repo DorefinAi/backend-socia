@@ -4,12 +4,21 @@
 //       --role: a built-in (admin, editor, operator, viewer) or a custom role of the org
 //   pnpm --filter @socia/api cli import-hashtags --org <id> --file rules.csv
 //       rules.csv: match_type,name,aliases (| separated),hashtag_latin,hashtag_devanagari,priority
+//   pnpm --filter @socia/api cli seed-category-hashtags --org <id>
+//       the phase-1 category hashtag rules (#RajasthanPolice, #RoadAccident, ...); adds only rules the org does
+//       not have by name, never changes one the desk edited. Safe to run again.
+//   pnpm --filter @socia/api cli seed-card-templates --org <id> [--reset-layout]
+//       the shared X card designs (assets/card-templates/); safe to run again. Stores the images through
+//       STORAGE_DIR (local) or the S3_* settings, like the API. --reset-layout puts back the default layouts.
 
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { createDb, hashtagRules, orgs, roles, users, type OrgSettings } from "@socia/db";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "./auth";
+import { seedCategoryHashtags } from "./category-seed";
+import { makeStorage } from "./config";
+import { seedOrgCardTemplates } from "./org-card-seed";
 
 const DEFAULT_SETTINGS: OrgSettings = {
   hashtagScript: "latin",
@@ -24,7 +33,7 @@ const { values } = parseArgs({
   args: rest,
   options: {
     name: { type: "string" }, org: { type: "string" }, email: { type: "string" }, role: { type: "string" },
-    password: { type: "string" }, platforms: { type: "string" }, file: { type: "string" },
+    password: { type: "string" }, platforms: { type: "string" }, file: { type: "string" }, "reset-layout": { type: "boolean" },
   },
 });
 
@@ -62,8 +71,22 @@ try {
     });
     if (rows.length) await db.insert(hashtagRules).values(rows);
     console.log(`Imported ${rows.length} hashtag rules.`);
+  } else if (command === "seed-category-hashtags") {
+    const orgId = need("org");
+    const [org] = await db.select({ id: orgs.id }).from(orgs).where(eq(orgs.id, orgId));
+    if (!org) throw new Error(`No org with id ${orgId}`);
+    const { inserted, kept } = await seedCategoryHashtags(db, orgId);
+    console.log(`Added ${inserted.length} category hashtag rules${inserted.length ? ` (${inserted.join(", ")})` : ""}; ${kept.length} already there, left as they are.`);
+  } else if (command === "seed-card-templates") {
+    const orgId = need("org");
+    const [org] = await db.select({ id: orgs.id }).from(orgs).where(eq(orgs.id, orgId));
+    if (!org) throw new Error(`No org with id ${orgId}`);
+    // Only the storage settings are needed here, not the whole API config
+    const storage = makeStorage({ storageDir: process.env.STORAGE_DIR ?? null, port: Number(process.env.PORT ?? 4000) });
+    const results = await seedOrgCardTemplates(db, storage, orgId, { resetLayout: values["reset-layout"] === true });
+    for (const r of results) console.log(`${r.slug}: ${r.outcome} (${r.width}x${r.height}, ${r.key})`);
   } else {
-    console.log("Commands: create-org, create-user, import-hashtags");
+    console.log("Commands: create-org, create-user, import-hashtags, seed-category-hashtags, seed-card-templates");
     process.exitCode = 1;
   }
 } finally {

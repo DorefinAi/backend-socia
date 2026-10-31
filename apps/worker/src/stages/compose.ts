@@ -1,9 +1,11 @@
 // Compose: pure rules turn a story into an X draft. The dictionaries are loaded into memory and
 // reloaded when an editor changes them; compose_version records which tables produced a draft.
-// Breaking files (phase 1) use their own layout and the district-handles file instead.
+// Breaking files (phase 1) use their own layout, the district- and subject-handles files, and the org's topic
+// hashtag rules for their category tags.
 
-import { LEADER_POST, asFileTags, composeBreaking, type Composer } from "@socia/core";
-import { dictionaryFingerprint, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
+import { createHash } from "node:crypto";
+import { LEADER_POST, asFileTags, composeBreaking, hashtagGazetteer, type Composer, type HashtagGazetteer } from "@socia/core";
+import { activeHashtagRules, dictionaryFingerprint, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
 import { and, eq, sql } from "drizzle-orm";
 import { nextStoryIsolated } from "./isolate";
 import type { PhaseOneData } from "../data-files";
@@ -12,11 +14,11 @@ import type { Logger } from "pino";
 const RELOAD_MS = 60_000;
 
 export class Dictionaries {
-  private cached: { composer: Composer; version: string; at: number } | null = null;
+  private cached: { composer: Composer; topics: HashtagGazetteer; version: string; at: number } | null = null;
 
   constructor(private readonly db: Db, private readonly orgId: string) {}
 
-  async composer(): Promise<{ composer: Composer; version: string }> {
+  private async load() {
     if (this.cached && Date.now() - this.cached.at < RELOAD_MS) return this.cached;
     const version = await dictionaryFingerprint(this.db, this.orgId);
     if (this.cached?.version === version) {
@@ -24,10 +26,26 @@ export class Dictionaries {
       return this.cached;
     }
     const { composer } = await loadRuleComposer(this.db, this.orgId, version);
-    this.cached = { composer, version, at: Date.now() };
+    // Breaking posts take only the topic rules (category tags); their places come from the places file
+    const topics = hashtagGazetteer((await activeHashtagRules(this.db, this.orgId)).filter((r) => r.matchType === "entity"));
+    this.cached = { composer, topics, version, at: Date.now() };
     return this.cached;
   }
+
+  async composer(): Promise<{ composer: Composer; version: string }> {
+    const { composer, version } = await this.load();
+    return { composer, version };
+  }
+
+  /** The org's active topic hashtag rules, for the breaking posts' category tags */
+  async topics(): Promise<{ topics: HashtagGazetteer; version: string }> {
+    const { topics, version } = await this.load();
+    return { topics, version };
+  }
 }
+
+/** A short, stable tag for a dictionary fingerprint, for the composeVersion */
+const shortVersion = (v: string) => createHash("sha1").update(v).digest("hex").slice(0, 8);
 
 export interface ComposeOptions {
   /** Phase 1: a draft goes straight to the queue with no card; "Add card" asks for one */
@@ -39,10 +57,12 @@ export interface ComposeOptions {
 /** Draft states that already went (or are going) out: a re-saved file never rewrites them */
 const SENT = ["published", "recalled", "queued", "publishing"];
 
-async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, log: Logger, opts: ComposeOptions) {
+async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, dictionaries: Dictionaries, log: Logger, opts: ComposeOptions) {
   if (!opts.data) throw new Error("Breaking stories need the places and handles files (compose started without them)");
   const { value: book, version: placesVersion } = await opts.data.places.get();
   const { value: rules, version: handlesVersion } = await opts.data.handles.get();
+  const { value: subjects, version: subjectsVersion } = await opts.data.subjects.get();
+  const { topics, version: topicsVersion } = await dictionaries.topics();
   const tags = asFileTags(story.fileTags);
   const place = book.district(story.district);
   const headline = story.headline ?? "";
@@ -58,7 +78,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     },
     rules,
     book,
-    `p${placesVersion}.h${handlesVersion}`,
+    { version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.t${shortVersion(topicsVersion)}`, topics, subjects },
   );
   const needsCheck = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
   const content = {
@@ -67,7 +87,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     hashtags: out.hashtags,
     mentions: out.mentions,
     // The rule-picked handles are in the post already; as suggestions too, they stay valid when the post is edited
-    mentionSuggestions: out.handles.map((h) => ({ handleId: `rule:${h.reason}:${h.handle}`, entity: h.reason, handle: `@${h.handle}`, exact: true })),
+    mentionSuggestions: out.handles.map((h) => ({ handleId: `rule:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact: true })),
     composeMethod: "rules",
     composeVersion: out.composeVersion,
   };
@@ -106,12 +126,12 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   await tx.update(stories).set({ status: "composed", needsCheck, updatedAt: sql`now()` }).where(eq(stories.id, story.id));
   // With no card to wait for the draft is in the queue now; otherwise the render worker announces it
   if (draft && ready) await notify(tx, story.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft.id] });
-  log.info({ storyId: story.id, draftId: draft?.id, district: story.district, handles: out.mentions }, "breaking draft composed");
+  log.info({ storyId: story.id, draftId: draft?.id, district: story.district, hashtags: out.hashtags, handles: out.mentions }, "breaking draft composed");
 }
 
 export async function composeNext(db: Db, dictionaries: Dictionaries, log: Logger, opts: ComposeOptions = {}): Promise<boolean> {
   return nextStoryIsolated(db, "converted", log, "compose", async (tx, story) => {
-    if (story.layout === "breaking") return composeBreakingStory(tx, story, log, opts);
+    if (story.layout === "breaking") return composeBreakingStory(tx, story, dictionaries, log, opts);
 
     const { composer } = await dictionaries.composer();
     const content = await composer.compose({ headline: story.headline ?? "", body: story.body ?? "", place: story.district }, "x");

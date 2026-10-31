@@ -1,0 +1,1996 @@
+{
+  "version": 1,
+  "_note": "The people and organisations a breaking story is about, and their X handles. Edited without a code change; the worker reads it again within a minute. Only entries with \"verified\": true are tagged, never kind \"party\". kind: person | department | party | company | institution | police. names_* / keywords_* are matched as whole words (Hindi and English) in the headline (first) or the points. District police and collectors stay in district-handles.json.",
+  "entries": [
+    {
+      "handle": "@BhajanlalBjp",
+      "kind": "person",
+      "title": "Chief Minister of Rajasthan (Home, Excise, GAD, Personnel, Planning, DIPR, ACB + all unallocated departments)",
+      "names_hi": [
+        "भजनलाल शर्मा",
+        "भजन लाल शर्मा",
+        "सीएम भजनलाल",
+        "सीएम भजनलाल शर्मा",
+        "मुख्यमंत्री भजनलाल शर्मा",
+        "मुख्यमंत्री भजनलाल",
+        "सीएम शर्मा",
+        "मुख्यमंत्री शर्मा"
+      ],
+      "names_en": [
+        "Bhajanlal Sharma",
+        "Bhajan Lal Sharma",
+        "CM Bhajanlal Sharma",
+        "CM Bhajan Lal Sharma"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/BhajanlalBjp",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Bhajanlal Sharma', bio: \"Chief Minister of Rajasthan\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2116362019687567577) | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q123669679)"
+    },
+    {
+      "handle": "@RajCMO",
+      "kind": "department",
+      "title": "Chief Minister's Office, Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "मुख्यमंत्री कार्यालय",
+        "सीएमओ",
+        "मुख्यमंत्री कार्यालय राजस्थान"
+      ],
+      "keywords_en": [
+        "CMO Rajasthan",
+        "Chief Minister's Office"
+      ],
+      "verified": true,
+      "source": "https://rajasthan.gov.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://rajasthan.gov.in/) | X profile name 'CMO Rajasthan', bio: \"Official handle of Chief Minister's Office, Rajasthan. मुख्यमंत्री कार्यालय, राजस्थान का आधिकारिक अकाउंट\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/DIPRRajasthan/status/2116422534971503097)"
+    },
+    {
+      "handle": "@KumariDiya",
+      "kind": "person",
+      "title": "Deputy CM - Finance, Tourism, Art & Culture, PWD, Women & Child Development",
+      "names_hi": [
+        "दिया कुमारी",
+        "दीया कुमारी",
+        "उपमुख्यमंत्री दिया कुमारी",
+        "डिप्टी सीएम दिया कुमारी",
+        "उप मुख्यमंत्री दिया कुमारी",
+        "वित्त मंत्री दिया कुमारी"
+      ],
+      "names_en": [
+        "Diya Kumari",
+        "Deputy CM Diya Kumari"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/KumariDiya",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Diya Kumari', bio: \"Deputy Chief Minister - Rajasthan, MLA from Vidhyadhar Nagar, Former MP Rajsamand.\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2111633832520925329) | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q5285012)"
+    },
+    {
+      "handle": "@DrPremBairwa",
+      "kind": "person",
+      "title": "Deputy CM - Higher & Technical Education, AYUSH, Transport & Road Safety",
+      "names_hi": [
+        "प्रेमचंद बैरवा",
+        "प्रेम चंद बैरवा",
+        "डॉ. प्रेमचंद बैरवा",
+        "डॉ प्रेमचंद बैरवा",
+        "उपमुख्यमंत्री प्रेमचंद बैरवा",
+        "डिप्टी सीएम प्रेमचंद बैरवा",
+        "डिप्टी सीएम बैरवा",
+        "उपमुख्यमंत्री बैरवा"
+      ],
+      "names_en": [
+        "Prem Chand Bairwa",
+        "Premchand Bairwa",
+        "Dr Prem Chand Bairwa"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DrPremBairwa",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Dr Prem Chand Bairwa', bio: \"Deputy Chief Minister - Rajasthan, MLA from DUDU @bjp4rajasthan सह प्रभारी @gujarat\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2102958701875446089)"
+    },
+    {
+      "handle": "@DrKirodilalBJP",
+      "kind": "person",
+      "title": "Cabinet Minister - Agriculture & Horticulture, Rural Development, Disaster Management, Public Grievances",
+      "names_hi": [
+        "किरोड़ी लाल मीणा",
+        "किरोड़ीलाल मीणा",
+        "किरोडी लाल मीणा",
+        "किरोड़ी मीणा",
+        "डॉ. किरोड़ी लाल मीणा",
+        "कृषि मंत्री किरोड़ी लाल मीणा",
+        "बाबा किरोड़ी"
+      ],
+      "names_en": [
+        "Kirodi Lal Meena",
+        "Kirori Lal Meena",
+        "Kirodilal Meena"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DrKirodilalBJP",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Dr. Kirodi Lal Meena', bio: \"Cabinet Minister, Govt of Rajasthan l MLA–Sawai Madhopur l Former MP (Rajya Sabha) l 2-Term MP (Lok Sabha) l 5-Term MLA l Former Zila Pramuk\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2110948111648690369) | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q12419629)"
+    },
+    {
+      "handle": "@GajendraKhimsar",
+      "kind": "person",
+      "title": "Cabinet Minister - Medical & Health",
+      "names_hi": [
+        "गजेंद्र सिंह खींवसर",
+        "गजेन्द्र सिंह खींवसर",
+        "चिकित्सा मंत्री खींवसर",
+        "चिकित्सा मंत्री गजेंद्र सिंह खींवसर"
+      ],
+      "names_en": [
+        "Gajendra Singh Khimsar",
+        "Gajendra Singh Khinvsar"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/GajendraKhimsar",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Gajendra Singh Khimsar', bio: \"कैबिनेट मंत्री, चिकित्सा एवं स्वास्थ्य मंत्रालय, राजस्थान सरकार \n|| विधायक, लोहावट || भारतीय जनता पार्टी #BJP4India #BJP4Rajasthan\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2112414258176913515)"
+    },
+    {
+      "handle": "@Ra_THORe",
+      "kind": "person",
+      "title": "Cabinet Minister - Industries & Commerce, IT, Youth Affairs & Sports, Skills, Sainik Kalyan",
+      "names_hi": [
+        "राज्यवर्धन सिंह राठौड़",
+        "राज्यवर्धन राठौड़",
+        "कर्नल राज्यवर्धन राठौड़",
+        "उद्योग मंत्री राज्यवर्धन राठौड़"
+      ],
+      "names_en": [
+        "Rajyavardhan Rathore",
+        "Rajyavardhan Singh Rathore",
+        "Col Rajyavardhan Rathore"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/Ra_THORe",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Col Rajyavardhan Rathore', bio: \"Cabinet Minister Rajasthan,MLA Jhotwara,National Spokesperson BJP,Former Union Minister, MP(2014-2023),Olympic Silver,Padma Shri,Khel Ratna,\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2116062865857884641)"
+    },
+    {
+      "handle": "@madandilawar",
+      "kind": "person",
+      "title": "Cabinet Minister - School Education, Sanskrit Education, Panchayati Raj",
+      "names_hi": [
+        "मदन दिलावर",
+        "शिक्षा मंत्री मदन दिलावर",
+        "शिक्षा मंत्री दिलावर"
+      ],
+      "names_en": [
+        "Madan Dilawar"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/madandilawar",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Madan Dilawar', bio: \"मंत्री - शिक्षा ( विद्यालयी / संस्कृत ) एवं पंचायती राज विभाग, राजस्थान सरकार।\n\nविधायक रामगंज मंडी (कोटा)\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2109543339733176630)"
+    },
+    {
+      "handle": "@OnlineKanhaiya",
+      "kind": "person",
+      "title": "Cabinet Minister - Public Health Engineering (PHED), Ground Water",
+      "names_hi": [
+        "कन्हैयालाल चौधरी",
+        "कन्हैया लाल चौधरी",
+        "जलदाय मंत्री कन्हैयालाल चौधरी",
+        "पीएचईडी मंत्री कन्हैयालाल चौधरी"
+      ],
+      "names_en": [
+        "Kanhaiya Lal Choudhary",
+        "Kanhaiyalal Choudhary"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/onlinekanhaiya",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'Kanhaiya Lal Choudhary', bio: \"कैबिनेट मंत्री, जनस्वास्थ्य अभियांत्रिकी एवं भू -जल विभाग।\nराजस्थान सरकार,\nविधायक- मालपुरा~टोडारायसिंह\", badge: none | Match on full name only - bare 'कन्हैयालाल' is a very common name in crime stories."
+    },
+    {
+      "handle": "@JogarampatelMLA",
+      "kind": "person",
+      "title": "Cabinet Minister - Parliamentary Affairs, Law & Legal Affairs",
+      "names_hi": [
+        "जोगाराम पटेल",
+        "कानून मंत्री जोगाराम पटेल",
+        "संसदीय कार्य मंत्री जोगाराम पटेल"
+      ],
+      "names_en": [
+        "Jogaram Patel"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/JogarampatelMLA",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Jogaram Patel', bio: \"Cabinet Minister, Govt of Rajasthan, MLA from Luni | @BJP4Rajasthan | Managed by @DigitalMarwar\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2104795807157215267)"
+    },
+    {
+      "handle": "@SureshRawatIN",
+      "kind": "person",
+      "title": "Cabinet Minister - Water Resources",
+      "names_hi": [
+        "सुरेश सिंह रावत",
+        "जल संसाधन मंत्री सुरेश सिंह रावत"
+      ],
+      "names_en": [
+        "Suresh Singh Rawat"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/SureshRawatIN",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Suresh Singh Rawat', bio: \"कैबिनेट मंत्री, जल संसाधन विभाग, राजस्थान सरकार @wrdrajasthan ।  विधायक, पुष्कर\", badge: blue badge | also tagged by @KumariDiya (https://x.com/KumariDiya/status/2112918708410847262)"
+    },
+    {
+      "handle": "@AvinashGehlot_",
+      "kind": "person",
+      "title": "Cabinet Minister - Social Justice & Empowerment",
+      "names_hi": [
+        "अविनाश गहलोत",
+        "सामाजिक न्याय मंत्री अविनाश गहलोत"
+      ],
+      "names_en": [
+        "Avinash Gehlot"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/RajGovOfficial/status/2108077430397186219",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @RajGovOfficial and bio matches | X profile name 'Avinash Gehlot', bio: \"Avinash Gehlot BJP MLA Jaitaran Dist. Beawar Cabinet Minister of Social Justice Empowerment Department Rajasthan\", badge: none | Never match on bare 'गहलोत' (that is usually Ashok Gehlot)."
+    },
+    {
+      "handle": "@Sumit_Godara11",
+      "kind": "person",
+      "title": "Cabinet Minister - Food & Civil Supplies, Consumer Affairs",
+      "names_hi": [
+        "सुमित गोदारा",
+        "खाद्य मंत्री सुमित गोदारा"
+      ],
+      "names_en": [
+        "Sumit Godara"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/RajGovOfficial/status/2115657376715968728",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @RajGovOfficial and bio matches | X profile name 'Sumit Godara', bio: \"CABINET MINISTER FOR FOOD, CIVIL\nSUPPLIES AND CONSUMER AFFAIRS\nGOVERNMENT OF RAJASTHAN\", badge: none"
+    },
+    {
+      "handle": "@JoraramKumawat",
+      "kind": "person",
+      "title": "Cabinet Minister - Animal Husbandry & Dairy, Gopalan, Devasthan",
+      "names_hi": [
+        "जोराराम कुमावत",
+        "पशुपालन मंत्री जोराराम कुमावत"
+      ],
+      "names_en": [
+        "Joraram Kumawat"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/JoraramKumawat",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Joraram Kumawat', bio: \"कैबिनेट मंत्री, राजस्थान सरकार\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2106225227306881116)"
+    },
+    {
+      "handle": "@babulalkharadi3",
+      "kind": "person",
+      "title": "Cabinet Minister - Tribal Area Development, Home Guards",
+      "names_hi": [
+        "बाबूलाल खराड़ी",
+        "बाबूलाल खराडी",
+        "बाबू लाल खराड़ी",
+        "जनजाति मंत्री बाबूलाल खराड़ी"
+      ],
+      "names_en": [
+        "Babulal Kharadi",
+        "Babu Lal Kharadi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/babulalkharadi3",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Babulal Kharadi', bio: \"कैबिनेट मंत्री - जनजातीय क्षेत्रीय विकास एवं गृह रक्षा विभाग, राजस्थान सरकार। \nविधायक - झाड़ोल\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2104490884813205577) | A second, unbadged account @babulalkharadib (bio also says Cabinet Minister) exists and was tagged once by @BhajanlalBjp; @babulalkharadi3 (blue badge, ~20k posts) chosen as primary."
+    },
+    {
+      "handle": "@HemantMeenaBJP",
+      "kind": "person",
+      "title": "Cabinet Minister - Revenue, Colonisation",
+      "names_hi": [
+        "राजस्व मंत्री हेमंत मीणा"
+      ],
+      "names_en": [],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/HemantMeenaBJP",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Hemant Meena', bio: \"कैबिनेट मंत्री - राजस्व एवं उपनिवेशन विभाग, राजस्थान सरकार। विधायक, प्रतापगढ़\", badge: blue badge | also tagged by @BhajanlalBjp (https://x.com/BhajanlalBjp/status/2111797173382000781)"
+    },
+    {
+      "handle": "@Sanjay4India1",
+      "kind": "person",
+      "title": "MoS (Independent Charge) - Forest, Environment & Climate Change, Science & Technology",
+      "names_hi": [
+        "वन मंत्री संजय शर्मा",
+        "वन राज्य मंत्री संजय शर्मा"
+      ],
+      "names_en": [],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/Sanjay4India1",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Sanjay Sharma', bio: \"Minister of Forest, Environment & Climate Change, Science & Technology Department, Government of Rajasthan | MLA Alwar Urban @BJP4Rajasthan\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2114566776356995179) | 'संजय शर्मा' is a common name - require context (वन/पर्यावरण/मंत्री/अलवर) before tagging."
+    },
+    {
+      "handle": "@DakMla",
+      "kind": "person",
+      "title": "MoS (Independent Charge) - Cooperation, Civil Aviation",
+      "names_hi": [
+        "गौतम कुमार दक",
+        "गौतम दक",
+        "सहकारिता मंत्री गौतम दक"
+      ],
+      "names_en": [
+        "Gautam Kumar Dak",
+        "Gautam Dak"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DakMla",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Gautam Dak', bio: \"राज्य मंत्री (स्वतंत्र प्रभार) सहकारिता व नागरिक उड्डयन मंत्रालय \nराजस्थान सरकार \nविधायक बडीसादडी (चित्तौड़गढ़)\", badge: blue badge"
+    },
+    {
+      "handle": "@officialkharra",
+      "kind": "person",
+      "title": "MoS (Independent Charge) - Urban Development & Housing (UDH), Local Self Government (LSG)",
+      "names_hi": [
+        "झाबर सिंह खर्रा",
+        "झाबरसिंह खर्रा",
+        "यूडीएच मंत्री झाबर सिंह खर्रा",
+        "स्वायत्त शासन मंत्री खर्रा"
+      ],
+      "names_en": [
+        "Jhabar Singh Kharra"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/RajGovOfficial/status/2104106263478989098",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @RajGovOfficial and bio matches | X profile name 'Jhabar Singh Kharra', bio: \"Official Account of Jhabar Singh Kharra, Minister of State (Independent charge), MLA, Shri Madhopur (39)\", badge: none | Avoid @jhabarkharrabjp - its bio says 'फैन पेज' (fan page)."
+    },
+    {
+      "handle": "@hlnagar",
+      "kind": "person",
+      "title": "MoS (Independent Charge) - Energy",
+      "names_hi": [
+        "हीरालाल नागर",
+        "हीरा लाल नागर",
+        "ऊर्जा मंत्री हीरालाल नागर"
+      ],
+      "names_en": [
+        "Heeralal Nagar",
+        "Hiralal Nagar"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/RajGovOfficial/status/2115289955664805980",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @RajGovOfficial and bio matches | X profile name 'Heeralal Nagar', bio: \"ऊर्जा मंत्री(स्वतंत्र प्रभार),राज.सरकार\nहर कदम, हर संघर्ष सांगोद को समर्पित\", badge: none"
+    },
+    {
+      "handle": "@otaramjidewasi",
+      "kind": "person",
+      "title": "MoS - Panchayati Raj, Rural Development, Disaster Management",
+      "names_hi": [
+        "ओटाराम देवासी",
+        "ओटा राम देवासी"
+      ],
+      "names_en": [
+        "Otaram Dewasi",
+        "Ota Ram Dewasi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/RajGovOfficial/status/2105923237112844612",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @RajGovOfficial and bio matches | X profile name 'Otaram Dewasi', bio: \"State Minister- Govt of Rajasthan & MLA Sirohi- Shivganj Assembly Constituency.\", badge: none"
+    },
+    {
+      "handle": "@manjubaghmar",
+      "kind": "person",
+      "title": "MoS - Public Works, Women & Child Development, Child Empowerment",
+      "names_hi": [
+        "मंजू बाघमार",
+        "डॉ. मंजू बाघमार",
+        "डॉ मंजू बाघमार"
+      ],
+      "names_en": [
+        "Manju Baghmar",
+        "Dr Manju Baghmar"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/manjubaghmar",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Dr. Manju Baghmar', bio: \"State Minister Rajasthan, MLA Jayal(Nagaur, Rajasthan)2013, 2023,\nBJP District President Nagaur 2015-17,\nProfessor, Member EC CURaj 2022-25\", badge: blue badge | @manju4bjp is a different person (Manju Sharma, Jaipur MP)."
+    },
+    {
+      "handle": "@kkvishnoibjp",
+      "kind": "person",
+      "title": "MoS - Industries & Commerce, Youth Affairs & Sports, Skills, Policy Making",
+      "names_hi": [
+        "के.के. विश्नोई",
+        "केके विश्नोई",
+        "के.के. बिश्नोई",
+        "केके बिश्नोई"
+      ],
+      "names_en": [
+        "K.K. Vishnoi",
+        "KK Bishnoi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/kkvishnoibjp",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'K.K.Vishnoi', bio: \"State Minister- Govt of Rajasthan @RajGovOfficial & MLA Gudamalani Constituency.\", badge: blue badge | also tagged by @BhajanlalBjp (https://x.com/BhajanlalBjp/status/2111414169157390605)"
+    },
+    {
+      "handle": "@jawaharbedam",
+      "kind": "person",
+      "title": "MoS - Home, Gopalan, Animal Husbandry & Dairy, Fisheries",
+      "names_hi": [
+        "जवाहर सिंह बेढम",
+        "जवाहर सिंह बेढ़म",
+        "गृह राज्य मंत्री जवाहर सिंह बेढम",
+        "गृह राज्य मंत्री बेढम"
+      ],
+      "names_en": [
+        "Jawahar Singh Bedham",
+        "Jawahar Singh Bedam"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/BhajanlalBjp/status/2111740038253875260",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @BhajanlalBjp and bio matches | X profile name 'JAWAHAR SINGH BEDHAM', bio: \"Minister of State of Home & Animal Husbandry Department In Government of Rajasthan. MLA Nagar (Deeg)\", badge: none"
+    },
+    {
+      "handle": "@svoruganti1466",
+      "kind": "person",
+      "title": "Chief Secretary, Government of Rajasthan",
+      "names_hi": [
+        "मुख्य सचिव वी. श्रीनिवास",
+        "मुख्य सचिव वी श्रीनिवास",
+        "वी. श्रीनिवास"
+      ],
+      "names_en": [
+        "V. Srinivas",
+        "Chief Secretary V Srinivas"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/RajGovOfficial/status/2116432484845891834",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @RajGovOfficial and bio matches | X profile name 'V.Srinivas IAS', bio: \"Chief Secretary Government of Rajasthan, Chairman RSMM, CRC New Delhi, President IIAS\", badge: none"
+    },
+    {
+      "handle": "@Rajeev_ips",
+      "kind": "person",
+      "title": "Director General of Police, Rajasthan",
+      "names_hi": [
+        "डीजीपी राजीव शर्मा",
+        "पुलिस महानिदेशक राजीव शर्मा"
+      ],
+      "names_en": [
+        "DGP Rajeev Sharma"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/PoliceRajasthan/status/2116410971065577919",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @PoliceRajasthan and bio matches | X profile name 'Rajeev Sharma IPS', bio: \"Director General of Police, Rajasthan\", badge: none | Bare 'राजीव शर्मा' is a common name - only match with डीजीपी/पुलिस महानिदेशक."
+    },
+    {
+      "handle": "@BagadeHaribhau",
+      "kind": "person",
+      "title": "Governor of Rajasthan",
+      "names_hi": [
+        "हरिभाऊ बागडे",
+        "हरिभाऊ किसनराव बागडे",
+        "राज्यपाल हरिभाऊ बागडे",
+        "राज्यपाल बागडे"
+      ],
+      "names_en": [
+        "Haribhau Bagade",
+        "Haribhau Bagde",
+        "Governor Haribhau Bagade"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "https://x.com/KumariDiya/status/2113667668993777786",
+      "checkedAt": "2026-10-31",
+      "note": "HELD for desk check (no badge; only tagged by an official account). Set verified to true after checking. | Unbadged, but tagged by Government-badged official account @KumariDiya and bio matches | X profile name 'Haribhau Bagade', bio: \"Official Twitter account of Haribhau Bagade,\nGovernor Of Rajasthan\nराज्यपाल,राजस्थान |\", badge: none"
+    },
+    {
+      "handle": "@LokBhavanJaipur",
+      "kind": "department",
+      "title": "Lok Bhavan Rajasthan (Governor's secretariat, formerly Raj Bhavan)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "लोकभवन",
+        "लोक भवन",
+        "राजभवन",
+        "राज भवन"
+      ],
+      "keywords_en": [
+        "Lok Bhavan",
+        "Raj Bhavan Jaipur"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/LokBhavanJaipur",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Lok Bhavan Rajasthan', bio: \"लोकभवन राजस्थान\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2116397251710931124)"
+    },
+    {
+      "handle": "@VasudevDevnani",
+      "kind": "person",
+      "title": "Speaker, Rajasthan Legislative Assembly",
+      "names_hi": [
+        "वासुदेव देवनानी",
+        "विधानसभा अध्यक्ष वासुदेव देवनानी",
+        "विधानसभा अध्यक्ष देवनानी",
+        "स्पीकर देवनानी"
+      ],
+      "names_en": [
+        "Vasudev Devnani",
+        "Speaker Vasudev Devnani"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/VasudevDevnani",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Vasudev Devnani', bio: \"Speaker, Legislative Assembly, Rajasthan\", badge: blue badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2116422417493135431) | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q19891315)"
+    },
+    {
+      "handle": "@RajAssembly",
+      "kind": "institution",
+      "title": "Rajasthan Vidhan Sabha Secretariat",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "राजस्थान विधानसभा",
+        "विधानसभा सचिवालय"
+      ],
+      "keywords_en": [
+        "Rajasthan Vidhan Sabha",
+        "Rajasthan Legislative Assembly"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/RajAssembly",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Rajasthan Vidhan Sabha', bio: \"Official Twitter Handle Of Rajasthan Vidhan Sabha Secretariat, Rajasthan Legislative Assembly, Jaipur.\", badge: grey Government badge"
+    },
+    {
+      "handle": "@TikaRamJullyINC",
+      "kind": "person",
+      "title": "Leader of Opposition, Rajasthan Legislative Assembly",
+      "names_hi": [
+        "टीकाराम जूली",
+        "टीका राम जूली",
+        "नेता प्रतिपक्ष टीकाराम जूली",
+        "नेता प्रतिपक्ष जूली"
+      ],
+      "names_en": [
+        "Tika Ram Jully",
+        "Tikaram Jully"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/TikaRamJullyINC",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Tika Ram Jully', bio: \"Leader of Opposition, Rajasthan Legislative Assembly, MLA from Alwar Rural, Ex Minister Social Justice & Jail Deptt.\", badge: blue badge"
+    },
+    {
+      "handle": "@madanrrathore",
+      "kind": "person",
+      "title": "State President, BJP Rajasthan; Rajya Sabha MP",
+      "names_hi": [
+        "भाजपा प्रदेशाध्यक्ष मदन राठौड़",
+        "प्रदेशाध्यक्ष मदन राठौड़"
+      ],
+      "names_en": [],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/madanrrathore",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Madan Rathore', bio: \"State President @BJP4Rajasthan  ||\nMember of Parliament, RS (Rajasthan) ||\nEx-MLA Sumerpur & Dy. Chief Whip Rajasthan Legislative Assembly (\", badge: grey Government badge | also tagged by @BhajanlalBjp (https://x.com/BhajanlalBjp/status/2116416396607607175)"
+    },
+    {
+      "handle": "@GovindDotasra",
+      "kind": "person",
+      "title": "President, Rajasthan Pradesh Congress Committee",
+      "names_hi": [
+        "गोविंद सिंह डोटासरा",
+        "गोविन्द सिंह डोटासरा",
+        "पीसीसी चीफ डोटासरा"
+      ],
+      "names_en": [
+        "Govind Singh Dotasra"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/GovindDotasra",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Govind Singh Dotasra', bio: \"President @INCRajasthan । Ex-Minister for School Education(I.C.),Tourism & Devsthan, GOR। Member of 13, 14, 15 & 16 Legislative Assembly, La\", badge: blue badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q16195512)"
+    },
+    {
+      "handle": "@ashokgehlot51",
+      "kind": "person",
+      "title": "Former Chief Minister of Rajasthan (Congress), MLA Sardarpura",
+      "names_hi": [
+        "अशोक गहलोत",
+        "पूर्व मुख्यमंत्री अशोक गहलोत",
+        "पूर्व सीएम गहलोत",
+        "पूर्व सीएम अशोक गहलोत"
+      ],
+      "names_en": [
+        "Ashok Gehlot"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/ashokgehlot51",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Ashok Gehlot', bio: \"Former Chief Minister of Rajasthan, MLA from Sardarpura.\", badge: blue badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q3345004)"
+    },
+    {
+      "handle": "@SachinPilot",
+      "kind": "person",
+      "title": "Congress MLA Tonk, AICC General Secretary; former Deputy CM",
+      "names_hi": [
+        "सचिन पायलट"
+      ],
+      "names_en": [
+        "Sachin Pilot"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/SachinPilot",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Sachin Pilot', bio: \"MLA from Tonk| AICC Gen Secy-in charge of Punjab| Former Min of IT, Telecom & Corp affairs, Govt of India| Commissioned officer Territorial \", badge: blue badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q314351)"
+    },
+    {
+      "handle": "@VasundharaBJP",
+      "kind": "person",
+      "title": "Former Chief Minister of Rajasthan, BJP National Vice-President",
+      "names_hi": [
+        "वसुंधरा राजे",
+        "वसुन्धरा राजे",
+        "पूर्व मुख्यमंत्री वसुंधरा राजे"
+      ],
+      "names_en": [
+        "Vasundhara Raje"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/VasundharaBJP",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Vasundhara Raje', bio: \"Official Twitter account of BJP National Vice-President | Former Chief Minister of Rajasthan\", badge: blue badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q2997305)"
+    },
+    {
+      "handle": "@hanumanbeniwal",
+      "kind": "person",
+      "title": "RLP President, Lok Sabha MP Nagaur",
+      "names_hi": [
+        "हनुमान बेनीवाल",
+        "सांसद हनुमान बेनीवाल"
+      ],
+      "names_en": [
+        "Hanuman Beniwal"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/hanumanbeniwal",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'HANUMAN BENIWAL', bio: \"President @RLPINDIAorg | 2nd Term MP (Lok Sabha) From Nagaur,Rajasthan |\n 4 Terms MLA from Khinwsar (Nagaur),\", badge: blue badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q22277026)"
+    },
+    {
+      "handle": "@roat_mla",
+      "kind": "person",
+      "title": "Lok Sabha MP Banswara (BAP)",
+      "names_hi": [
+        "राजकुमार रोत",
+        "सांसद राजकुमार रोत"
+      ],
+      "names_en": [
+        "Rajkumar Roat"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/roat_mla",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Rajkumar Roat', bio: \"Member of Parliament, Banswara Constituency | 2-term MLA, Chorasi Constituency (BAP)\", badge: grey Government badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q107046245)"
+    },
+    {
+      "handle": "@DrSatishPoonia",
+      "kind": "person",
+      "title": "BJP National General Secretary, Rajya Sabha MP",
+      "names_hi": [
+        "सतीश पूनिया",
+        "डॉ. सतीश पूनिया"
+      ],
+      "names_en": [
+        "Satish Poonia"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DrSatishPoonia",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Satish Poonia', bio: \"Member Of Parliament - Rajya Sabha | National General Secretary - BJP | BJP State In-charge, Punjab & Jammu Kashmir\", badge: blue badge | also tagged by @BhajanlalBjp (https://x.com/BhajanlalBjp/status/2113808722673958937) | A Wikipedia infobox claims he became BJP Rajasthan president on 17 Aug 2026; his own X bio (and @madanrrathore's bio 'State President @BJP4Rajasthan') contradict that - treat Madan Rathore as state president."
+    },
+    {
+      "handle": "@BJP4Rajasthan",
+      "kind": "party",
+      "title": "BJP Rajasthan (state unit)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "भाजपा राजस्थान",
+        "प्रदेश भाजपा",
+        "बीजेपी राजस्थान",
+        "भाजपा प्रदेश"
+      ],
+      "keywords_en": [
+        "BJP Rajasthan"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/BJP4Rajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'BJP Rajasthan', bio: \"Official Twitter Handle of BJP Rajasthan | http://facebook.com/BJP4Rajasthan/\", badge: blue badge | also tagged by @BhajanlalBjp (https://x.com/BhajanlalBjp/status/2115392090171666706)"
+    },
+    {
+      "handle": "@INCRajasthan",
+      "kind": "party",
+      "title": "Rajasthan Pradesh Congress Committee (state unit)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "राजस्थान कांग्रेस",
+        "प्रदेश कांग्रेस",
+        "पीसीसी",
+        "राजस्थान प्रदेश कांग्रेस कमेटी"
+      ],
+      "keywords_en": [
+        "Rajasthan Congress",
+        "Rajasthan PCC"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/INCRajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Rajasthan PCC', bio: \"Official Account of Rajasthan Pradesh Congress Committee. http://t.me/INCRajasthan\", badge: blue badge"
+    },
+    {
+      "handle": "@narendramodi",
+      "kind": "person",
+      "title": "Prime Minister of India",
+      "names_hi": [
+        "नरेंद्र मोदी",
+        "नरेन्द्र मोदी",
+        "पीएम मोदी",
+        "प्रधानमंत्री मोदी",
+        "प्रधानमंत्री नरेंद्र मोदी"
+      ],
+      "names_en": [
+        "Narendra Modi",
+        "PM Modi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/narendramodi",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Narendra Modi', bio: \"Prime Minister of India\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2110007658589954088) | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q1058)"
+    },
+    {
+      "handle": "@PMOIndia",
+      "kind": "department",
+      "title": "Prime Minister's Office",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "पीएमओ",
+        "प्रधानमंत्री कार्यालय"
+      ],
+      "keywords_en": [
+        "PMO"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/PMOIndia",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'PMO India', bio: \"Office of the Prime Minister of India\", badge: grey Government badge"
+    },
+    {
+      "handle": "@AshwiniVaishnaw",
+      "kind": "person",
+      "title": "Union Minister of Railways, I&B, Electronics & IT",
+      "names_hi": [
+        "अश्विनी वैष्णव",
+        "रेल मंत्री अश्विनी वैष्णव",
+        "केंद्रीय रेल मंत्री अश्विनी वैष्णव",
+        "रेल मंत्री वैष्णव"
+      ],
+      "names_en": [
+        "Ashwini Vaishnaw"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AshwiniVaishnaw",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Ashwini Vaishnaw', bio: \"Minister for Railways, Information & Broadcasting, Electronics & Information Technology, Government of Bharat | Former IAS | Alumnus @IITKan\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2107667249926439312)"
+    },
+    {
+      "handle": "@VSOMANNA_BJP",
+      "kind": "person",
+      "title": "Union MoS Railways, Jal Shakti",
+      "names_hi": [
+        "वी. सोमन्ना",
+        "वी सोमन्ना",
+        "रेल राज्य मंत्री सोमन्ना"
+      ],
+      "names_en": [
+        "V. Somanna"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/VSOMANNA_BJP",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'V. Somanna', bio: \"Union Minister of State for the Ministry of Jal Shakti and the Ministry of Railways | Member of Parliament, Tumakuru Lok Sabha Constituency\", badge: blue badge"
+    },
+    {
+      "handle": "@RailMinIndia",
+      "kind": "department",
+      "title": "Ministry of Railways, Government of India",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "रेल मंत्रालय",
+        "भारतीय रेल"
+      ],
+      "keywords_en": [
+        "Ministry of Railways",
+        "Indian Railways"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/RailMinIndia",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Ministry of Railways', bio: \"Official Account of the Ministry of Railways, Government of India.\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/DIPRRajasthan/status/2114384930193186948)"
+    },
+    {
+      "handle": "@AmitShah",
+      "kind": "person",
+      "title": "Union Home Minister, Minister of Cooperation",
+      "names_hi": [
+        "अमित शाह",
+        "गृह मंत्री अमित शाह",
+        "केंद्रीय गृह मंत्री अमित शाह"
+      ],
+      "names_en": [
+        "Amit Shah"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AmitShah",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Amit Shah', bio: \"Union Home Minister, Minister of Cooperation and MP, Gandhinagar Lok Sabha. https://www.youtube.com/@AmitShah\", badge: grey Government badge | also tagged by @RajCMO (https://x.com/RajCMO/status/2099882182068064583) | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q4746875)"
+    },
+    {
+      "handle": "@HMOIndia",
+      "kind": "department",
+      "title": "Office of the Union Home Minister",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "गृह मंत्रालय",
+        "गृहमंत्री कार्यालय"
+      ],
+      "keywords_en": [
+        "Home Ministry",
+        "MHA"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/HMOIndia",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'गृहमंत्री कार्यालय, HMO India', bio: \"Office of the Home Minister of India\", badge: grey Government badge"
+    },
+    {
+      "handle": "@nitin_gadkari",
+      "kind": "person",
+      "title": "Union Minister of Road Transport & Highways",
+      "names_hi": [
+        "नितिन गडकरी",
+        "केंद्रीय मंत्री नितिन गडकरी",
+        "सड़क परिवहन मंत्री गडकरी"
+      ],
+      "names_en": [
+        "Nitin Gadkari"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/nitin_gadkari",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Nitin Gadkari', bio: \"Minister of Road Transport & Highways, Government of India.\", badge: grey Government badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q3504520)"
+    },
+    {
+      "handle": "@MORTHIndia",
+      "kind": "department",
+      "title": "Ministry of Road Transport & Highways",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "सड़क परिवहन एवं राजमार्ग मंत्रालय",
+        "सड़क परिवहन मंत्रालय"
+      ],
+      "keywords_en": [
+        "MoRTH",
+        "Ministry of Road Transport and Highways"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/MORTHIndia",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'MORTHINDIA', bio: \"Official account of Ministry of Road Transport and Highways, Government of India.\", badge: blue badge"
+    },
+    {
+      "handle": "@NHAI_Official",
+      "kind": "department",
+      "title": "National Highways Authority of India",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "एनएचएआई",
+        "राष्ट्रीय राजमार्ग प्राधिकरण",
+        "राष्ट्रीय राजमार्ग प्राधिकरण"
+      ],
+      "keywords_en": [
+        "NHAI"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/NHAI_Official",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'NHAI', bio: \"Official account of the NHAI. NHAI was constituted by an act of Parliament, the National Highways Authority of India Act, 1988.\", badge: grey Government badge"
+    },
+    {
+      "handle": "@JPNadda",
+      "kind": "person",
+      "title": "Union Minister of Health & Family Welfare, Chemicals & Fertilizers",
+      "names_hi": [
+        "जेपी नड्डा",
+        "जे.पी. नड्डा",
+        "जगत प्रकाश नड्डा",
+        "स्वास्थ्य मंत्री नड्डा"
+      ],
+      "names_en": [
+        "J.P. Nadda",
+        "JP Nadda",
+        "Jagat Prakash Nadda"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/JPNadda",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Jagat Prakash Nadda', bio: \"Union Minister of Health and Family Welfare | Union Minister of Chemicals and Fertilizers\", badge: grey Government badge"
+    },
+    {
+      "handle": "@MoHFW_INDIA",
+      "kind": "department",
+      "title": "Ministry of Health & Family Welfare",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "स्वास्थ्य मंत्रालय",
+        "केंद्रीय स्वास्थ्य मंत्रालय"
+      ],
+      "keywords_en": [
+        "Health Ministry",
+        "MoHFW"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/MoHFW_INDIA",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Ministry of Health', bio: \"This is the official twitter account of Ministry of Health & Family Welfare, Government of India\", badge: grey Government badge"
+    },
+    {
+      "handle": "@JoshiPralhad",
+      "kind": "person",
+      "title": "Union Minister of Education (additional charge since 25-26 Jul 2026), Consumer Affairs, Food & Public Distribution, New & Renewable Energy",
+      "names_hi": [
+        "प्रह्लाद जोशी",
+        "प्रल्हाद जोशी",
+        "शिक्षा मंत्री प्रह्लाद जोशी",
+        "केंद्रीय शिक्षा मंत्री प्रह्लाद जोशी"
+      ],
+      "names_en": [
+        "Pralhad Joshi",
+        "Prahlad Joshi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/JoshiPralhad",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Pralhad Joshi', bio: \"Union Minister of Education, Consumer Affairs, Food and Public Distribution & New and Renewable Energy, GOl. President ISA.\nMember of Parlia\", badge: grey Government badge | also tagged by @RajCMO (https://x.com/RajCMO/status/2116453144620421543) | Dharmendra Pradhan resigned 25 Jul 2026 (NEET-UG 2026 leak); Joshi holds Education as additional charge. Do not tag @dpradhanbjp as Education Minister."
+    },
+    {
+      "handle": "@EduMinOfIndia",
+      "kind": "department",
+      "title": "Ministry of Education, Government of India",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "शिक्षा मंत्रालय",
+        "केंद्रीय शिक्षा मंत्रालय"
+      ],
+      "keywords_en": [
+        "Ministry of Education"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/EduMinOfIndia",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Ministry of Education', bio: \"Official Account of the Ministry of Education, Government of India.\n\nInstagram: http://www.instagram.com/eduminofindia/\nFB: http://fb.com/ed\", badge: grey Government badge | also tagged by @rajeduofficial (https://x.com/rajeduofficial/status/2116429116190998973)"
+    },
+    {
+      "handle": "@ChouhanShivraj",
+      "kind": "person",
+      "title": "Union Minister of Agriculture & Farmers Welfare, Rural Development",
+      "names_hi": [
+        "शिवराज सिंह चौहान",
+        "कृषि मंत्री शिवराज सिंह चौहान"
+      ],
+      "names_en": [
+        "Shivraj Singh Chouhan"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/ChouhanShivraj",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Shivraj Singh Chouhan', bio: \"भाई और मामा | Minister of Agriculture and Farmers Welfare , Minister of Rural Development, Government of India, Former Chief Minister, MP\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2109879303932379380) | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q3180602)"
+    },
+    {
+      "handle": "@AgriGoI",
+      "kind": "department",
+      "title": "Department of Agriculture & Farmers Welfare, GoI",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "कृषि मंत्रालय",
+        "केंद्रीय कृषि मंत्रालय"
+      ],
+      "keywords_en": [
+        "Agriculture Ministry"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AgriGoI",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Agriculture INDIA', bio: \"This is official Twitter Handle of the Department of #Agriculture & #Farmers Welfare, Ministry of Agriculture & Farmers Welfare, Government \", badge: blue badge"
+    },
+    {
+      "handle": "@gssjodhpur",
+      "kind": "person",
+      "title": "Union Minister of Culture & Tourism; Lok Sabha MP Jodhpur",
+      "names_hi": [
+        "गजेंद्र सिंह शेखावत",
+        "गजेन्द्र सिंह शेखावत",
+        "केंद्रीय मंत्री गजेंद्र सिंह शेखावत"
+      ],
+      "names_en": [
+        "Gajendra Singh Shekhawat"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/gssjodhpur",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Gajendra Singh Shekhawat', bio: \"Union Minister of Culture and Tourism, Government of India. MP (Lok Sabha) Jodhpur.\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2106265491048173687)"
+    },
+    {
+      "handle": "@byadavbjp",
+      "kind": "person",
+      "title": "Union Minister of Environment, Forest & Climate Change; Lok Sabha MP Alwar",
+      "names_hi": [
+        "केंद्रीय मंत्री भूपेंद्र यादव"
+      ],
+      "names_en": [],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/byadavbjp",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Bhupender Yadav', bio: \"Lok Sabha MP, Alwar || Union Cabinet Minister for Environment, Forest & Climate Change\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2111318788541202640)"
+    },
+    {
+      "handle": "@arjunrammeghwal",
+      "kind": "person",
+      "title": "Union MoS (I/C) Law & Justice, MoS Parliamentary Affairs; Lok Sabha MP Bikaner",
+      "names_hi": [
+        "अर्जुन राम मेघवाल",
+        "अर्जुनराम मेघवाल",
+        "कानून मंत्री अर्जुन राम मेघवाल"
+      ],
+      "names_en": [
+        "Arjun Ram Meghwal"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/arjunrammeghwal",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Arjun Ram Meghwal', bio: \"Union Minister of State (I/C) for Law & Justice, and Parliamentary Affairs, Government of India | MP – Bikaner, Rajasthan\", badge: grey Government badge | also tagged by @RajGovOfficial (https://x.com/RajGovOfficial/status/2115136444167798915)"
+    },
+    {
+      "handle": "@mpbhagirathbjp",
+      "kind": "person",
+      "title": "Union MoS Agriculture & Farmers Welfare; Lok Sabha MP Ajmer",
+      "names_hi": [
+        "केंद्रीय कृषि राज्य मंत्री भागीरथ चौधरी"
+      ],
+      "names_en": [],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/mpbhagirathbjp",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Bhagirath Choudhary', bio: \"• Union Minister of State for Agriculture and Farmers Welfare, Government of India\n• Member of Parliament – ​​Ajmer\n• Two Time MLA – Kishang\", badge: grey Government badge | also tagged by @KumariDiya (https://x.com/KumariDiya/status/2112878747086962690)"
+    },
+    {
+      "handle": "@ombirlakota",
+      "kind": "person",
+      "title": "Speaker, Lok Sabha; MP Kota-Bundi",
+      "names_hi": [
+        "ओम बिरला",
+        "ओम बिड़ला",
+        "लोकसभा अध्यक्ष ओम बिरला",
+        "स्पीकर ओम बिरला"
+      ],
+      "names_en": [
+        "Om Birla",
+        "Lok Sabha Speaker Om Birla"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/ombirlakota",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Om Birla', bio: \"Speaker | The 18th Lok Sabha   |   http://youtube.com/@ombirlakota\", badge: grey Government badge | Wikidata P2002 agrees (http://www.wikidata.org/entity/Q7089335)"
+    },
+    {
+      "handle": "@RajGovOfficial",
+      "kind": "department",
+      "title": "Government of Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "राजस्थान सरकार"
+      ],
+      "keywords_en": [
+        "Rajasthan Government",
+        "Government of Rajasthan"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/RajGovOfficial",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Government of Rajasthan', bio: \"Official handle of Government of Rajasthan, राजस्थान सरकार का आधिकारिक अकाउंट\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/DIPRRajasthan/status/2116422534971503097)"
+    },
+    {
+      "handle": "@DIPRRajasthan",
+      "kind": "department",
+      "title": "Department of Information & Public Relations (DIPR), Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "सूचना एवं जनसंपर्क विभाग",
+        "डीआईपीआर",
+        "जनसंपर्क विभाग"
+      ],
+      "keywords_en": [
+        "DIPR Rajasthan"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DIPRRajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'सूचना एवं जनसम्पर्क विभाग, राजस्थान सरकार', bio: \"Official Handle of the Department of Information & Public Relations (DIPR), Rajasthan\", badge: grey Government badge | also tagged by @rajeduofficial (https://x.com/DIPRRajasthan/status/2112024349435928743)"
+    },
+    {
+      "handle": "@PoliceRajasthan",
+      "kind": "police",
+      "title": "Rajasthan Police Headquarters",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "पीएचक्यू"
+      ],
+      "keywords_en": [
+        "Police Headquarters"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/PoliceRajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Rajasthan Police', bio: \"Official Handle of Rajasthan Police, India. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Use @RajPoliceHelp to report crime. For Emer\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/DIPRRajasthan/status/2116140965337702577)"
+    },
+    {
+      "handle": "@RajPoliceHelp",
+      "kind": "police",
+      "title": "Rajasthan Police Helpdesk",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "राजस्थान पुलिस हेल्पडेस्क"
+      ],
+      "keywords_en": [
+        "Rajasthan Police Helpdesk"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/RajPoliceHelp",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Rajasthan Police HelpDesk', bio: \"Official Helpdesk of Rajasthan Police. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Emergency #Police Helpline 100/112\", badge: grey Government badge | also tagged by @jaipur_police (https://x.com/jaipur_police/status/2116425108122439721) | Grievance/helpdesk account - usually not the subject of a story; prefer @PoliceRajasthan."
+    },
+    {
+      "handle": "@jaipur_police",
+      "kind": "police",
+      "title": "Police Commissionerate Jaipur",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जयपुर पुलिस",
+        "जयपुर पुलिस कमिश्नरेट",
+        "पुलिस कमिश्नरेट जयपुर",
+        "पुलिस आयुक्तालय जयपुर"
+      ],
+      "keywords_en": [
+        "Jaipur Police",
+        "Jaipur Police Commissionerate"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/jaipur_police",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Jaipur Police', bio: \"Official Handle of Jaipur Police \nOur motto - सेवार्थ कटिबद्धता (Committed to Serve ) \nFor Emergency #Dial 100/112\", badge: grey Government badge | Also in district-handles.json (Jaipur city police)."
+    },
+    {
+      "handle": "@CP_Jodhpur",
+      "kind": "police",
+      "title": "Police Commissionerate Jodhpur",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जोधपुर पुलिस",
+        "जोधपुर पुलिस कमिश्नरेट",
+        "पुलिस कमिश्नरेट जोधपुर",
+        "पुलिस आयुक्तालय जोधपुर"
+      ],
+      "keywords_en": [
+        "Jodhpur Police",
+        "Jodhpur Police Commissionerate"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/CP_Jodhpur",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Jodhpur Police', bio: \"Official handle of Police Commissionerate Jodhpur. Our motto सेवार्थ कटिबद्धता (Committed to Serve). Don't report crime here. Emergency #Pol\", badge: grey Government badge | Also in district-handles.json (Jodhpur city police)."
+    },
+    {
+      "handle": "@AcbRajasthan",
+      "kind": "police",
+      "title": "Anti Corruption Bureau, Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "एसीबी",
+        "भ्रष्टाचार निरोधक ब्यूरो",
+        "एंटी करप्शन ब्यूरो"
+      ],
+      "keywords_en": [
+        "ACB Rajasthan",
+        "Anti Corruption Bureau"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/ACBRajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'ACB Rajasthan', bio: \"Official Twitter a/c of Anti Corruption Bureau Rajasthan. If you have any information pls call us on 1064/Whatsapp 9413502834/mail itcell.ac\", badge: none"
+    },
+    {
+      "handle": "@RPSC1",
+      "kind": "department",
+      "title": "Rajasthan Public Service Commission (Ajmer)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "आरपीएससी",
+        "राजस्थान लोक सेवा आयोग"
+      ],
+      "keywords_en": [
+        "RPSC",
+        "Rajasthan Public Service Commission"
+      ],
+      "verified": true,
+      "source": "https://rpsc.rajasthan.gov.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://rpsc.rajasthan.gov.in/) | X profile name 'Rajasthan Public Service Commission', bio: \"Recruitment body for GoR Posts\", badge: none | Beware look-alikes @RPSC_Ajmer (activist) and @RPSCAjmer (news site)."
+    },
+    {
+      "handle": "@RSSB_Official",
+      "kind": "department",
+      "title": "Rajasthan Staff Selection Board (RSSB, formerly RSMSSB)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "आरएसएसबी",
+        "राजस्थान कर्मचारी चयन बोर्ड",
+        "कर्मचारी चयन बोर्ड",
+        "आरएसएमएसएसबी"
+      ],
+      "keywords_en": [
+        "RSSB",
+        "RSMSSB",
+        "Rajasthan Staff Selection Board"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/rssb_official",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'Rajasthan Staff Selection Board', bio: \"Official handle of Rajasthan Staff Selection Board (RSSB), Jaipur\", badge: none | rssb.rajasthan.gov.in links to @JaipurRssb, which no longer exists on X. @rssb_official (31k followers, bio 'Official handle of RSSB') is unbadged. Look-alikes: @RSSBJaipur, @RSSB_Rajasthan, @RSMSSB (unofficial)."
+    },
+    {
+      "handle": "@rajeduofficial",
+      "kind": "department",
+      "title": "Department of Education (School), Government of Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "शिक्षा विभाग",
+        "स्कूल शिक्षा विभाग"
+      ],
+      "keywords_en": [
+        "Education Department Rajasthan"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/rajeduofficial",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'Dept of Education, Rajasthan', bio: \"Official page of Department of Education, Government of Rajasthan\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/CeoRajasthan/status/2116409718960984380)"
+    },
+    {
+      "handle": "@nhm_rajasthan",
+      "kind": "department",
+      "title": "Medical & Health Department, Rajasthan (NHM)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "चिकित्सा एवं स्वास्थ्य विभाग",
+        "चिकित्सा विभाग",
+        "स्वास्थ्य विभाग",
+        "एनएचएम"
+      ],
+      "keywords_en": [
+        "Rajasthan Health Department",
+        "NHM Rajasthan"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/nhm_rajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Medical & Health Deptt. Rajasthan', bio: \"Official X(Twitter) account of the Medical & Health Department, Government of Rajasthan\n(National Health Mission, Rajasthan)\", badge: blue badge"
+    },
+    {
+      "handle": "@jdajaipur",
+      "kind": "department",
+      "title": "Jaipur Development Authority",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जेडीए",
+        "जयपुर विकास प्राधिकरण"
+      ],
+      "keywords_en": [
+        "JDA",
+        "Jaipur Development Authority"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/JDAJaipur",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'Jaipur Development Authority', bio: \"Where urban planning is a tradition.\n\nFollow us for updates on the latest projects and development plans. 📱\n\n#JaipurDevelopmentAuthority\", badge: none | Unbadged; JDA portal API TwitterURL field is empty; not tagged by any official account in sampled posts."
+    },
+    {
+      "handle": "@RSRTC_OFFICIAL",
+      "kind": "department",
+      "title": "Rajasthan State Road Transport Corporation (Rajasthan Roadways)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "रोडवेज",
+        "राजस्थान रोडवेज",
+        "आरएसआरटीसी",
+        "राजस्थान राज्य पथ परिवहन निगम"
+      ],
+      "keywords_en": [
+        "RSRTC",
+        "Rajasthan Roadways"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/RSRTC_Official",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'RSRTC Raj.', bio: \"To provide efficient, adequate, economical, safe and well coordinated passenger transport service.\n#RSRTC #ApkaRSRTCApkeSath #RajasthanRoadw\", badge: none | Two unbadged candidates: @RSRTC_Official (10k followers, since 2011) and @rsrtcofficial (1k, bio 'Official Twitter Account of RSRTC'); rsrtc.rajasthan.gov.in did not resolve. Neither confirmed."
+    },
+    {
+      "handle": "@JVVNLCCare",
+      "kind": "department",
+      "title": "Jaipur Vidyut Vitran Nigam Ltd (JVVNL, Jaipur discom)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जयपुर डिस्कॉम",
+        "जेवीवीएनएल",
+        "जयपुर विद्युत वितरण निगम",
+        "बिजली विभाग"
+      ],
+      "keywords_en": [
+        "JVVNL",
+        "Jaipur Discom"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/JVVNLCCare",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Jaipur Vidyut Vitran Nigam', bio: \"Official handle of Jaipur Vidyut Vitran Nigam. \nWe are here to assist you with your inquiries & provide updates on on-going programmes & ser\", badge: blue badge | also tagged by @DIPRRajasthan (https://x.com/DIPRRajasthan/status/2114640358093271186)"
+    },
+    {
+      "handle": "@RajasthanPhed",
+      "kind": "department",
+      "title": "Public Health Engineering Department (PHED / जलदाय विभाग)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जलदाय विभाग",
+        "पीएचईडी",
+        "जन स्वास्थ्य अभियांत्रिकी विभाग"
+      ],
+      "keywords_en": [
+        "PHED Rajasthan"
+      ],
+      "verified": true,
+      "source": "https://phedwater.rajasthan.gov.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://phedwater.rajasthan.gov.in/) | X profile name 'PHED Rajasthan', bio: \"The official account of Public Health and Engineering Department, Rajasthan \n#JalJeevanMission #Rajasthan #HarGharJal\n\nGovernment organizati\", badge: none"
+    },
+    {
+      "handle": "@wrdrajasthan",
+      "kind": "department",
+      "title": "Water Resources Department, Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जल संसाधन विभाग",
+        "सिंचाई विभाग"
+      ],
+      "keywords_en": [
+        "Water Resources Department Rajasthan"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/wrdrajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'जल संसाधन विभाग, राजस्थान सरकार', bio: \"जल संसाधन विभाग, राजस्थान सरकार | Water Resources Department, Government of Rajasthan\", badge: none | Unbadged; referenced in Water Resources Minister @sureshrawatin's bio but not on an official website."
+    },
+    {
+      "handle": "@Road_Safety_Raj",
+      "kind": "department",
+      "title": "Transport & Road Safety Department, Rajasthan (State Road Safety Cell)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "परिवहन विभाग",
+        "परिवहन एवं सड़क सुरक्षा विभाग"
+      ],
+      "keywords_en": [
+        "Rajasthan Transport Department"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/Road_Safety_Raj",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'State Road Safety Cell, Rajasthan', bio: \"The Department of Transport & Road Safety, Rajasthan is entrusted with the responsibility of providing Regulation of Vehicles Registration a\", badge: blue badge | also tagged by @DIPRRajasthan (https://x.com/DIPRRajasthan/status/2114613801199059297)"
+    },
+    {
+      "handle": "@my_rajasthan",
+      "kind": "department",
+      "title": "Department of Tourism, Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "पर्यटन विभाग",
+        "राजस्थान पर्यटन"
+      ],
+      "keywords_en": [
+        "Rajasthan Tourism"
+      ],
+      "verified": true,
+      "source": "https://www.tourism.rajasthan.gov.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://www.tourism.rajasthan.gov.in/) | X profile name 'Rajasthan Tourism', bio: \"Department of Tourism, Government of Rajasthan\nPadharo Mhare Des\nपधारो म्हारे देस 🐪 🙏🏻\", badge: grey Government badge"
+    },
+    {
+      "handle": "@CeoRajasthan",
+      "kind": "department",
+      "title": "Chief Electoral Officer, Rajasthan",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "मुख्य निर्वाचन अधिकारी",
+        "निर्वाचन विभाग"
+      ],
+      "keywords_en": [
+        "CEO Rajasthan"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/CeoRajasthan",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'CEO RAJASTHAN', bio: \"Official handle of Chief Electoral Officer, Rajasthan. For Voter Services log on to http://voters.eci.gov.in or Call on Voter Helpline No. a\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/CeoRajasthan/status/2116409718960984380)"
+    },
+    {
+      "handle": "@riicolimited",
+      "kind": "company",
+      "title": "RIICO (state industrial development corporation)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "रीको",
+        "राजस्थान राज्य औद्योगिक विकास एवं विनियोजन निगम"
+      ],
+      "keywords_en": [
+        "RIICO"
+      ],
+      "verified": true,
+      "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=125&isOtherDept=false",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (Rajasthan State Industrial Development and Investment Corporation Limited (RIICO)) | X profile name 'RIICO', bio: \"From infrastructure to financial support, RIICO has pioneered industrialisation of the State of Rajasthan by setting up industrial areas.\", badge: blue badge"
+    },
+    {
+      "handle": "@RHBGovOfficial",
+      "kind": "department",
+      "title": "Rajasthan Housing Board",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "आवासन मंडल",
+        "राजस्थान आवासन मंडल",
+        "हाउसिंग बोर्ड"
+      ],
+      "keywords_en": [
+        "Rajasthan Housing Board",
+        "RHB"
+      ],
+      "verified": true,
+      "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=383&isOtherDept=false",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (UDH-Rajasthan Housing Board) | X profile name 'Rajasthan Housing Board', bio: \"Official Handle of the Rajasthan Housing Board. A Government Organisation established on 24th February 1970.\", badge: none"
+    },
+    {
+      "handle": "@NWRailways",
+      "kind": "department",
+      "title": "North Western Railway (HQ Jaipur)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "उत्तर पश्चिम रेलवे",
+        "एनडब्ल्यूआर",
+        "उ.प.रे."
+      ],
+      "keywords_en": [
+        "North Western Railway",
+        "NWR"
+      ],
+      "verified": true,
+      "source": "https://nwr.indianrailways.gov.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://nwr.indianrailways.gov.in/) | X profile name 'North Western Railway', bio: \"Official Account of North Western Railway, Ministry of Railways, Government of India.\", badge: none"
+    },
+    {
+      "handle": "@DRMJaipur_",
+      "kind": "department",
+      "title": "DRM Jaipur Division, NWR",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जयपुर मंडल",
+        "डीआरएम जयपुर",
+        "जयपुर रेल मंडल"
+      ],
+      "keywords_en": [
+        "DRM Jaipur",
+        "Jaipur Division"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DRMJaipur_",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'DIVISION RAILWAY MANAGER JAIPUR', bio: \"Official Account of DRM,Jaipur Division, North Western Railway,Ministry of Railways,Government of India.\", badge: blue badge"
+    },
+    {
+      "handle": "@DRMJodhpurNWR",
+      "kind": "department",
+      "title": "DRM Jodhpur Division, NWR",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जोधपुर मंडल",
+        "डीआरएम जोधपुर",
+        "जोधपुर रेल मंडल"
+      ],
+      "keywords_en": [
+        "DRM Jodhpur"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DRMJodhpurNWR",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'DRM JODHPUR', bio: \"Divisional Railway Manager, Jodhpur, North Western Railways\", badge: blue badge"
+    },
+    {
+      "handle": "@DrmAjmer",
+      "kind": "department",
+      "title": "DRM Ajmer Division, NWR",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "अजमेर मंडल",
+        "डीआरएम अजमेर",
+        "अजमेर रेल मंडल"
+      ],
+      "keywords_en": [
+        "DRM Ajmer"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DrmAjmer",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'DRM AJMER', bio: \"Official Account of DRM, Ajmer Division, North Western Railway, Ministry of Railways, Government of India.\", badge: blue badge"
+    },
+    {
+      "handle": "@drmbikaner",
+      "kind": "department",
+      "title": "DRM Bikaner Division, NWR",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "बीकानेर मंडल",
+        "डीआरएम बीकानेर",
+        "बीकानेर रेल मंडल"
+      ],
+      "keywords_en": [
+        "DRM Bikaner"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/drmbikaner",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'DRM BIKANER', bio: \"\", badge: blue badge | Empty bio; name 'DRM BIKANER' + blue badge; tagged by @NWRailways (unbadged itself)."
+    },
+    {
+      "handle": "@Jaipur_Airport",
+      "kind": "institution",
+      "title": "Jaipur International Airport (Adani-operated)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जयपुर एयरपोर्ट",
+        "जयपुर अंतरराष्ट्रीय हवाई अड्डा",
+        "सांगानेर एयरपोर्ट"
+      ],
+      "keywords_en": [
+        "Jaipur Airport",
+        "Jaipur International Airport"
+      ],
+      "verified": true,
+      "source": "https://www.adani.com/jaipur-airport",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://www.adani.com/jaipur-airport) | X profile name 'Jaipur International Airport', bio: \"Welcome to the official handle of Jaipur International Airport.\", badge: blue badge"
+    },
+    {
+      "handle": "@aiims_jodhpur",
+      "kind": "institution",
+      "title": "AIIMS Jodhpur",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "एम्स जोधपुर"
+      ],
+      "keywords_en": [
+        "AIIMS Jodhpur"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/aiims_jodhpur",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'AIIMS Jodhpur', bio: \"Official twitter account of All India Institute of Medical Sciences, Jodhpur. Institute of National Importance established in 2012 by an Act\", badge: blue badge"
+    },
+    {
+      "handle": "@iitjodhpur",
+      "kind": "institution",
+      "title": "IIT Jodhpur",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "आईआईटी जोधपुर"
+      ],
+      "keywords_en": [
+        "IIT Jodhpur"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/iitjodhpur",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'Indian Institute of Technology Jodhpur', bio: \"We build scientists, engineers, and leaders who make innovations happen, invent technologies, and do cutting-edge research. Let's build the \", badge: none | Unbadged; iitj.ac.in could not be fetched with valid TLS, so the link was not confirmed."
+    },
+    {
+      "handle": "@UniRajOfficial",
+      "kind": "institution",
+      "title": "University of Rajasthan, Jaipur",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "राजस्थान विश्वविद्यालय",
+        "राजस्थान यूनिवर्सिटी",
+        "आरयू"
+      ],
+      "keywords_en": [
+        "University of Rajasthan",
+        "Rajasthan University"
+      ],
+      "verified": true,
+      "source": "https://www.uniraj.ac.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (uniraj.ac.in links twitter.com/unirajofficial) | X profile name 'University of Rajasthan (राजस्थान विश्वविद्यालय)', bio: \"This is the official twitter account of University of Rajasthan, Jaipur.\", badge: none"
+    },
+    {
+      "handle": "@mlsuudaipur",
+      "kind": "institution",
+      "title": "Mohanlal Sukhadia University, Udaipur",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "मोहनलाल सुखाड़िया विश्वविद्यालय",
+        "सुखाड़िया विश्वविद्यालय",
+        "एमएलएसयू"
+      ],
+      "keywords_en": [
+        "MLSU",
+        "Mohanlal Sukhadia University"
+      ],
+      "verified": true,
+      "source": "https://www.mlsu.ac.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://www.mlsu.ac.in/) | X profile name 'Mohanlal Sukhadia University', bio: \"Mohanlal Sukhadia University (erstwhile Udaipur University) at Udaipur is a State University established by an Act in the year 1962.\", badge: none"
+    },
+    {
+      "handle": "@uniofkota",
+      "kind": "institution",
+      "title": "University of Kota",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "कोटा विश्वविद्यालय"
+      ],
+      "keywords_en": [
+        "University of Kota",
+        "Kota University"
+      ],
+      "verified": true,
+      "source": "https://www.uok.ac.in/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://www.uok.ac.in/) | X profile name 'University of kota', bio: \"\", badge: none"
+    },
+    {
+      "handle": "@RuhsJaipur",
+      "kind": "institution",
+      "title": "Rajasthan University of Health Sciences, Jaipur",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "आरयूएचएस",
+        "राजस्थान स्वास्थ्य विज्ञान विश्वविद्यालय"
+      ],
+      "keywords_en": [
+        "RUHS"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/RUHSJaipur",
+      "checkedAt": "2026-10-31",
+      "note": "NOT verified: no X verification badge; no link from an official website found; not tagged by a Government-badged account in sampled posts | X profile name 'Rajasthan University Of Health Sciences Jaipur', bio: \"स्वास्थ्य सेवा राष्ट्र सेवा ।\n\nHealth Service is National Service.\n\nCourses - MBBS | BDS | Pharmacy I Nursing I Paramedical\", badge: none | Unbadged; ruhsraj.org failed TLS verification so no official link confirmed."
+    },
+    {
+      "handle": "@Hindustan_Zinc_",
+      "kind": "company",
+      "title": "Hindustan Zinc Ltd (Vedanta group, Udaipur)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "हिंदुस्तान जिंक",
+        "हिन्दुस्तान जिंक"
+      ],
+      "keywords_en": [
+        "Hindustan Zinc",
+        "HZL"
+      ],
+      "verified": true,
+      "source": "https://www.hzlindia.com/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (hzlindia.com footer links x.com/Hindustan_Zinc_) | X profile name 'Hindustan Zinc', bio: \"Hindustan Zinc Limited (BSE: HINDZINC and NSE: HINDZINC), a Vedanta Group company, is the world’s largest zinc producer and amongst the top \", badge: gold Organization badge | Note trailing underscore; @HindustanZinc is an unrelated personal account."
+    },
+    {
+      "handle": "@Vedanta_Group",
+      "kind": "company",
+      "title": "Vedanta Group",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "वेदांता",
+        "वेदांता समूह"
+      ],
+      "keywords_en": [
+        "Vedanta",
+        "Vedanta Group",
+        "Vedanta Limited"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/Vedanta_Group",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Vedanta Group', bio: \"We're a global critical minerals & natural resources company located across India, Korea, Taiwan, Japan, UAE, Saudi Arab, South Africa, Zamb\", badge: blue badge | vedantalimited.com homepage returned no links (JS-rendered); blue badge only. @VedantaLimited does not exist."
+    },
+    {
+      "handle": "@AnilAgarwal_Ved",
+      "kind": "person",
+      "title": "Chairman, Vedanta Group",
+      "names_hi": [
+        "वेदांता चेयरमैन अनिल अग्रवाल"
+      ],
+      "names_en": [],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AnilAgarwal_Ved",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Anil Agarwal', bio: \"Agar aap sapne dekhoge nahi, toh sapne poore kaise honge?                                    Chairman - Vedanta Group\", badge: blue badge | 'अनिल अग्रवाल' is a common name - require Vedanta/Hindustan Zinc context before tagging."
+    },
+    {
+      "handle": "@JKLCofficial",
+      "kind": "company",
+      "title": "JK Lakshmi Cement Ltd (Sirohi plant)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "जेके लक्ष्मी सीमेंट"
+      ],
+      "keywords_en": [
+        "JK Lakshmi Cement",
+        "JKLC"
+      ],
+      "verified": true,
+      "source": "https://www.jklakshmicement.com/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://www.jklakshmicement.com/) | X profile name 'JK Lakshmi Cement', bio: \"India’s major cement and building materials brand. Powering India’s growth story through technology, innovation and #BulandSoch\", badge: none | DANGER: @JKLakshmiCement is an impostor ('Free Share Tips'). Use only @JKLCofficial."
+    },
+    {
+      "handle": "@shreecementltd",
+      "kind": "company",
+      "title": "Shree Cement Ltd (Beawar)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "श्री सीमेंट"
+      ],
+      "keywords_en": [
+        "Shree Cement"
+      ],
+      "verified": true,
+      "source": "https://www.shreecement.com/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://www.shreecement.com/) | X profile name 'Shree Cement Limited', bio: \"The official account of Shree Cement Ltd.\", badge: none"
+    },
+    {
+      "handle": "@AdaniGreen",
+      "kind": "company",
+      "title": "Adani Green Energy Ltd (large solar parks in Rajasthan)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "अदाणी ग्रीन",
+        "अडानी ग्रीन"
+      ],
+      "keywords_en": [
+        "Adani Green",
+        "Adani Green Energy",
+        "AGEL"
+      ],
+      "verified": true,
+      "source": "https://www.adanigreenenergy.com/",
+      "checkedAt": "2026-10-31",
+      "note": "Linked from official site/portal (https://www.adanigreenenergy.com/) | X profile name 'Adani Green Energy Ltd.', bio: \"Adani Green Energy Ltd. (AGEL) accelerating the clean energy transition with an operational portfolio of over 20 GW, targeting 50 GW by 2030\", badge: blue badge"
+    },
+    {
+      "handle": "@AdaniOnline",
+      "kind": "company",
+      "title": "Adani Group",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "अदाणी समूह",
+        "अडानी ग्रुप",
+        "अदाणी ग्रुप"
+      ],
+      "keywords_en": [
+        "Adani Group"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AdaniOnline",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Adani Group', bio: \"India’s leading integrated infrastructure conglomerate since 1988. \nEnergy, transport, logistics, airports, ports and more. Nation Building,\", badge: blue badge"
+    },
+    {
+      "handle": "@UltraTechCement",
+      "kind": "company",
+      "title": "UltraTech Cement Ltd",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "अल्ट्राटेक सीमेंट"
+      ],
+      "keywords_en": [
+        "UltraTech Cement"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/UltraTechCement",
+      "checkedAt": "2026-10-31",
+      "note": "X profile with gold Organization badge and matching bio | X profile name 'UltraTech Cement Ltd', bio: \"UltraTech is India’s No. 1 Cement’\nVisit - http://ultratechcement.com for claim details. \nWe never ask for any advance payments for dealersh\", badge: gold Organization badge"
+    }
+  ],
+  "checkedAt": "2026-10-31T10:08:28+00:00"
+}

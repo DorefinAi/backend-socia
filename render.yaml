@@ -47,6 +47,8 @@ services:
         fromDatabase: { name: socia-db, property: connectionString }
       - key: CORS_ORIGINS # https://digital.<domain>
         sync: false
+      - key: HOST # Render routes to the service's public interface; the API's own default is 127.0.0.1
+        value: 0.0.0.0
 
   # Singleton: one FTP watermark. Also runs convert + compose (pure, fast).
   - type: worker

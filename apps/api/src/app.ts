@@ -10,8 +10,9 @@ import { DeskError, type Db } from "@socia/db";
 import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyServerOptions } from "fastify";
-import { COOKIE, HttpError, loadSession } from "./auth";
+import { COOKIE, HttpError, guard, loadSession } from "./auth";
 import { ownerKeyFrom, type ApiConfig } from "./config";
+import { orgOwnsKey } from "./dev-files";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes, type AuthLimits } from "./routes/auth";
 import { deskRoutes } from "./routes/desk";
@@ -63,7 +64,8 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logger"] = true) {
-  // Only the configured proxies may set req.ip (the sign-in rate-limit key); default: the socket address
+  // Only the configured proxies may set req.ip (the sign-in rate-limit key); default (TRUST_PROXY unset): loopback
+  // only, so behind the desk's /socia-api rewrite req.ip is the right-most non-loopback X-Forwarded-For entry.
   // Fastify turns a bare hop count into "trust nothing" (fail closed), which behind a proxy would key every
   // user on the proxy's address; a count is given as a function instead: trust the first `n` hops
   // (the socket peer is hop 0). Safe only when clients cannot reach the API without the proxy (Render).
@@ -107,12 +109,22 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
     return { ok: true };
   });
 
-  // Development: serve the local storage folder (cards, raw files) in place of signed R2 links
+  // Development / office PC: serve the local storage folder (cards, raw files) in place of signed R2 links.
+  // The links are permanent, so only a signed-in user of the file's org gets it; anything else is a 404.
   if (deps.storage instanceof LocalStorage) {
     const local = deps.storage;
     app.get("/dev-files/*", async (req, reply) => {
-      const key = decodeURIComponent((req.params as { "*": string })["*"]);
+      const { user } = guard(req);
+      let key: string;
+      try {
+        key = decodeURIComponent((req.params as { "*": string })["*"]);
+      } catch {
+        throw new HttpError(404, "not_found", "No such file.");
+      }
+      if (!(await orgOwnsKey(deps.db, user.orgId, key))) throw new HttpError(404, "not_found", "No such file.");
       const path = local.resolveKey(key);
+      // Private to the session: never kept by Cloudflare or a shared cache
+      reply.header("x-content-type-options", "nosniff").header("cache-control", "private, no-store");
       reply.type(CONTENT_TYPES[extname(path)] ?? "application/octet-stream");
       return reply.send(createReadStream(path));
     });

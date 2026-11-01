@@ -110,12 +110,14 @@ Names only. Values go in `.env.live`. Full list with comments: `.env.live.exampl
 | `WORKER_ROLES` | Phase 1: `ingest,pipeline,render,maintenance,trends` |
 | `RENDER_POOL` | Chromium pages for Add card (1 is enough) |
 | `PORT` | API port (8200 in the office setup) |
+| `HOST` | Listen address. Default `127.0.0.1` (only the desk's `/socia-api` proxy on this PC reaches it); `0.0.0.0` when browsers call the API directly |
+| `REALTIME` | `true` to serve Socket.IO on the API port; off by default (the desk polls) |
 | `STORAGE_DIR`, `STORAGE_PUBLIC_BASE` | Where cards and files live, and the address desk browsers use for them |
 | `CORS_ORIGINS` | The desk's origin(s), comma-separated |
 | `COOKIE_SECURE` | `false` on plain http on the LAN |
 | `SESSION_HOURS` | Session length |
 | `REQUIRE_TOTP` | `true`: every user sets up an authenticator app at first login. Keep Windows time sync on |
-| `TRUST_PROXY` | `false` for direct LAN access |
+| `TRUST_PROXY` | Unset / `loopback`: only a proxy on this PC (the desk's `/socia-api` rewrite) sets the client IP; `false` for direct LAN access |
 | `OWNER_API_KEY` | Owner console key (32+ characters). Unset: `/owner` is off |
 | `LOG_LEVEL` | Log level (default info) |
 | `TRENDS_*`, `REWRITE_MODE` | Web Scraper settings. `REWRITE_MODE` must stay `rules` |

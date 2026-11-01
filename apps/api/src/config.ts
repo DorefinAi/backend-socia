@@ -6,6 +6,14 @@ export interface ApiConfig {
   /** PHASE: 1 = Copy & Posted only (X API posting refused); 2 or unset = everything. Absent means 2. */
   phase?: Phase;
   port: number;
+  /**
+   * HOST: the address the API listens on. Unset: 127.0.0.1, so only this machine (the desk's /socia-api
+   * proxy, the worker, the owner console) can reach it. 0.0.0.0 when browsers call the API directly
+   * (office LAN on :8200) or on Render.
+   */
+  host?: string;
+  /** REALTIME=true: also serve Socket.IO on the API port. Off by default: the desk polls and nothing connects. */
+  realtime?: boolean;
   /** Browser origins allowed to call the API with cookies, e.g. https://digital.<domain> */
   corsOrigins: string[];
   cookieSecure: boolean;
@@ -20,7 +28,9 @@ export interface ApiConfig {
   rewriteMode: RewriteMode;
   /**
    * TRUST_PROXY: which proxies may set X-Forwarded-For (and so req.ip, the sign-in rate-limit key).
-   * false (default): the socket address, X-Forwarded-For ignored. A number: that many proxy hops in front
+   * Unset (default): ["loopback"], only a proxy on this machine (the desk's Next.js /socia-api rewrite) is
+   * trusted, so req.ip is the right-most non-loopback X-Forwarded-For entry; a remote client's own header is
+   * ignored. false: the socket address, X-Forwarded-For always ignored. A number: that many proxy hops in front
    * (1 behind Render or one load balancer); only safe when the API cannot be reached without passing the
    * proxy. A list: the proxies' addresses/CIDRs (safer when known). Never `true`: any client could then pick
    * its own IP.
@@ -43,10 +53,14 @@ export function ownerKeyFrom(value: string | undefined): string | null {
 
 export type TrustProxy = false | number | string[];
 
+/** Unset TRUST_PROXY: trust only proxies on this machine (127.0.0.0/8, ::1) */
+export const DEFAULT_TRUST_PROXY: TrustProxy = ["loopback"];
+
 /** Parses TRUST_PROXY; an unusable value stops startup instead of trusting the wrong hops */
 export function trustProxyFrom(value: string | undefined): TrustProxy {
   const v = (value ?? "").trim();
-  if (!v || v.toLowerCase() === "false" || v === "0") return false;
+  if (!v) return DEFAULT_TRUST_PROXY;
+  if (v.toLowerCase() === "false" || v === "0") return false;
   if (/^\d+$/.test(v)) return Number(v);
   if (v.toLowerCase() === "true") {
     throw new Error("TRUST_PROXY=true would let any client set its own IP. Use the number of proxy hops (e.g. 1) or the proxies' addresses.");
@@ -69,6 +83,8 @@ export function loadConfig(): ApiConfig {
     // An unknown phase stops startup rather than running the wrong product
     phase: phaseFrom(process.env.PHASE),
     port: Number(process.env.PORT ?? 4000),
+    host: process.env.HOST?.trim() || "127.0.0.1",
+    realtime: process.env.REALTIME === "true",
     corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:3000").split(",").map((s) => s.trim()).filter(Boolean),
     cookieSecure: process.env.COOKIE_SECURE !== "false",
     sessionHours: Number(process.env.SESSION_HOURS ?? 12),

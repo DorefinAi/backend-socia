@@ -21,6 +21,7 @@ const URL = process.env.TEST_DATABASE_URL;
   let samvadiaDraft = "";
   let rejectedDraft = "";
   let orgId = "";
+  let store: LocalStorage;
 
   const config: ApiConfig = {
     databaseUrl: URL ?? "", port: 0, corsOrigins: ["http://localhost:3005"], cookieSecure: false, sessionHours: 12, requireTotp: false,
@@ -43,7 +44,7 @@ const URL = process.env.TEST_DATABASE_URL;
     orgId = org!.id;
     await h.db.insert(users).values({ orgId, name: "Op", email: "op@test", passwordHash: await hashPassword("correct horse battery"), role: "operator" });
 
-    const store = new LocalStorage(await mkdtemp(join(tmpdir(), "socia-dash-")), "http://localhost/dev-files");
+    store = new LocalStorage(await mkdtemp(join(tmpdir(), "socia-dash-")), "http://localhost/dev-files");
     await store.put("cards/s.png", new Uint8Array([137, 80, 78, 71]), "image/png");
     await store.put("media/s/photo.jpg", new Uint8Array([0xff, 0xd8, 0xff]), "image/jpeg");
 
@@ -193,7 +194,36 @@ const URL = process.env.TEST_DATABASE_URL;
   });
 
   it("serves copied media locally with the right type", async () => {
-    const res = await app.inject({ method: "GET", url: "/dev-files/media/s/photo.jpg" });
+    const res = await app.inject({ method: "GET", url: "/dev-files/media/s/photo.jpg", headers: { cookie } });
+    expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toBe("image/jpeg");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("serves a stored file only to a signed-in user of the org it belongs to", async () => {
+    const [other] = await h.db.insert(orgs).values({ name: "Other", settings: { hashtagScript: "latin", fixedHashtags: [], maxHashtags: 4, dailyCaps: { x: 800 }, headlineWords: 9 } }).returning();
+    await h.db.insert(users).values({ orgId: other!.id, name: "Else", email: "else@test", passwordHash: await hashPassword("correct horse battery"), role: "operator" });
+    const signIn = await app.inject({ method: "POST", url: "/auth/login", payload: { email: "else@test", password: "correct horse battery" } });
+    const elseCookie = String(signIn.headers["set-cookie"]).split(";")[0]!;
+    await store.put(`card-templates/org/${other!.id}/design.png`, new Uint8Array([137, 80, 78, 71]), "image/png");
+    await store.put("media/s/unlisted.jpg", new Uint8Array([0xff, 0xd8, 0xff]), "image/jpeg");
+    const file = async (path: string, c?: string) => (await app.inject({ method: "GET", url: `/dev-files/${path}`, headers: c ? { cookie: c } : {} })).statusCode;
+
+    // No session: refused before the disk is touched
+    expect(await file("media/s/photo.jpg")).toBe(401);
+    expect(await file("cards/s.png")).toBe(401);
+    // Own org: the draft's card, the story's photo, the org's design (by the org id in the key)
+    expect(await file("cards/s.png", cookie)).toBe(200);
+    expect(await file("media/s/photo.jpg", cookie)).toBe(200);
+    expect(await file(`card-templates/org/${other!.id}/design.png`, elseCookie)).toBe(200);
+    // Another org's files, and a file no row names, are not there
+    expect(await file("cards/s.png", elseCookie)).toBe(404);
+    expect(await file("media/s/photo.jpg", elseCookie)).toBe(404);
+    expect(await file(`card-templates/org/${other!.id}/design.png`, cookie)).toBe(404);
+    expect(await file("media/s/unlisted.jpg", cookie)).toBe(404);
+    expect(await file("trend-images/abc", cookie)).toBe(404);
+    // No walking out of an allowed prefix into another org's folder
+    expect(await file(`card-templates/org/${other!.id}/..%2F..%2F..%2Fmedia%2Fs%2Fphoto.jpg`, elseCookie)).toBe(404);
+    expect(await file(`card-templates/org/${other!.id}/..%5C..%5C..%5Cmedia%5Cs%5Cphoto.jpg`, elseCookie)).toBe(404);
   });
 });

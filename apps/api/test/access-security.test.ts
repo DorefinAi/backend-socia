@@ -398,7 +398,30 @@ describe("SlidingLimiter", () => {
     } finally {
       await proxied.close();
     }
-    expect(trustProxyFrom(undefined)).toBe(false);
+    // Unset: proxies on this machine only (the desk's /socia-api rewrite, e.g. behind a Cloudflare tunnel)
+    const local = await limitedApp({ loginFailuresPerIp: 3 }, { trustProxy: trustProxyFrom(undefined) });
+    try {
+      local.get("/test/ip", async (req) => ({ ip: req.ip }));
+      const ip = async (remoteAddress: string, xff?: string) =>
+        JSON.parse((await local.inject({ method: "GET", url: "/test/ip", remoteAddress, headers: xff ? { "x-forwarded-for": xff } : {} })).body).ip;
+      expect(await ip("127.0.0.1", "1.2.3.4")).toBe("1.2.3.4");
+      expect(await ip("::1", "1.2.3.4")).toBe("1.2.3.4");
+      // A client-forged left-most entry is ignored: the right-most non-loopback entry is the client
+      expect(await ip("127.0.0.1", "6.6.6.6, 1.2.3.4")).toBe("1.2.3.4");
+      expect(await ip("127.0.0.1", "6.6.6.6, 1.2.3.4, 127.0.0.1")).toBe("1.2.3.4");
+      // Not from this machine: the header is ignored, the socket address is the key
+      expect(await ip("10.0.5.1", "1.2.3.4")).toBe("10.0.5.1");
+      expect(await ip("127.0.0.1")).toBe("127.0.0.1");
+      // Sign-in failures are counted per client behind the local proxy, not in one shared bucket
+      const tries = async (xff: string) => (await local.inject({ method: "POST", url: "/auth/login", payload: { email: "spray@test", password: "x" }, remoteAddress: "127.0.0.1", headers: { "x-forwarded-for": xff } })).statusCode;
+      for (let i = 0; i < 3; i++) expect(await tries(`9.9.9.${i}, 203.0.113.50`)).toBe(401);
+      expect(await tries("203.0.113.50")).toBe(429);
+      expect(await tries("203.0.113.51")).toBe(401);
+    } finally {
+      await local.close();
+    }
+    expect(trustProxyFrom(undefined)).toEqual(["loopback"]);
+    expect(trustProxyFrom("loopback")).toEqual(["loopback"]);
     expect(trustProxyFrom("false")).toBe(false);
     expect(trustProxyFrom("1")).toBe(1);
     expect(trustProxyFrom("10.0.0.0/8, 127.0.0.1")).toEqual(["10.0.0.0/8", "127.0.0.1"]);

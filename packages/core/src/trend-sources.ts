@@ -5,7 +5,7 @@
 
 import {
   TREND_WINDOWS, alertLevel, buildTrends, clusterIdOf, gdeltVolume, isRajasthanAlert, parseAtom, parseCap, parseGdeltTimeline, parseGoogleTrends, parseRss,
-  parseSachetRss, parseWikiTop, type RawArticle, type RawTopic, type TrendAlert, type TrendRow, type TrendTagger, type VolumePoint,
+  parseSachetRss, parseWikiTop, watchHits, watchKey, type RawArticle, type RawTopic, type TrendAlert, type TrendRow, type TrendTagger, type VolumePoint,
 } from "./trends";
 
 /** Sent with every Web Scraper request, so the sources can see who is asking (TRENDS_USER_AGENT overrides it) */
@@ -169,7 +169,7 @@ export interface SourceHealth {
   itemsLastRun: number;
   /** The last time the source answered, this run or an earlier one; null if never */
   lastSuccessAt: string | null;
-  /** Why it failed, in plain words; absent when ok */
+  /** Why it failed, in plain words; on a working source, a note on what partly failed; absent otherwise */
   lastError?: string;
 }
 
@@ -496,14 +496,178 @@ export async function collectSources(
   return { articles, topics, alerts, health: h.list };
 }
 
-/** A full run: sources, grouping and ranking, alerts on matching items, GDELT volume for the top topics. */
+// ─── Watched keywords, searched ──────────────────────────────────────────────
+// Each run also searches Google News (the live search's source) for the desk's watched keywords, so a
+// watch finds stories the feeds never carried. Bounded: a few keywords a run, the rest in later runs
+// (each org's place in its list is kept in the pace store), a second between requests, a time budget
+// per run, and a pause for every org (one IP) when Google refuses or stops answering. A keyword that was
+// refused keeps its turn. Nothing here can fail the run: the worst case is a "Keyword search" line that
+// says what went wrong.
+
+/** Watched keywords searched per run; the rest wait for the next runs, in turn */
+export const KEYWORD_SEARCH_PER_RUN = 10;
+/** Between keyword searches: at most one request a second */
+export const KEYWORD_SEARCH_GAP_MS = 1000;
+/** No new keyword search starts after this long in one run; the rest wait for the next run */
+export const KEYWORD_SEARCH_BUDGET_MS = 60_000;
+/** Dropped connections / time-outs / 5xx in a row before the keyword search stops and pauses */
+export const KEYWORD_SEARCH_MAX_DROPS = 2;
+export const KEYWORD_SEARCH_SOURCE = "Keyword search";
+/** The pause is shared by every org: one IP, one allowance */
+const KEYWORD_PACE_KEY = "keywords";
+const keywordCursorKey = (scope: string) => `keywords.cursor.${scope}`;
+const KEYWORD_RULE = { label: "Google News keyword search", backoffMs: 10 * 60_000, backoffMaxMs: 2 * 3600_000 };
+const TOO_MANY = /HTTP 429|rate limit|limit requests/i;
+/** The source not answering properly: worth stopping for, unlike a 404 or a bad answer for one keyword */
+const DROPPED = new RegExp(`${REFUSED.source}|HTTP 5\\d\\d`, "i");
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** The search edition for a keyword: Hindi for Devanagari text, English otherwise (the matching is by script) */
+export function keywordEdition(keyword: string): keyof typeof GOOGLE_NEWS_EDITIONS {
+  return /\p{Script=Devanagari}/u.test(keyword) ? "hi" : "en";
+}
+
+/** Distinct keywords (by their folded form), in a stable order so the turn-taking is fair */
+export function keywordQueue(keywords: readonly string[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const k of keywords) {
+    const q = k.replace(/\s+/g, " ").trim();
+    const key = watchKey(q);
+    if (key && !byKey.has(key)) byKey.set(key, q);
+  }
+  return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, q]) => q);
+}
+
+export interface KeywordSearchResult {
+  articles: RawArticle[];
+  /** Absent when no keyword is watched */
+  health: SourceHealth | null;
+  /** Keywords asked about this run, in order */
+  searched: string[];
+  failed: { keyword: string; error: string }[];
+}
+
+export interface KeywordSearchOptions {
+  /** Whose list this is (the org id): each list keeps its own place; the pause is shared */
+  scope?: string;
+  perRun?: number;
+  budgetMs?: number;
+}
+
+function keywordHealth(at: string, lastSuccessAt: string | null, ok: boolean, items: number, lastError?: string): SourceHealth {
+  return { name: KEYWORD_SEARCH_SOURCE, group: "News", ok, at, items, itemsLastRun: items, lastSuccessAt, ...(lastError ? { lastError } : {}) };
+}
+
+/**
+ * Google News for up to `perRun` watched keywords, starting where the last run stopped. Only articles
+ * whose headline names the keyword are kept (so the desk's watch hits show on them, and they stay past
+ * the pool). Stops at a refusal (429) or after KEYWORD_SEARCH_MAX_DROPS dropped answers in a row, and
+ * pauses; the keywords that were refused are the first ones asked next time.
+ */
+export async function searchWatchedKeywords(
+  get: TextGet, keywords: readonly string[], store: PaceStore | null, now: Date, previous: SourceHealth[] = [], opts: KeywordSearchOptions = {},
+): Promise<KeywordSearchResult> {
+  const queue = keywordQueue(keywords);
+  if (!queue.length) return { articles: [], health: null, searched: [], failed: [] };
+  const perRun = opts.perRun ?? KEYWORD_SEARCH_PER_RUN;
+  const budgetMs = opts.budgetMs ?? KEYWORD_SEARCH_BUDGET_MS;
+  const cursorKey = keywordCursorKey(opts.scope ?? "default");
+  const at = now.toISOString();
+  const lastSuccessAt = previous.find((p) => p.name === KEYWORD_SEARCH_SOURCE)?.lastSuccessAt ?? null;
+  const clock = () => store?.now() ?? Date.now();
+  const sleep = (ms: number) => (store ? store.sleep(ms) : defaultSleep(ms));
+
+  const pace = store ? await store.load(KEYWORD_PACE_KEY) : { lastAt: 0, backoffUntil: 0, failures: 0 };
+  if (clock() < pace.backoffUntil) {
+    const why = `Paused: Google News asked us to slow down. Next try in about ${minutes(pace.backoffUntil - clock())} min.`;
+    return { articles: [], health: keywordHealth(at, lastSuccessAt, false, 0, why), searched: [], failed: [] };
+  }
+  const cursor = store ? await store.load(cursorKey) : null;
+  const start = Math.max(0, Number((cursor?.cache as { next?: unknown } | undefined)?.next) || 0) % queue.length;
+  const batch = Array.from({ length: Math.min(perRun, queue.length) }, (_, i) => queue[(start + i) % queue.length]!);
+
+  const began = clock();
+  const articles: RawArticle[] = [];
+  const searched: string[] = [];
+  const failed: KeywordSearchResult["failed"] = [];
+  /** Keywords from the start of the batch whose turn is used (answered, or failed for a reason of their own) */
+  let done = 0;
+  let drops = 0;
+  let stopped: unknown = null;
+  for (const [i, keyword] of batch.entries()) {
+    if (i) {
+      // Out of time: the rest keep their turn
+      if (clock() - began + KEYWORD_SEARCH_GAP_MS > budgetMs) break;
+      await sleep(KEYWORD_SEARCH_GAP_MS);
+    }
+    searched.push(keyword);
+    try {
+      const found = parseRss(await get(googleNewsSearchUrl(keyword, keywordEdition(keyword))), { name: "Google News", platform: "Google News", rajasthan: false });
+      articles.push(...found.filter((a) => watchHits([keyword], a.title).length));
+      done = i + 1;
+      drops = 0;
+    } catch (err) {
+      failed.push({ keyword, error: plainError(err) });
+      const m = String((err as Error)?.message ?? err);
+      if (TOO_MANY.test(m) || (DROPPED.test(m) && ++drops >= KEYWORD_SEARCH_MAX_DROPS)) {
+        // Too many requests, or not answering: stop; the refused keywords are the first asked next time
+        stopped = err;
+        break;
+      }
+      if (!DROPPED.test(m)) {
+        // This keyword's own problem (404, a bad answer): its turn is used, the source is fine
+        drops = 0;
+        done = i + 1;
+      }
+    }
+  }
+  // A dropped answer not followed by a good one keeps its turn too (done stops before it)
+  const next = (start + done) % queue.length;
+  if (store) {
+    await store.save(cursorKey, { lastAt: clock(), backoffUntil: 0, failures: 0, cache: { next } });
+    const failures = stopped ? pace.failures + 1 : 0;
+    const pause = stopped ? Math.min(KEYWORD_RULE.backoffMaxMs, KEYWORD_RULE.backoffMs * 2 ** (failures - 1)) : 0;
+    await store.save(KEYWORD_PACE_KEY, { lastAt: clock(), backoffUntil: stopped ? clock() + pause : 0, failures });
+    if (stopped) {
+      const why = TOO_MANY.test(String((stopped as Error)?.message ?? stopped)) ? "Google News asked us to slow down" : "Google News stopped answering";
+      const answeredFirst = searched.length - failed.length;
+      const note = `Paused: ${why}. Next try in about ${minutes(pause)} min.${answeredFirst ? ` ${answeredFirst} of ${searched.length} keywords answered first.` : ""}`;
+      return { articles, health: keywordHealth(at, lastSuccessAt, false, articles.length, note), searched, failed };
+    }
+  } else if (stopped) {
+    return { articles, health: keywordHealth(at, lastSuccessAt, false, articles.length, `Stopped: ${plainError(stopped)}`), searched, failed };
+  }
+  const answered = searched.length - failed.length;
+  if (!answered) return { articles: [], health: keywordHealth(at, lastSuccessAt, false, 0, failed[0]!.error), searched, failed };
+  // More answering than failing is a working source; the note says how many did not
+  const ok = answered > failed.length;
+  const note = failed.length ? `${failed.length} of ${searched.length} keywords failed: ${failed[0]!.error}` : undefined;
+  return { articles, health: keywordHealth(at, at, ok, articles.length, note), searched, failed };
+}
+
+/**
+ * A full run: sources, the watched keywords searched, grouping and ranking, alerts on matching items,
+ * GDELT volume for the top topics. `scope` (the org id) keeps each org's place in its keyword list.
+ */
 export async function runTrendSources(
   get: TextGet, plan: SourcePlan, tagger: TrendTagger, now: Date, store: PaceStore | null, previous: SourceHealth[] = [], watch: string[] = [],
-): Promise<{ rows: TrendRow[]; health: SourceHealth[]; alerts: TrendAlert[] }> {
+  opts: { scope?: string } = {},
+): Promise<{ rows: TrendRow[]; health: SourceHealth[]; alerts: TrendAlert[]; keywordSearch: KeywordSearchResult }> {
   const { articles, topics, alerts, health } = await collectSources(get, plan, () => now, previous, store, tagger);
-  const rows = buildTrends({ articles, topics, alerts, watch }, tagger, now);
+  let keywordSearch: KeywordSearchResult;
+  try {
+    keywordSearch = await searchWatchedKeywords(get, watch, store, now, previous, { scope: opts.scope });
+  } catch (err) {
+    // Anything else going wrong (the pace store's database, say) must not cost the run its other sources
+    const lastSuccessAt = previous.find((p) => p.name === KEYWORD_SEARCH_SOURCE)?.lastSuccessAt ?? null;
+    keywordSearch = { articles: [], health: keywordHealth(now.toISOString(), lastSuccessAt, false, 0, plainError(err)), searched: [], failed: [] };
+  }
+  if (keywordSearch.health) health.push(keywordSearch.health);
+  // Same story from a feed and from a search folds together in grouping (same URL or near-identical title)
+  const rows = buildTrends({ articles: [...articles, ...keywordSearch.articles], topics, alerts, watch }, tagger, now);
   if (plan.gdelt) await addGdeltVolume(get, store, rows, health, previous, now);
-  return { rows, health, alerts };
+  return { rows, health, alerts, keywordSearch };
 }
 
 /** The desk's live search: Google News (both editions) and Bing News for the text, plus GDELT's count for it. Articles, 7 d. */

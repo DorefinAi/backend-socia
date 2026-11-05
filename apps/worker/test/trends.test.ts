@@ -4,8 +4,8 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { TREND_ARTICLE_POOL, googleNewsSearchUrl, googleTrendsUrl, type SourcePlan } from "@socia/core";
-import { createDb, orgs, requestTrendRefresh, runMigrations, trendItems, trendRuns, users, type DbHandle } from "@socia/db";
+import { TREND_ARTICLE_POOL, googleNewsSearchUrl, googleTrendsUrl, memoryPaceStore, type SourcePlan } from "@socia/core";
+import { createDb, orgs, requestTrendRefresh, runMigrations, trendItems, trendRuns, trendWatches, users, type DbHandle } from "@socia/db";
 import type { WebGet } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
 import pino from "pino";
@@ -135,12 +135,34 @@ function fakeWeb() {
   });
 
   it("prunes runs older than 7 days, with their items", async () => {
-    await h.db.update(trendRuns).set({ startedAt: sql`now() - interval '8 days'` }).where(eq(trendRuns.trigger, "startup"));
+    await h.db.update(trendRuns).set({ startedAt: new Date(clock.getTime() - 8 * 86400_000) }).where(eq(trendRuns.trigger, "startup"));
     const job = new TrendsJob({ db: h.db, orgId, get: fakeWeb().get, settings: { pollMs: 900_000, plan, ogMaxPerRun: 0 }, log, now: () => clock });
     await job.run("manual");
     const runs = await h.db.select().from(trendRuns);
     expect(runs.some((r) => r.trigger === "startup")).toBe(false);
     const orphans = await h.db.execute(sql`SELECT count(*)::int AS n FROM trend_items i LEFT JOIN trend_runs r ON r.id = i.run_id WHERE r.id IS NULL`);
     expect((orphans.rows[0] as { n: number }).n).toBe(0);
+  });
+  it("searches the watched keywords too, and stores what it found as normal items; a failing keyword does not stop the run", async () => {
+    await h.db.insert(trendWatches).values([{ orgId, userId, keyword: "मेट्रो" }, { orgId, userId, keyword: "Unreachable" }]);
+    const web = fakeWeb();
+    const searched = fixture("google-news-search-metro-hi.xml");
+    const get: WebGet = async (url, opts) =>
+      url === googleNewsSearchUrl("मेट्रो", "hi") ? { status: 200, contentType: "application/xml", body: Buffer.from(searched), url } : web.get(url, opts);
+    const pace = memoryPaceStore(() => clock.getTime(), async () => undefined);
+    const job = new TrendsJob({ db: h.db, orgId, get, settings: { pollMs: 900_000, plan, ogMaxPerRun: 0 }, log, now: () => clock, pace });
+    const { runId } = await job.run("schedule");
+    const [run] = await h.db.select().from(trendRuns).where(eq(trendRuns.id, runId));
+    // One of two keywords failed: not "mostly working", and the note says so
+    expect(run!.sources.find((s) => s.name === "Keyword search")).toMatchObject({
+      group: "News", ok: false, items: 2, lastError: "1 of 2 keywords failed: The source answered with an error (HTTP 404).",
+    });
+    expect(web.asked).toContain(googleNewsSearchUrl("Unreachable", "en"));
+    const items = await h.db.select().from(trendItems).where(eq(trendItems.runId, runId));
+    const found = items.filter((i) => i.url.includes("KW-METRO") && i.type === "articles");
+    expect(new Set(found.map((i) => i.url))).toEqual(new Set(["https://news.google.com/rss/articles/KW-METRO-1?oc=5", "https://news.google.com/rss/articles/KW-METRO-2?oc=5"]));
+    expect(found.every((i) => i.title.includes("मेट्रो"))).toBe(true);
+    // The place in the list is kept per org
+    expect(pace.states.get(`keywords.cursor.${orgId}`)).toMatchObject({ cache: { next: 0 } });
   });
 });

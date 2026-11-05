@@ -85,7 +85,11 @@ export class TrendsJob {
     const plan = { ...settings.plan, youtube: await this.youtubeChannels() };
     // Stories matching anyone's watched keywords are kept even past the pool size
     const watch = await orgWatchKeywords(db, orgId);
-    const { rows, health, alerts } = await runTrendSources(this.text, plan, tagger, startedAt, this.pace, previous, watch);
+    // ...and searched on Google News, a few a run in turn (KEYWORD_SEARCH_PER_RUN)
+    const { rows, health, alerts, keywordSearch } = await runTrendSources(this.text, plan, tagger, startedAt, this.pace, previous, watch, { scope: orgId });
+    if (keywordSearch.failed.length) {
+      log.warn({ searched: keywordSearch.searched.length, failed: keywordSearch.failed }, "trends: some watched keywords could not be searched; trying again next run");
+    }
     const { run, items } = await saveTrendRun(db, orgId, { trigger, startedAt, sources: health, alerts }, rows);
     this.lastRunAt = this.now().getTime();
     log.info({ trigger, runId: run.id, items: items.length, sources: health.map((h) => `${h.name}:${h.ok ? h.items : `x ${h.lastError}`}`) }, "trends run stored");
@@ -93,7 +97,7 @@ export class TrendsJob {
       log.warn({ err }, "trends: og:image lookups stopped");
       return 0;
     });
-    const pruned = await pruneTrends(db, orgId);
+    const pruned = await pruneTrends(db, orgId, undefined, this.now());
     if (pages || pruned) log.info({ pages, pruned }, "trends: pictures looked up, old runs pruned");
     return { runId: run.id, items: items.length };
   }

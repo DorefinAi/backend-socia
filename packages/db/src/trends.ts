@@ -119,10 +119,11 @@ export async function setPageImage(db: Db, runId: string, url: string, imageUrl:
   await db.update(trendItems).set({ imageUrl, imageSource, ogChecked: true }).where(and(eq(trendItems.runId, runId), eq(trendItems.url, url)));
 }
 
-export async function pruneTrends(db: Db, orgId: string, days = TREND_KEEP_DAYS): Promise<number> {
+export async function pruneTrends(db: Db, orgId: string, days = TREND_KEEP_DAYS, now: Date = new Date()): Promise<number> {
+  // Measured from the job's clock (the same one that stamps startedAt), not the database's
   const gone = await db
     .delete(trendRuns)
-    .where(and(eq(trendRuns.orgId, orgId), lt(trendRuns.startedAt, sql`now() - make_interval(days => ${days})`)))
+    .where(and(eq(trendRuns.orgId, orgId), lt(trendRuns.startedAt, new Date(now.getTime() - days * 86400_000))))
     .returning({ id: trendRuns.id });
   return gone.length;
 }

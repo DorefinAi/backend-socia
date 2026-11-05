@@ -11,7 +11,7 @@ import {
 } from "@socia/db";
 import { LocalStorage, type WebGet } from "@socia/providers";
 import { and, eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app";
 import { hashPassword } from "../src/auth";
 import type { ApiConfig } from "../src/config";
@@ -148,23 +148,29 @@ const row = (r: Partial<TrendRow> & Pick<TrendRow, "title" | "rank">): TrendRow 
 
   it("searches Google News live, stores the results apart, and limits searches per user", async () => {
     asked.length = 0;
-    const res = await call(who.op, "POST", "/trends/search", { q: "  पंचायत   चुनाव " });
-    expect(res.status).toBe(200);
-    expect(res.body.items.length).toBeGreaterThan(0);
-    expect(res.body.items.every((i: { type: string; id: string }) => i.type === "articles" && /^[0-9a-f-]{36}$/.test(i.id))).toBe(true);
-    expect(res.body.sources.map((s: { name: string; group: string; ok: boolean }) => [s.name, s.group, s.ok])).toEqual([
-      ["Google News (hi)", "News", true], ["Google News (en)", "News", true], ["Bing News", "News", false], ["GDELT", "Volume", false],
-    ]);
-    expect(res.body.sources.at(-1).lastError).toBe("Too many requests: GDELT allows about one every 5 seconds. Pausing GDELT for 2 min.");
-    expect(asked).toHaveLength(4);
-    const [search] = await h.db.select().from(trendRuns).where(and(eq(trendRuns.trigger, "search"), eq(trendRuns.query, "पंचायत चुनाव")));
-    expect(search).toBeTruthy();
-    expect((await call(who.op, "GET", "/trends")).body.items[0].id).toBe(ids.hc);
+    // The recorded answers are from 28 Oct 2026 and the search keeps 7 days: search as of that evening
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-28T18:00:00Z") });
+    try {
+      const res = await call(who.op, "POST", "/trends/search", { q: "  पंचायत   चुनाव " });
+      expect(res.status).toBe(200);
+      expect(res.body.items.length).toBeGreaterThan(0);
+      expect(res.body.items.every((i: { type: string; id: string }) => i.type === "articles" && /^[0-9a-f-]{36}$/.test(i.id))).toBe(true);
+      expect(res.body.sources.map((s: { name: string; group: string; ok: boolean }) => [s.name, s.group, s.ok])).toEqual([
+        ["Google News (hi)", "News", true], ["Google News (en)", "News", true], ["Bing News", "News", false], ["GDELT", "Volume", false],
+      ]);
+      expect(res.body.sources.at(-1).lastError).toBe("Too many requests: GDELT allows about one every 5 seconds. Pausing GDELT for 2 min.");
+      expect(asked).toHaveLength(4);
+      const [search] = await h.db.select().from(trendRuns).where(and(eq(trendRuns.trigger, "search"), eq(trendRuns.query, "पंचायत चुनाव")));
+      expect(search).toBeTruthy();
+      expect((await call(who.op, "GET", "/trends")).body.items[0].id).toBe(ids.hc);
 
-    expect((await call(who.op, "POST", "/trends/search", { q: "a" })).status).toBe(400);
-    expect((await call(null, "POST", "/trends/search", { q: "पंचायत चुनाव" })).status).toBe(401);
-    for (let n = 1; n < SEARCHES_PER_MINUTE; n++) expect((await call(who.op, "POST", "/trends/search", { q: "पंचायत चुनाव" })).status).toBe(200);
-    expect(await call(who.op, "POST", "/trends/search", { q: "पंचायत चुनाव" })).toMatchObject({ status: 429, body: { error: "rate_limited" } });
+      expect((await call(who.op, "POST", "/trends/search", { q: "a" })).status).toBe(400);
+      expect((await call(null, "POST", "/trends/search", { q: "पंचायत चुनाव" })).status).toBe(401);
+      for (let n = 1; n < SEARCHES_PER_MINUTE; n++) expect((await call(who.op, "POST", "/trends/search", { q: "पंचायत चुनाव" })).status).toBe(200);
+      expect(await call(who.op, "POST", "/trends/search", { q: "पंचायत चुनाव" })).toMatchObject({ status: 429, body: { error: "rate_limited" } });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("queues a run for editors, limited per minute", async () => {

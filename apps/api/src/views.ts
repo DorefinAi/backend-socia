@@ -17,6 +17,22 @@ export function storyLabels(external: StoryExternal | null | undefined): { prior
   return { priority: asPriority(external?.priority), category: asCategory(external?.category) };
 }
 
+/**
+ * Stored on the story but not a reason to check it: the parser still takes desk notes (नोट) out of the
+ * post text and records that it did, but the desk no longer shows it or counts it as "needs check".
+ */
+export const NOT_A_CHECK = "desk_note";
+
+/** The sentence older stories carry in parse_note for a removed desk note; no longer shown */
+const OLD_DESK_NOTE_SENTENCE = "A desk instruction (नोट) was taken out of the text.";
+
+/** parse_note without the old desk-note sentence; null when nothing else is left */
+export function shownParseNote(note: string | null): string | null {
+  if (!note?.includes(OLD_DESK_NOTE_SENTENCE)) return note;
+  const rest = note.split(OLD_DESK_NOTE_SENTENCE).join(" ").replace(/\s+/g, " ").trim();
+  return rest || null;
+}
+
 /** A breaking story's file-name tags and checks, for the queue row and the draft (phase 1); null tags elsewhere */
 export function breakingFields(s: { town: string | null; fileTags: unknown; needsCheck: string[]; deskNote: string | null }) {
   // file_tags is JSON from the database: checked, never trusted to have the right shape
@@ -27,7 +43,7 @@ export function breakingFields(s: { town: string | null; fileTags: unknown; need
     desk: tags?.desk ?? null,
     reporter: tags?.reporter ?? null,
     deskNoteRemoved: !!s.deskNote,
-    needsCheck: s.needsCheck,
+    needsCheck: s.needsCheck.filter((c) => c !== NOT_A_CHECK),
   };
 }
 
@@ -71,7 +87,12 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
   const text = postText(draft);
   const check = checkXPost(text);
   const leaseLive = !!draft.claimExpiresAt && draft.claimExpiresAt > new Date();
-  const [file] = story.fileId ? await db.select({ name: ingestedFiles.fileName }).from(ingestedFiles).where(eq(ingestedFiles.id, story.fileId)) : [];
+  const [file] = story.fileId
+    ? await db
+        .select({ name: ingestedFiles.fileName, path: ingestedFiles.sourcePath })
+        .from(ingestedFiles)
+        .where(and(eq(ingestedFiles.id, story.fileId), eq(ingestedFiles.orgId, story.orgId)))
+    : [];
 
   return {
     id: draft.id,
@@ -126,7 +147,7 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
       /** The file as the machine read it; shown beside a low-confidence conversion */
       sourceText: story.sourceText,
       parseMethod: story.parseMethod,
-      parseNote: story.parseNote,
+      parseNote: shownParseNote(story.parseNote),
       source: story.source,
       district: story.district,
       ...storyLabels(story.external),
@@ -134,6 +155,8 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
       /** "breaking" for the newsroom's breaking files (phase 1); null otherwise */
       layout: story.layout ?? null,
       fileName: file?.name ?? null,
+      /** The original file's path on the share (ingested_files.source_path); null without a file (Samvadia, Web Scraper) */
+      sourcePath: file?.path ?? null,
       deskNote: story.deskNote,
       /** A file saved again after its post went out: the posted draft this one updates; null otherwise */
       updateOfDraftId: story.updateOfDraftId ?? null,

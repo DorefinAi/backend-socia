@@ -5,7 +5,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FileTags } from "@socia/core";
-import { createDb, orgs, postDrafts, publishedPosts, recordIngestPoll, runMigrations, stories, userPermissionOverrides, users, type DbHandle } from "@socia/db";
+import { createDb, ingestedFiles, orgs, postDrafts, publishedPosts, recordIngestPoll, runMigrations, stories, userPermissionOverrides, users, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -102,9 +102,17 @@ const tags = (over: Partial<FileTags>): FileTags => ({
     const { body } = await call("GET", "/x/queue?district=Jodhpur");
     expect(body.items).toHaveLength(1);
     expect(body.items[0]).toMatchObject({
-      id: ids["jodhpur-big"], district: "Jodhpur", town: "पीपाड़", desk: "NDR", reporter: "REPORTER", deskNoteRemoved: true, needsCheck: ["desk_note"],
+      id: ids["jodhpur-big"], district: "Jodhpur", town: "पीपाड़", desk: "NDR", reporter: "REPORTER", deskNoteRemoved: true, needsCheck: [],
       tags: { big: true }, postText: "#Jodhpur: jodhpur-big\n\n#RajasthanWithFirstIndia", length: 47, card: { state: "none" }, posted: null,
     });
+    // The draft view agrees: the desk note is gone from the text but is not a check reason
+    expect((await call("GET", `/drafts/${ids["jodhpur-big"]}`)).body.story).toMatchObject({ deskNoteRemoved: true, needsCheck: [] });
+    // Older stories' notes lose the desk-note sentence; anything else in the note stays
+    const storyId = async (key: string) => (await h.db.select({ s: postDrafts.storyId }).from(postDrafts).where(eq(postDrafts.id, ids[key]!)))[0]!.s;
+    await h.db.update(stories).set({ parseNote: "A desk instruction (नोट) was taken out of the text." }).where(eq(stories.id, await storyId("jodhpur-big")));
+    expect((await call("GET", `/drafts/${ids["jodhpur-big"]}`)).body.story.parseNote).toBeNull();
+    await h.db.update(stories).set({ parseNote: "No district was found in the place line, the file name or the text. A desk instruction (नोट) was taken out of the text." }).where(eq(stories.id, await storyId("no-district")));
+    expect((await call("GET", `/drafts/${ids["no-district"]}`)).body.story.parseNote).toBe("No district was found in the place line, the file name or the text.");
   });
 
   it("filters by district, BIG, UPDATE, desk and needs-check, and counts for the dropdowns", async () => {
@@ -113,12 +121,14 @@ const tags = (over: Partial<FileTags>): FileTags => ({
     expect(await names("update=true")).toEqual(["jaipur-update"]);
     expect(await names("desk=vks")).toEqual(["jaipur-update", "no-district"]);
     expect(await names("district=none")).toEqual(["no-district"]);
-    expect(await names("needsCheck=true")).toEqual(["jodhpur-big", "no-district"]);
+    // A removed desk note alone is not a reason to check (jodhpur-big)
+    expect(await names("needsCheck=true")).toEqual(["no-district"]);
+    expect(await names("needsCheck=false")).toEqual(["jaipur-update", "jodhpur-big", "too-long"]);
     expect(await names("desk=VKS&update=false")).toEqual(["no-district"]);
     expect((await call("GET", "/x/queue?desk=no%20way")).status).toBe(400);
 
     const { body } = await call("GET", "/x/queue/facets");
-    expect(body).toMatchObject({ total: 4, big: 1, update: 1, needsCheck: 2 });
+    expect(body).toMatchObject({ total: 4, big: 1, update: 1, needsCheck: 1 });
     expect(body.desks).toEqual(expect.arrayContaining([{ code: "VKS", n: 2 }, { code: "NDR", n: 1 }]));
     expect(body.districts).toEqual(expect.arrayContaining([{ name: null, n: 1 }, { name: "Jodhpur", n: 1 }]));
   });
@@ -248,5 +258,41 @@ const tags = (over: Partial<FileTags>): FileTags => ({
     expect((await call("GET", "/x/queue?view=posted&days=5")).body.items.map((i: { id: string }) => i.id)).toContain(ids["race"]);
     expect((await call("GET", "/x/queue?view=posted&days=31")).status).toBe(400);
     expect((await call("GET", "/x/queue/facets?view=posted")).body.total).toBe((await call("GET", "/x/queue?view=posted")).body.items.length);
+  });
+  it("queue items and the draft view carry the original file path (null without a file, or for another org's file)", async () => {
+    const [file] = await h.db
+      .insert(ingestedFiles)
+      .values({ orgId, sha256: "f".repeat(64), sourcePath: "Y:/BREAKING/05_NOVEMBER_2026/BTN_RAJ_REJ_1.txt", fileName: "BTN_RAJ_REJ_1.txt", bytes: 10, storageKey: "k/rej", kind: "text", slug: "rej-file" })
+      .returning();
+    await draft("rej-file", { district: "Ajmer", fileId: file!.id, fileTags: tags({}) }, { status: "rejected", rejectReason: "duplicate" });
+    await draft("rej-samvadia", { district: "Ajmer", source: "samvadia", externalId: "s-1:v1", fileTags: tags({}) }, { status: "rejected", rejectReason: "duplicate" });
+    const { body } = await call("GET", "/x/queue?view=rejected");
+    const byId = new Map(body.items.map((i: { id: string; sourcePath: string | null }) => [i.id, i.sourcePath]));
+    expect(byId.get(ids["rej-file"])).toBe("Y:/BREAKING/05_NOVEMBER_2026/BTN_RAJ_REJ_1.txt");
+    expect(byId.has(ids["rej-samvadia"])).toBe(true);
+    expect(byId.get(ids["rej-samvadia"])).toBeNull();
+    // The inbox carries it too: a file's path, null for stories without one
+    const [inboxFile] = await h.db
+      .insert(ingestedFiles)
+      .values({ orgId, sha256: "e".repeat(64), sourcePath: "D:/share/BTN_RAJ_INBOX_1.txt", fileName: "BTN_RAJ_INBOX_1.txt", bytes: 10, storageKey: "k/inbox", kind: "text", slug: "inbox-file" })
+      .returning();
+    await draft("inbox-file", { district: "Ajmer", fileId: inboxFile!.id, fileTags: tags({}) });
+    const inbox = new Map((await call("GET", "/x/queue")).body.items.map((i: { id: string; sourcePath: string | null }) => [i.id, i.sourcePath]));
+    expect(inbox.get(ids["inbox-file"])).toBe("D:/share/BTN_RAJ_INBOX_1.txt");
+    expect(inbox.get(ids["no-district"])).toBeNull();
+
+    // Org-scoped: a story pointing at another org's file shows no path, in the queue or the draft
+    const [otherOrg] = await h.db.insert(orgs).values({ name: "Other newsroom", settings: { hashtagScript: "latin", fixedHashtags: [], maxHashtags: 4, dailyCaps: { x: 800 }, headlineWords: 9 } }).returning();
+    const [foreign] = await h.db
+      .insert(ingestedFiles)
+      .values({ orgId: otherOrg!.id, sha256: "d".repeat(64), sourcePath: "D:/other/SECRET.txt", fileName: "SECRET.txt", bytes: 10, storageKey: "k/other", kind: "text", slug: "other-file" })
+      .returning();
+    await draft("rej-foreign", { district: "Ajmer", fileId: foreign!.id, fileTags: tags({}) }, { status: "rejected", rejectReason: "duplicate" });
+    const rejected = new Map((await call("GET", "/x/queue?view=rejected")).body.items.map((i: { id: string; sourcePath: string | null }) => [i.id, i.sourcePath]));
+    expect(rejected.has(ids["rej-foreign"])).toBe(true);
+    expect(rejected.get(ids["rej-foreign"])).toBeNull();
+    expect((await call("GET", `/drafts/${ids["rej-foreign"]}`)).body.story).toMatchObject({ sourcePath: null, fileName: null });
+    expect((await call("GET", `/drafts/${ids["rej-file"]}`)).body.story).toMatchObject({ fileName: "BTN_RAJ_REJ_1.txt", sourcePath: "Y:/BREAKING/05_NOVEMBER_2026/BTN_RAJ_REJ_1.txt" });
+    expect((await call("GET", `/drafts/${ids["rej-samvadia"]}`)).body.story.sourcePath).toBeNull();
   });
 });

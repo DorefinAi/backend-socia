@@ -2,7 +2,7 @@
 
 import { DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, xLen, X_LIMIT } from "@socia/core";
 import {
-  approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, copyPosted, extendClaim, markPosted, postDrafts, postedView, publishedPosts,
+  approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, copyPosted, extendClaim, ingestedFiles, markPosted, postDrafts, postedView, publishedPosts,
   rejectDraft, releaseDraft, requestCardRender, requestRecall, restoreDraft, retryFailed, setCustomCard, stories, undoCopyPosted, undoPost, updateDraft,
   users, type Actor,
 } from "@socia/db";
@@ -10,7 +10,7 @@ import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "
 import { and, count, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
-import { breakingFields, cardUrl, draftView, storyLabels } from "../views";
+import { NOT_A_CHECK, breakingFields, cardUrl, draftView, storyLabels } from "../views";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
@@ -82,7 +82,12 @@ function filterWhere(q: { district?: string; big?: boolean; update?: boolean; de
     q.big === undefined ? undefined : flag("big", q.big),
     q.update === undefined ? undefined : flag("update", q.update),
     q.desk === undefined ? undefined : sql`${stories.fileTags}->>'desk' = ${q.desk.toUpperCase()}`,
-    q.needsCheck === undefined ? undefined : q.needsCheck ? sql`cardinality(${stories.needsCheck}) > 0` : sql`cardinality(${stories.needsCheck}) = 0`,
+    // A removed desk note is recorded but is not a reason to check the story
+    q.needsCheck === undefined
+      ? undefined
+      : q.needsCheck
+        ? sql`cardinality(array_remove(${stories.needsCheck}, ${NOT_A_CHECK})) > 0`
+        : sql`cardinality(array_remove(${stories.needsCheck}, ${NOT_A_CHECK})) = 0`,
   ];
 }
 
@@ -164,11 +169,14 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           videos: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'video')`,
           headline: stories.headline,
           receivedAt: stories.createdAt,
+          sourcePath: ingestedFiles.sourcePath,
           lowConfidence: sql<boolean>`coalesce(${stories.conversionConfidence} < 0.97, false)`,
           needsReview: sql<boolean>`${stories.parseMethod} = 'needs_review'`,
         })
         .from(postDrafts)
         .innerJoin(stories, eq(stories.id, postDrafts.storyId))
+        // The original file's path, org-scoped; no row for Samvadia / Web Scraper stories
+        .leftJoin(ingestedFiles, and(eq(ingestedFiles.id, stories.fileId), eq(ingestedFiles.orgId, postDrafts.orgId)))
         .leftJoin(users, eq(users.id, postDrafts.claimedBy))
         .where(
           and(
@@ -204,6 +212,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               bodyText: r.bodyText,
               receivedAt: r.receivedAt,
               createdAt: r.createdAt,
+              /** The original file's path (ingested_files.source_path); null when the story has no file */
+              sourcePath: r.sourcePath ?? null,
               source: r.source,
               district: r.district,
               ...storyLabels(r.external),

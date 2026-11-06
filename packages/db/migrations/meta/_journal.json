@@ -134,6 +134,13 @@
       "when": 1793436640046,
       "tag": "0018_org_card_templates_created_by",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793963787563,
+      "tag": "0019_ops_log",
+      "breakpoints": true
     }
   ]
 }

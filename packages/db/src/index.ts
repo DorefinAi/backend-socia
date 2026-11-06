@@ -14,3 +14,4 @@ export * from "./card-template";
 export * from "./org-card-template";
 export * from "./composer";
 export * from "./trends";
+export * from "./ops-log";

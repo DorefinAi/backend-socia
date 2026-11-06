@@ -681,3 +681,38 @@ export const kv = pgTable("kv", {
   value: jsonb("value").notNull(),
   updatedAt: updatedAt(),
 });
+
+/**
+ * Every log line of the API and worker at OPS_LOG_LEVEL and above, already redacted (dev-docs/ops-logs-contract.md
+ * §1, written by ops-log.ts). The Sentry control centre pulls them through GET /owner/logs; kept 14 days.
+ */
+export const opsLog = pgTable(
+  "ops_log",
+  {
+    /** The pull cursor: strictly increasing */
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    /** When the line was logged (the logger's time) */
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    /** Sentry system id: socia-api, socia-ingest, socia-render, socia-publish, socia-crons */
+    system: text("system").notNull(),
+    level: text("level").notNull(),
+    logger: text("logger"),
+    message: text("message").notNull(),
+    slug: text("slug"),
+    itemId: text("item_id"),
+    fields: jsonb("fields"),
+  },
+  // For the hourly retention delete
+  (t) => [index("ops_log_at_idx").on(t.at)],
+);
+
+/** One row per running API / worker process, beaten every 30 s (contract §1) */
+export const opsHeartbeat = pgTable("ops_heartbeat", {
+  process: text("process").primaryKey(),
+  system: text("system").notNull(),
+  host: text("host").notNull(),
+  pid: integer("pid").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  beatAt: timestamp("beat_at", { withTimezone: true }).notNull(),
+  info: jsonb("info"),
+});

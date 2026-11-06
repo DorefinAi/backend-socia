@@ -6,7 +6,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { TypeBoxValidatorCompiler, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import type { PaceStore } from "@socia/core";
-import { DeskError, type Db } from "@socia/db";
+import { DeskError, readIngestStatus, readWorkerHeartbeat, workerLiveness, type Db } from "@socia/db";
 import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyServerOptions } from "fastify";
@@ -104,9 +104,20 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
     return reply.status(500).send({ error: "server", message: "Something went wrong on our side. Try again in a moment." });
   });
 
+  // The API itself: 200 { ok: true } when the database answers (a 500 from the error handler when it does not).
+  // Safe for anything that restarts the API on failure: a stopped worker never fails it.
   app.get("/healthz", async () => {
     await deps.db.execute(sql`select 1`);
     return { ok: true };
+  });
+
+  // The ingest worker, for an uptime monitor: 200 { ok: true, workerLastSeenAt } while it is alive (or has never run),
+  // 503 { ok: false, worker: "stopped", workerLastSeenAt } once workerLiveness() calls it stopped.
+  app.get("/healthz/worker", async (_req, reply) => {
+    const [status, heartbeat] = await Promise.all([readIngestStatus(deps.db), readWorkerHeartbeat(deps.db)]);
+    const worker = workerLiveness(status, heartbeat);
+    if (worker.stopped) return reply.status(503).send({ ok: false, worker: "stopped", workerLastSeenAt: worker.lastSeenAt });
+    return { ok: true, workerLastSeenAt: worker.lastSeenAt };
   });
 
   // Development / office PC: serve the local storage folder (cards, raw files) in place of signed R2 links.

@@ -4,9 +4,9 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assets, createDb, ingestedFiles, orgs, postDrafts, publishedPosts, recordIngestPoll, runMigrations, stories, users, type DbHandle } from "@socia/db";
+import { WORKER_HEARTBEAT_KEY, assets, createDb, ingestedFiles, kv, orgs, postDrafts, publishedPosts, recordIngestPoll, recordWorkerHeartbeat, runMigrations, stories, users, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
-import { inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { hashPassword } from "../src/auth";
@@ -225,5 +225,42 @@ const URL = process.env.TEST_DATABASE_URL;
     // No walking out of an allowed prefix into another org's folder
     expect(await file(`card-templates/org/${other!.id}/..%2F..%2F..%2Fmedia%2Fs%2Fphoto.jpg`, elseCookie)).toBe(404);
     expect(await file(`card-templates/org/${other!.id}/..%5C..%5C..%5Cmedia%5Cs%5Cphoto.jpg`, elseCookie)).toBe(404);
+  });
+
+  // Last: it leaves the ingest status old
+  it("calls the worker stopped after 90 s without a poll or heartbeat, on the status and on /healthz/worker", async () => {
+    const health = async (url: string) => {
+      const res = await app.inject({ method: "GET", url });
+      return { status: res.statusCode, body: JSON.parse(res.body) };
+    };
+    expect(await health("/healthz")).toEqual({ status: 200, body: { ok: true } });
+
+    const old = new Date(Date.now() - 120_000);
+    await recordIngestPoll(h.db, orgId, { mode: "samvadia", taken: 0, cursor: null }, old);
+    await h.db.delete(kv).where(eq(kv.key, WORKER_HEARTBEAT_KEY));
+    const { body } = await get("/ingest/status");
+    expect(body).toMatchObject({ state: "stopped", lastPollAt: old.toISOString(), workerLastSeenAt: old.toISOString() });
+    expect(await health("/healthz/worker")).toEqual({ status: 503, body: { ok: false, worker: "stopped", workerLastSeenAt: old.toISOString() } });
+    // The API's own check never fails for the worker, so nothing restarts the API over it
+    expect(await health("/healthz")).toEqual({ status: 200, body: { ok: true } });
+
+    // A heartbeat (the worker busy in a long scan) is enough to be alive again
+    const beat = new Date();
+    await recordWorkerHeartbeat(h.db, beat);
+    const live = (await get("/ingest/status")).body;
+    expect(live).toMatchObject({ state: "ok", workerLastSeenAt: beat.toISOString() });
+    expect(await health("/healthz/worker")).toEqual({ status: 200, body: { ok: true, workerLastSeenAt: beat.toISOString() } });
+
+    // 89 s is still alive, on both
+    await recordWorkerHeartbeat(h.db, new Date(Date.now() - 89_000));
+    expect((await get("/ingest/status")).body.state).toBe("ok");
+    expect((await health("/healthz/worker")).status).toBe(200);
+
+    // A poll stuck for over 15 min is stopped even while the process keeps beating
+    const stuck = new Date(Date.now() - 16 * 60_000);
+    await recordIngestPoll(h.db, orgId, { mode: "samvadia", taken: 0, cursor: null }, stuck);
+    await recordWorkerHeartbeat(h.db, new Date());
+    expect((await get("/ingest/status")).body.state).toBe("stopped");
+    expect((await health("/healthz/worker")).status).toBe(503);
   });
 });

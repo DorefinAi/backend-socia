@@ -121,3 +121,48 @@ export async function recordApiPhase(db: Db, phase: 1 | 2): Promise<void> {
 export async function readApiPhase(db: Db): Promise<{ phase: 1 | 2; at: string } | null> {
   return getKv(db, API_PHASE_KEY);
 }
+
+// ─── Is the ingest worker alive ─────────────────────────────────────────────
+
+/** Written by the ingest worker every WORKER_HEARTBEAT_MS, so a long scan is not mistaken for a stopped worker */
+export const WORKER_HEARTBEAT_KEY = "ingest.heartbeat";
+export const WORKER_HEARTBEAT_MS = 30_000;
+/** No poll and no heartbeat for this long: the worker is stopped (three missed heartbeats) */
+export const WORKER_STALE_AFTER_MS = 90_000;
+/**
+ * The heartbeat proves the process is alive, not that the ingest loop is: a poll stuck on a hung share read
+ * keeps beating. A poll that has not finished for this long is stopped, heartbeat or not (the longest normal
+ * scan or footage copy takes a few minutes).
+ */
+export const WORKER_POLL_STALE_AFTER_MS = 15 * 60_000;
+
+export interface WorkerHeartbeat {
+  at: string;
+  pid: number;
+}
+
+export async function recordWorkerHeartbeat(db: Db, now = new Date()): Promise<void> {
+  await setKv(db, WORKER_HEARTBEAT_KEY, { at: now.toISOString(), pid: process.pid } satisfies WorkerHeartbeat);
+}
+
+export async function readWorkerHeartbeat(db: Db): Promise<WorkerHeartbeat | null> {
+  return getKv<WorkerHeartbeat>(db, WORKER_HEARTBEAT_KEY);
+}
+
+export interface WorkerLiveness {
+  /** The newest of the last poll and the last heartbeat; null when the worker never ran */
+  lastSeenAt: string | null;
+  /** Seen before, but not within WORKER_STALE_AFTER_MS, or no finished poll within WORKER_POLL_STALE_AFTER_MS */
+  stopped: boolean;
+}
+
+export function workerLiveness(status: IngestStatus | null, heartbeat: WorkerHeartbeat | null, now = new Date()): WorkerLiveness {
+  const at = (s: string | null | undefined) => (s ? Date.parse(s) : NaN);
+  const poll = at(status?.lastPollAt);
+  const seen = [poll, at(heartbeat?.at)].filter((t) => Number.isFinite(t));
+  if (!seen.length) return { lastSeenAt: null, stopped: false };
+  const last = Math.max(...seen);
+  const silent = now.getTime() - last > WORKER_STALE_AFTER_MS;
+  const pollStuck = Number.isFinite(poll) && now.getTime() - poll > WORKER_POLL_STALE_AFTER_MS;
+  return { lastSeenAt: new Date(last).toISOString(), stopped: silent || pollStuck };
+}

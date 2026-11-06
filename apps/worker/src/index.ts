@@ -8,7 +8,7 @@
 // PHASE=1: the breaking share (SOURCE_LAYOUT=breaking), drafts with no card until asked for, the publish role
 // does not start, and Samvadia ingest is refused at config load.
 
-import { SamvadiaReader, createDb, readApiPhase, recordDataFileStatus, recordIngestPoll } from "@socia/db";
+import { SamvadiaReader, WORKER_HEARTBEAT_MS, createDb, readApiPhase, recordDataFileStatus, recordIngestPoll, recordWorkerHeartbeat } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
 import { CardRenderer } from "./card/renderer";
@@ -104,6 +104,34 @@ async function main(): Promise<void> {
     });
   }
 
+  // The desk's health light and GET /healthz/worker call the worker stopped after 90 s without a poll or a beat.
+  // A beat apart from the polls, so a long scan or footage copy does not look like a stopped worker.
+  let heartbeat: NodeJS.Timeout | null = null;
+  if (cfg.roles.includes("ingest")) {
+    let beatFailed = false;
+    // One beat at a time: a slow database (connect timeout 10 s) never piles them up
+    let beating = false;
+    const beat = () => {
+      if (beating) return;
+      beating = true;
+      void recordWorkerHeartbeat(db)
+        .then(() => {
+          if (beatFailed) log.info("heartbeat recorded again");
+          beatFailed = false;
+        })
+        .catch((err) => {
+          // Once per outage: the loops already log the database being down
+          if (!beatFailed) log.warn({ err }, "could not record the worker heartbeat");
+          beatFailed = true;
+        })
+        .finally(() => {
+          beating = false;
+        });
+    };
+    beat();
+    heartbeat = setInterval(beat, WORKER_HEARTBEAT_MS);
+  }
+
   if (cfg.roles.includes("pipeline")) {
     const dictionaries = new Dictionaries(db, cfg.orgId);
     const data = phaseOneData(log, (status) => recordDataFileStatus(db, status));
@@ -155,6 +183,7 @@ async function main(): Promise<void> {
     if (stopping) return;
     stopping = true;
     log.info({ signal }, "stopping: finishing work in flight");
+    if (heartbeat) clearInterval(heartbeat);
     await loops.stop();
     for (const c of cleanups) await c().catch((err) => log.error({ err }, "cleanup failed"));
     await close();

@@ -5,17 +5,21 @@
 // Settings permission only: a path on the newsroom share says more about the network than a desk needs.
 
 import { istDayStart } from "@socia/core";
-import { assets, readDataFileStatus, readIngestStatus, stories, type IngestStatus } from "@socia/db";
+import { assets, readDataFileStatus, readIngestStatus, readWorkerHeartbeat, stories, workerLiveness, type IngestStatus } from "@socia/db";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { and, count, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import { guard } from "../auth";
 import type { AppDeps } from "../app";
 
-export type SourceState = "ok" | "share_unreachable" | "folder_missing" | "data_file_problem" | "error" | "not_polled";
+export type SourceState = "ok" | "share_unreachable" | "folder_missing" | "data_file_problem" | "error" | "not_polled" | "stopped";
 
-/** One word for the desk's health light */
-export function sourceState(status: IngestStatus | null, dataOk: boolean): SourceState {
+/**
+ * One word for the desk's health light. "stopped": the worker has not polled nor sent a heartbeat for
+ * WORKER_STALE_AFTER_MS (90 s), so everything else in the status is out of date and comes second.
+ */
+export function sourceState(status: IngestStatus | null, dataOk: boolean, workerStopped = false): SourceState {
   if (!status) return "not_polled";
+  if (workerStopped) return "stopped";
   if (status.source && !status.source.reachable) return "share_unreachable";
   if (!dataOk) return "data_file_problem";
   if (status.lastError && status.lastError.at === status.lastPollAt) return "error";
@@ -28,6 +32,7 @@ export const statusRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db
     const { user } = guard(req);
     const detail = user.permissions.has("page.settings");
     const status = await readIngestStatus(db);
+    const heartbeat = await readWorkerHeartbeat(db);
     const dataFiles = await readDataFileStatus(db);
     const dataOk = dataFiles.every((f) => f.ok);
     const now = new Date();
@@ -50,7 +55,8 @@ export const statusRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db
 
     const src = status?.source ?? null;
     const lastFileAgeSeconds = src?.lastFileAt ? Math.max(0, Math.round((now.getTime() - Date.parse(src.lastFileAt)) / 1000)) : null;
-    const state = sourceState(status, dataOk);
+    const worker = workerLiveness(status, heartbeat, now);
+    const state = sourceState(status, dataOk, worker.stopped);
 
     return {
       phase: config.phase ?? 2,
@@ -58,6 +64,8 @@ export const statusRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db
       mode: status?.mode ?? null,
       lastPollAt: status?.lastPollAt ?? null,
       lastOkAt: status?.lastOkAt ?? null,
+      /** The worker's last poll or heartbeat (whichever is newer); state "stopped" when older than 90 s */
+      workerLastSeenAt: worker.lastSeenAt,
       // The error text may name a server or path: plain words for everyone but Settings users
       lastError: !status?.lastError ? null : detail ? status.lastError : { at: status.lastError.at, message: "The source could not be read." },
       cursor: status?.cursor ?? null,

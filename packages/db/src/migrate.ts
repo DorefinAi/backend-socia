@@ -6,7 +6,7 @@ import { createDb } from "./client";
 export const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations", import.meta.url));
 
 export async function runMigrations(url: string, migrationsFolder = MIGRATIONS_DIR): Promise<void> {
-  const { db, close } = createDb(url, 1);
+  const { db, close } = createDb(url, 1, { statementTimeoutMs: 0 });
   try {
     await migrate(db, { migrationsFolder });
   } finally {

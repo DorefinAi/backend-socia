@@ -29,12 +29,24 @@ import { TrendsJob } from "./stages/trends";
 
 const log = pino({ base: { service: "socia-worker" }, level: process.env.LOG_LEVEL ?? "info" });
 
+// A crash is logged and the process exits non-zero so the supervisor starts it again. The loops catch their
+// own errors (the database down included) and back off, so reaching these means a bug, not an outage.
+process.on("unhandledRejection", (reason) => {
+  log.fatal({ err: reason }, "unhandled promise rejection; exiting");
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  log.fatal({ err }, "uncaught exception; exiting");
+  process.exit(1);
+});
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const onceIndex = args.indexOf("--once");
   const once = onceIndex >= 0 ? args[onceIndex + 1] : null;
   const cfg = loadConfig(once ? [once] : args.filter((a) => !a.startsWith("--")));
-  const { db, close } = createDb(cfg.databaseUrl, 5);
+  // A dropped idle connection (Postgres restarted) is logged and replaced, not fatal
+  const { db, close } = createDb(cfg.databaseUrl, 5, { log });
 
   if (once === "handles") {
     await syncHandles(db, cfg.orgId, cfg.wikidataUserAgent, log);

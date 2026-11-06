@@ -35,6 +35,8 @@ export interface AppDeps {
   authLimits?: Partial<AuthLimits>;
   /** Owner API failure limit (routes/owner.ts); tests pass small numbers. Default: OWNER_LIMITS */
   ownerLimits?: Partial<OwnerLimits>;
+  /** This process's ops-log sink (index.ts); GET /owner/logs reports its drop count. Absent (tests): 0 */
+  opsLog?: { readonly dropped: number };
 }
 
 /**

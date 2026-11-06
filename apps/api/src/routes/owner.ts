@@ -13,7 +13,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { PERMISSIONS, isPermissionKey, type PermissionKey } from "@socia/core";
-import { audit, auditLog, roles, sessions, userPermissionOverrides, users, type Executor } from "@socia/db";
+import { audit, auditLog, readOpsHeartbeats, readOpsLog, roles, sessions, userPermissionOverrides, users, type Executor } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -42,7 +42,7 @@ const uuid = (id: string) => id.toLowerCase();
 
 const catalogue = PERMISSIONS.map(({ key, group, label, description }) => ({ key, group, label, description }));
 
-export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string }> = async (app, { db, ownerKey, ownerLimits }) => {
+export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string }> = async (app, { db, ownerKey, ownerLimits, opsLog }) => {
   const limits = { ...OWNER_LIMITS, ...ownerLimits };
   const failures = new SlidingLimiter(limits.failuresPerIp, limits.windowMs);
   app.addHook("onClose", async () => failures.close());
@@ -269,7 +269,43 @@ export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string
       };
     },
   );
+
+  // ─── Ops logs (dev-docs/ops-logs-contract.md §2) ─────────────────────────
+  // The API's and worker's log lines (ops_log) after a cursor, plus every process's heartbeat. Read-only: no audit.
+  // logLevel warn: Sentry pulls every 15 s, and the pulls' own request lines would otherwise fill ops_log.
+  app.get(
+    "/owner/logs",
+    {
+      logLevel: "warn",
+      schema: {
+        querystring: Type.Object(
+          {
+            after: Type.Optional(Type.String({ maxLength: 40 })),
+            limit: Type.Optional(Type.Integer({ minimum: 1, maximum: LOGS_MAX_LIMIT })),
+          },
+          { additionalProperties: false },
+        ),
+      },
+    },
+    async (req) => {
+      const after = parseLogsAfter(req.query.after);
+      const [entries, heartbeats] = await Promise.all([readOpsLog(db, after, req.query.limit ?? LOGS_DEFAULT_LIMIT), readOpsHeartbeats(db)]);
+      return { system: "socia" as const, entries, next: entries.at(-1)?.id ?? null, heartbeats, dropped: opsLog?.dropped ?? 0 };
+    },
+  );
 };
+
+export const LOGS_DEFAULT_LIMIT = 500;
+export const LOGS_MAX_LIMIT = 1000;
+const INT8_MAX = 9223372036854775807n;
+
+/** `after`: missing or 0 → null (the newest lines); otherwise a non-negative integer that fits a bigint, else 400 */
+export function parseLogsAfter(after: string | undefined): bigint | null {
+  if (after === undefined) return null;
+  const n = /^\d{1,19}$/.test(after) ? BigInt(after) : null;
+  if (n === null || n > INT8_MAX) throw new HttpError(400, "invalid", "after must be a non-negative integer: the last id you received.");
+  return n === 0n ? null : n;
+}
 
 const UUID_SQL_RE = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 const CURSOR_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;

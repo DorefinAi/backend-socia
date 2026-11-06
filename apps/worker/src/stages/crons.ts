@@ -1,15 +1,25 @@
 // Scheduled work: housekeeping every 30 s, handles nightly.
 
-import { expireMediaWaits, handleDirectoryStaging, releaseExpiredClaims, reviveExpiredJobs, setKv, type Db } from "@socia/db";
+import { expireMediaWaits, handleDirectoryStaging, pruneOps, releaseExpiredClaims, reviveExpiredJobs, setKv, type Db } from "@socia/db";
 import { WIKIDATA_QUERIES, fetchWikidataHandles } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
-export async function housekeeping(db: Db, log: Logger): Promise<boolean> {
+export const OPS_PRUNE_EVERY_MS = 60 * 60_000;
+let lastOpsPrune = 0;
+
+export async function housekeeping(db: Db, log: Logger, now = Date.now()): Promise<boolean> {
   const released = await releaseExpiredClaims(db);
   const revived = await reviveExpiredJobs(db);
   const expired = await expireMediaWaits(db);
   if (released || revived || expired) log.info({ released, revived, expired }, "housekeeping");
+  // Ops-log retention (dev-docs/ops-logs-contract.md §1), once an hour: lines after 14 days, heartbeats after 7.
+  // A failure waits for the next hour and never holds up the work above.
+  if (now - lastOpsPrune >= OPS_PRUNE_EVERY_MS) {
+    lastOpsPrune = now;
+    const pruned = await pruneOps(db).catch((err) => (log.warn({ err }, "could not prune the ops log"), null));
+    if (pruned && (pruned.lines || pruned.heartbeats)) log.info(pruned, "ops log pruned");
+  }
   return false;
 }
 

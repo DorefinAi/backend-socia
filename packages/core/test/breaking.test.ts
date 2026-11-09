@@ -180,6 +180,21 @@ describe("parseBreaking", () => {
       expect(parseBreaking(["x_breaking", "भाजपा", "कोटा में धरना", "बिंदु"].join("\n"), "x_breaking.txt", book).town).toBeNull();
     });
 
+    it("keeps one unknown Hindi word before the colon as the town when there is no district: 'आकोला:'", () => {
+      const s = file("आकोला: 100 साल पुरानी परंपरा से लगाया नए साल की खुशहाली का अनुमान", "BTN_RAJ_BREAKING_1313_9NOV_NDR_PK_BIG.txt");
+      expect([s.district, s.town, s.headline]).toEqual([null, "आकोला", "100 साल पुरानी परंपरा से लगाया नए साल की खुशहाली का अनुमान"]);
+      expect(s.needsCheck).toContain("no_district"); // the desk still looks
+      expect(composeBreaking(s, rules, book, { topics }).bodyText.split("\n")[0]).toBe("#आकोला: 100 साल पुरानी परंपरा से लगाया नए साल की खुशहाली का अनुमान");
+      // A known town still brings its district
+      expect(file("डग: बिजली गुल", "x_breaking.txt")).toMatchObject({ district: "Jhalawar", town: "डग", headline: "बिजली गुल" });
+      // Not a party, not a generic word, not two words, not with digits
+      expect(file("भाजपा: बिजली गुल", "x_breaking.txt")).toMatchObject({ headline: "भाजपा: बिजली गुल", town: null });
+      expect(file("ब्रेकिंग: बिजली गुल", "x_breaking.txt")).toMatchObject({ headline: "ब्रेकिंग: बिजली गुल", town: null });
+      expect(file("#ब्रेकिंग: बिजली गुल", "x_breaking.txt")).toMatchObject({ headline: "#ब्रेकिंग: बिजली गुल", town: null });
+      expect(file("नया गांव: बिजली गुल", "x_breaking.txt").town).toBeNull();
+      expect(file("वार्ड15: बिजली गुल", "x_breaking.txt").town).toBeNull();
+    });
+
     it("prefers a Rajasthan district over a national place: '#Delhi #Jaipur:'", () => {
       const s = file("#Delhi #Jaipur: बैठक में फैसला", "x_breaking.txt");
       expect([s.district, s.rajasthan, s.headline]).toEqual(["Jaipur", true, "बैठक में फैसला"]);
@@ -223,7 +238,7 @@ describe("parseBreaking", () => {
     it("leaves 'Jaipur:' and Hindi 'place:' prefixes as before", () => {
       const s = file("मेड़तासिटी : पंच व सरपंच के चुनाव कल", "x_breaking.txt");
       expect(s.headline).toBe("पंच व सरपंच के चुनाव कल");
-      expect(s.town).toBeNull(); // an unknown town with no district is not tagged, as before
+      expect(s.town).toBe("मेड़तासिटी"); // one unknown word before the colon: the desk's place, kept as the town
       const r = file("रावतभाटा : परमाणु बिजलीघर में मॉक ड्रिल", "x_breaking.txt");
       expect([r.district, r.districtFrom, r.headline]).toEqual(["Chittorgarh", "headline_prefix", "परमाणु बिजलीघर में मॉक ड्रिल"]);
       const j = file("Jaipur: बिजली गुल", "x_breaking.txt");

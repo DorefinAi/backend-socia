@@ -259,8 +259,11 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
     }
   }
   const prefix = tagged ? null : headlinePrefix(book, headline, hint);
+  /** "आकोला: ..." — one unknown Hindi word before the colon: the desk named the place, so it stays as the town */
+  let loneTown: string | null = null;
   if (prefix) {
     headline = prefix.rest;
+    if (!prefix.place.district && prefix.place.town && words(prefix.place.town) === 1) loneTown = prefix.place.town;
     if (!where?.district) {
       where = { district: prefix.place.district ?? where?.district ?? null, town: where?.town ?? prefix.place.town };
       from = "headline_prefix";
@@ -303,8 +306,9 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   if (!headline) flag("no_headline");
   if (!DEVANAGARI.test([headline, ...points].join(" "))) flag("no_hindi");
 
-  // A town tag without its district reads oddly ("#सचिवालय:"): keep it only with a district
-  const town = district && where?.town && where.town !== district.hi ? where.town : null;
+  // A town tag without its district reads oddly ("#सचिवालय:"): keep it only with a district, or when the desk wrote it
+  // before the headline's colon ("आकोला: ..."); no_district still asks the desk to look
+  const town = (district || (where?.town && where.town === loneTown)) && where?.town && where.town !== district?.hi ? where.town : null;
   return {
     headline,
     rawHeadline,

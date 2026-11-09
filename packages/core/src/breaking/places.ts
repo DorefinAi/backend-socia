@@ -74,6 +74,8 @@ const NATIONAL: [string, string[]][] = [
 const NATIONAL_INFO: DistrictInfo[] = NATIONAL.map(([name, [hi]]) => ({ name, tag: name, hi: hi!, rajasthan: false }));
 
 const DEVANAGARI = /[ऀ-ॿ]/;
+/** One key for a hashtag spelling: folded (nukta, case), with spaces, "_" and punctuation out */
+const tagKey = (tag: string) => fold(tag).replace(/[\s_]+/g, "");
 
 /**
  * Checks a parsed rajasthan-places.json. A file that is not the right shape at all throws (the loader keeps its
@@ -125,6 +127,8 @@ export function parsePlacesData(json: unknown, problem: (message: string) => voi
 export class PlaceBook {
   private readonly places = new Map<string, Place>();
   private readonly byName = new Map<string, DistrictInfo>();
+  /** English hashtags ("jhalawar", "sawaimadhopur", "delhi") and town hashtags, lower-cased, without the # */
+  private readonly byTag = new Map<string, Place>();
   /** "JDR" → "Jodhpur" */
   readonly codes: Record<string, string> = {};
   private readonly gazetteer: Gazetteer<Place>;
@@ -150,6 +154,22 @@ export class PlaceBook {
       const info = NATIONAL_INFO[i]!;
       for (const s of spellings) this.put(s, { kind: "national", hi: spellings[0]!, tag: info.tag, districts: [info] });
     }
+    // Hashtag spellings: a district's tag and English name, then a national place's, then a town's (never over a district)
+    for (const info of this.districts) {
+      const place = this.lookup(info.hi) ?? { kind: "district" as const, hi: info.hi, tag: info.tag, districts: [info] };
+      for (const t of [info.tag, info.name]) this.byTag.set(tagKey(t), place);
+    }
+    for (const [i, [, [hi]]] of NATIONAL.entries()) {
+      const info = NATIONAL_INFO[i]!;
+      const key = tagKey(info.tag);
+      if (!this.byTag.has(key)) this.byTag.set(key, this.lookup(hi!) ?? { kind: "national", hi: hi!, tag: info.tag, districts: [info] });
+    }
+    for (const d of data.districts) {
+      for (const t of d.towns) {
+        const key = tagKey(t.tag);
+        if (key && !this.byTag.has(key)) this.byTag.set(key, this.lookup(t.hi) ?? { kind: "town", hi: t.hi, tag: t.tag, districts: [] });
+      }
+    }
     this.gazetteer = new Gazetteer<Place>(
       [...this.places.entries()]
         .filter(([key, place]) => !NOT_IN_TEXT.has(key) && !(place.kind === "town" && place.districts.length > 1))
@@ -173,6 +193,16 @@ export class PlaceBook {
   lookup(phrase: string): Place | null {
     const key = fold(phrase);
     return key ? (this.places.get(key) ?? null) : null;
+  }
+
+  /**
+   * The place a hashtag names, with or without the #: "#Jhalawar", "#SawaiMadhopur", "#Delhi" (English tags),
+   * "#झालावाड़", "#डग" (Hindi names), "#गंगापुरसिटी" (a town's own tag). Null for anything else.
+   */
+  hashtag(token: string): Place | null {
+    const bare = token.replace(/^#/, "");
+    if (!bare) return null;
+    return this.byTag.get(tagKey(bare)) ?? this.lookup(bare);
   }
 
   /** Places named anywhere in the text, in reading order */

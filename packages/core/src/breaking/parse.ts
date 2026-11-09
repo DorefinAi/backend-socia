@@ -4,6 +4,7 @@
 // flagged. Rules only: anything odd is flagged for a human, never guessed by a model.
 
 import { fileTags, type FileTags } from "./filename";
+import { PARTY } from "./handles";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
 
 export const NEEDS_CHECK = [
@@ -12,6 +13,8 @@ export const NEEDS_CHECK = [
   "resaved",
   /** The file was saved again after its post went out: a new draft, linked to the posted one */
   "update_of_posted",
+  /** The headline's place tags ("#Kota:") name another district than the place line, or two districts; the first tag won */
+  "place_conflict",
 ] as const;
 /** Set by the ingest stage, not the parser: they survive a re-parse */
 export const STICKY_CHECKS: readonly NeedsCheck[] = ["resaved", "update_of_posted"];
@@ -26,6 +29,8 @@ export type DistrictFrom = "place_line" | "headline_prefix" | "file_code" | "tex
 
 export interface BreakingStory {
   headline: string;
+  /** The headline line as the file had it, before a place prefix ("#Kota:", "मेड़तासिटी :") was taken off */
+  rawHeadline: string;
   points: string[];
   /** English district (Rajasthan) or national place name, as stories.district */
   district: string | null;
@@ -66,7 +71,7 @@ const BYLINE = /^.{2,60}\s+की\s+(?:एक्सक्लूसिव\s+|ख�
 /** "रेनवाल (जयपुर)", "अंता(बारां)" */
 const TOWN_IN_BRACKETS = /^(.+?)\s*\((.+?)\)$/u;
 /** Words that a one-word line can be without being a place */
-const NOT_A_PLACE = /बड़ा|बड़ी|बड़े|खबर|हादसा|कार्रवाई|खुलासा|मामला|सनसनी|अपडेट|ब्रेकिंग|एक्सक्लूसिव|विज्ञापन|सूचना|अलर्ट|लाइव|दौरा|बयान|चुनाव|बैठक|हत्या|मौत|आग|फैसला|नियुक्ति|तबादला|पोस्ट/u;
+const NOT_A_PLACE = /बड़ा|बड़ी|बड़े|खबर|हादसा|कार्रवाई|खुलासा|मामला|सनसनी|अपडेट|ब्रेकिंग|एक्सक्लूसिव|विज्ञापन|सूचना|अलर्ट|लाइव|दौरा|बयान|चुनाव|बैठक|हत्या|मौत|आग|फैसला|नियुक्ति|तबादला|पोस्ट|भाजपा|बीजेपी|कांग्रेस/u;
 
 interface Located {
   district: DistrictInfo | null;
@@ -130,9 +135,49 @@ function placeLine(book: PlaceBook, line: string, hint: string | null): Located 
 /** "मेड़तासिटी : पंच व सरपंच के चुनाव कल" → the place, and the headline without it */
 function headlinePrefix(book: PlaceBook, headline: string, hint: string | null): { place: Located; rest: string } | null {
   const m = /^([^:：]{2,30}?)\s*[:：]\s*[-–]?\s*(.+)$/u.exec(headline);
-  if (!m || words(m[1]!) > 3) return null;
+  // Hashtags are hashtagPrefix()'s; ones it turned down ("#BJP #Kota", "#Kota #भाजपा") are not glued into a town
+  // A party is not a place: "भाजपा: ...", "BJP: ..." stay in the headline, and the party check sees them
+  if (!m || words(m[1]!) > 3 || m[1]!.includes("#") || PARTY.test(m[1]!)) return null;
   const place = resolvePlace(book, m[1]!, hint, words(m[1]!) <= 2 && DEVANAGARI.test(m[1]!));
   return place ? { place, rest: m[2]! } : null;
+}
+
+/** "#Jhalawar #डग: ...", "#Alwar: ...": one to three hashtags, then the colon */
+const HASHTAG_PREFIX = /^((?:#[\p{L}\p{M}\p{N}_]+\s*){1,3})[:：]\s*[-–]?\s*(.*)$/u;
+
+/**
+ * The desk's own place tags before the headline, or null when the tags are not all places ("#BJP #Kota:",
+ * "#ब्रेकिंग:"): then the prefix stays in the headline, as the desk wrote it. A district tag sets the district (a
+ * Rajasthan one over a national place), a town of that district sets the town; a town tag alone brings its
+ * district. One unknown one-word Hindi tag after a known district is that district's town ("#Jhalawar #नयागांव:"),
+ * as on a place line. The headline is what follows the colon.
+ */
+function hashtagPrefix(book: PlaceBook, headline: string, hint: string | null): { place: Located; rest: string; conflict: boolean } | null {
+  const m = HASHTAG_PREFIX.exec(headline);
+  if (!m || PARTY.test(m[1]!)) return null;
+  const tokens = m[1]!.split(/[\s#]+/u).filter(Boolean);
+  const places = tokens.map((t) => book.hashtag(t));
+  const areas = places.filter((p): p is Place => p !== null && p.kind !== "town");
+  const area = areas.find((p) => p.kind === "district") ?? areas[0];
+  let district = area ? area.districts[0]! : null;
+  let town: string | null = null;
+  const unknown = places.flatMap((p, i) => (p ? [] : [i]));
+  if (unknown.length) {
+    const i = unknown[0]!;
+    const word = tokens[i]!;
+    const newTown = unknown.length === 1 && i === tokens.length - 1 && area?.kind === "district" && DEVANAGARI.test(word) && !/[0-9०-९_]/.test(word) && !NOT_A_PLACE.test(word);
+    if (!newTown) return null;
+    town = word;
+  }
+  if (!town) {
+    const towns = places.filter((p): p is Place => p !== null && p.kind === "town");
+    const known = district ? towns.find((t) => t.districts.some((d) => d.name === district!.name)) : towns[0];
+    if (known && !district) district = districtOf(known, hint);
+    town = known?.hi ?? null;
+  }
+  // Tags naming two Rajasthan districts ("#Kota #Jhalawar:", "#Kota #डग:" with डग in Jhalawar): the first stands, flagged
+  const conflict = places.some((p) => p !== null && p.kind !== "national" && !p.districts.some((d) => d.name === district?.name));
+  return { place: { district, town: town && town !== district?.hi ? town : null }, rest: m[2]!.trim(), conflict };
 }
 
 /** First place named in the text: Rajasthan wins over a national place in the same text */
@@ -175,7 +220,7 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
 
   if (!lines.length) {
     flag("empty");
-    return { headline: "", points: [], district: hint, districtFrom: hint ? "file_code" : null, town: null, rajasthan: hint !== "Delhi", leaderPost: false, deskNote: notes.join("\n") || null, tags, needsCheck };
+    return { headline: "", rawHeadline: "", points: [], district: hint, districtFrom: hint ? "file_code" : null, town: null, rajasthan: hint !== "Delhi", leaderPost: false, deskNote: notes.join("\n") || null, tags, needsCheck };
   }
   if (lines.length > MAX_BREAKING_LINES) flag("very_long");
 
@@ -192,7 +237,28 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   }
 
   let headline = lines[0]!.replace(BULLET, "");
-  const prefix = headlinePrefix(book, headline, hint);
+  const rawHeadline = headline;
+  const tagged = hashtagPrefix(book, headline, hint);
+  if (tagged) {
+    if (tagged.conflict) flag("place_conflict");
+    // The desk tagged the place itself: its district wins over a place line, the file code and the text
+    headline = tagged.rest;
+    // "#Jhalawar #डग:" on a line of its own: the headline is the next line
+    if (!headline && lines.length > 1) {
+      lines = lines.slice(1);
+      headline = lines[0]!.replace(BULLET, "");
+    }
+    const { district: d, town: t } = tagged.place;
+    if (d) {
+      const sameDistrict = where?.district?.name === d.name;
+      // The place line named another district: the desk's tag wins, but a person should look
+      if (where?.district && !sameDistrict) flag("place_conflict");
+      const placeTown = where?.town && (sameDistrict || book.lookup(where.town)?.districts.some((x) => x.name === d.name)) ? where.town : null;
+      where = { district: d, town: t ?? placeTown };
+      if (!sameDistrict) from = "headline_prefix";
+    }
+  }
+  const prefix = tagged ? null : headlinePrefix(book, headline, hint);
   if (prefix) {
     headline = prefix.rest;
     if (!where?.district) {
@@ -241,6 +307,7 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   const town = district && where?.town && where.town !== district.hi ? where.town : null;
   return {
     headline,
+    rawHeadline,
     points,
     district: district?.name ?? null,
     districtFrom: district ? from : null,

@@ -25,6 +25,7 @@ const CHECK_NOTES: Record<string, string> = {
   no_hindi: "The file has no Hindi text; check the encoding.",
   very_long: "The file is much longer than a breaking item.",
   no_district: "No district was found in the place line, the file name or the text.",
+  place_conflict: "The headline's place tags name more than one district, or a different one from the place line; the first tag was used. Check the district.",
   // desk_note: still recorded when a desk instruction (नोट) is taken out, but not shown as a reason to check
 };
 

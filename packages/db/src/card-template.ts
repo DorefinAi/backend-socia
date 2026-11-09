@@ -18,7 +18,7 @@ export type CardTemplate = typeof cardTemplates.$inferSelect;
 export const DEFAULT_CARD_LAYOUT: CardLayout = {
   date: { x: 0.54, y: 0.185, w: 0.415, h: 0.06, color: "#000000", format: "Date:DD/MM/YYYY" },
   box: { x: 0.075, y: 0.27, w: 0.85, h: 0.58 },
-  headline: { color: "#FFE600" },
+  headline: { color: "#FFFFFF" },
   body: { color: "#FFFFFF" },
   fontMinPx: 18,
   fontMaxPx: 56,

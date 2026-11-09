@@ -265,7 +265,7 @@ const SQUARE_LAYOUT = ORG_CARD_TEMPLATES[0]!.layout;
     const t = res.body.template;
     expect(t).toMatchObject({
       label: "Election Night!", platform: "x", width: 1200, height: 900, defaultFor: [],
-      layout: { date: null, box: { x: 0.08, y: 0.25, w: 0.84, h: 0.6 }, headline: { color: "#FFE600" }, body: { color: "#FFFFFF" }, fontMinPx: 18, fontMaxPx: 60 },
+      layout: { date: null, box: { x: 0.08, y: 0.25, w: 0.84, h: 0.6 }, headline: { color: "#FFFFFF" }, body: { color: "#FFFFFF" }, fontMinPx: 18, fontMaxPx: 60 },
       createdBy: { id: op.id, name: "op" }, canEdit: true, canDelete: false, canSetDefault: false,
     });
     expect(t.slug).toMatch(/^election-night-[a-z0-9]{6}$/);

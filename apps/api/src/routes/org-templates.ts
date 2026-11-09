@@ -42,7 +42,7 @@ const LABEL_MAX = 40;
 export const UPLOAD_DEFAULT_LAYOUT: OrgCardLayout = {
   date: null,
   box: { x: 0.08, y: 0.25, w: 0.84, h: 0.6 },
-  headline: { color: "#FFE600" },
+  headline: { color: "#FFFFFF" },
   body: { color: "#FFFFFF" },
   fontMinPx: 18,
   fontMaxPx: 60,

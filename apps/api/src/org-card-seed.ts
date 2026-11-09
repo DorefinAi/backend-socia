@@ -31,7 +31,7 @@ export const ORG_CARD_TEMPLATES: readonly OrgTemplateDefinition[] = [
     layout: {
       date: { x: 0.537, y: 0.186, w: 0.421, h: 0.052, color: "#000000", format: "Date:DD/MM/YYYY" },
       box: { x: 0.085, y: 0.285, w: 0.83, h: 0.56 },
-      headline: { color: "#FFE600" },
+      headline: { color: "#FFFFFF" },
       body: { color: "#FFFFFF" },
       fontMinPx: 18,
       fontMaxPx: 56,
@@ -47,7 +47,7 @@ export const ORG_CARD_TEMPLATES: readonly OrgTemplateDefinition[] = [
     layout: {
       date: null,
       box: { x: 0.08, y: 0.37, w: 0.84, h: 0.55 },
-      headline: { color: "#FFE600" },
+      headline: { color: "#FFFFFF" },
       body: { color: "#FFFFFF" },
       fontMinPx: 20,
       fontMaxPx: 64,

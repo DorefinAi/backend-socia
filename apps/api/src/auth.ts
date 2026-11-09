@@ -10,6 +10,7 @@ import {
 import { rolePermissions, roles, sessions, userPermissionOverrides, users, type Db } from "@socia/db";
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { readKeyBindings, type KeyBindings } from "./key-bindings";
 
 export const COOKIE = "socia_session";
 
@@ -28,6 +29,8 @@ export interface SessionUser {
   active: boolean;
   createdAt: Date;
   lastLoginAt: Date | null;
+  /** users.prefs.keyBindings ({} when unset): the user's own desk shortcuts */
+  keyBindings: KeyBindings;
   /** Effective permissions, resolved once per request (exception, else role) */
   permissions: ReadonlySet<PermissionKey>;
   /** This user's exceptions to their role */
@@ -87,6 +90,7 @@ export async function loadSession(db: Db, token: string | undefined): Promise<Se
     user: {
       id: u.id, orgId: u.orgId, name: u.name, email: u.email, role: u.role, roleLabel: row.roleLabel, platformScoped: row.platformScoped,
       platforms: u.platforms, totpEnabled: u.totpEnabled, active: u.active, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+      keyBindings: readKeyBindings(u.prefs),
       permissions: effectivePermissionSet(rolePermissionSet(u.role, row.builtIn, row.roleRows), overrides),
       overrides,
     },

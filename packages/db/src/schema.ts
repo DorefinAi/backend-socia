@@ -27,6 +27,15 @@ export const orgs = pgTable("orgs", {
   createdAt: createdAt(),
 });
 
+/**
+ * One user's own settings that follow them to any computer (migration 0020). Every key is optional; readers
+ * ignore keys they do not know. keyBindings: desk action id -> 0-2 key combos ([] = action turned off); an action
+ * missing here uses the desk's default keys.
+ */
+export interface UserPrefs {
+  keyBindings?: Record<string, string[]>;
+}
+
 /** The built-in roles (migration 0009 made roles a table; custom roles are any other key there) */
 export const USER_ROLES = ["operator", "editor", "admin", "viewer"] as const;
 /** A key in roles: one of USER_ROLES or a custom role's slug */
@@ -54,6 +63,8 @@ export const users = pgTable(
     createdAt: createdAt(),
     /** Last password sign-in; null before migration 0009 or for someone who never signed in */
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    /** The user's own preferences (UserPrefs); {} when none are set */
+    prefs: jsonb("prefs").$type<UserPrefs>().notNull().default(sql`'{}'::jsonb`),
   },
   (t) => [
     uniqueIndex("users_email_key").on(t.email),

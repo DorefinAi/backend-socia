@@ -300,7 +300,7 @@ describe("SlidingLimiter", () => {
     const [row] = await h.db.select().from(users).where(eq(users.id, ids.viewer!));
     const stale: SessionUser = {
       id: row!.id, orgId, name: "View", email: row!.email, role: "admin", roleLabel: "Admin", platformScoped: false, platforms: ["x", "instagram"],
-      totpEnabled: false, active: true, createdAt: row!.createdAt, lastLoginAt: null, permissions: new Set(["users.manage", "roles.manage"]), overrides: [],
+      totpEnabled: false, active: true, createdAt: row!.createdAt, lastLoginAt: null, keyBindings: {}, permissions: new Set(["users.manage", "roles.manage"]), overrides: [],
     };
     const fresh = await reloadActor(h.db, stale);
     expect(fresh).toMatchObject({ role: "viewer", platformScoped: false, platforms: row!.platforms });

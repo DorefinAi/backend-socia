@@ -247,10 +247,23 @@ describe("the sink", () => {
     expect((await h.db.execute(sql`SELECT count(*)::int AS n FROM ops_log WHERE message = 'kept'`)).rows).toEqual([{ n: 1 }]);
   });
 
-  it("0019 rolls back and migrates forward again", async () => {
-    await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0019_ops_log.down.sql"), "utf8"));
+  it("0019 rolls back (after any newer migration) and migrates forward again", async () => {
+    const journal = JSON.parse(await readFile(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8")) as { entries: { tag: string }[] };
+    const at = journal.entries.findIndex((e) => e.tag === "0019_ops_log");
+    for (const later of journal.entries.slice(at).reverse()) {
+      await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", `${later.tag}.down.sql`), "utf8"));
+    }
     expect((await h.db.execute(sql`SELECT to_regclass('ops_log') AS t, to_regclass('ops_heartbeat') AS b`)).rows).toEqual([{ t: null, b: null }]);
     await runMigrations(TEST_URL!);
     expect((await h.db.execute(sql`SELECT to_regclass('ops_log')::text AS t`)).rows).toEqual([{ t: "ops_log" }]);
+  });
+
+  it("0020 adds users.prefs (jsonb, not null, default {}), rolls back and migrates forward again", async () => {
+    const col = sql`SELECT data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'prefs'`;
+    expect((await h.db.execute(col)).rows).toEqual([{ data_type: "jsonb", is_nullable: "NO", column_default: "'{}'::jsonb" }]);
+    await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0020_user_prefs.down.sql"), "utf8"));
+    expect((await h.db.execute(col)).rows).toEqual([]);
+    await runMigrations(TEST_URL!);
+    expect((await h.db.execute(col)).rows).toHaveLength(1);
   });
 });

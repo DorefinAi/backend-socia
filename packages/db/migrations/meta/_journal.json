@@ -141,6 +141,13 @@
       "when": 1793963787563,
       "tag": "0019_ops_log",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794258175817,
+      "tag": "0020_user_prefs",
+      "breakpoints": true
     }
   ]
 }

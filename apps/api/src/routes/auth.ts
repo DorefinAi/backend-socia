@@ -8,6 +8,7 @@ import type { FastifyReply } from "fastify";
 import { accessChanged } from "../access";
 import { COOKIE, HttpError, checkPassword, createSession, guard, hashPassword, legacyAccess, setSessionCookie, type SessionInfo } from "../auth";
 import type { AppDeps } from "../app";
+import { KeyBindingsBody, clashMessage, findClashes, invalidBindings, readKeyBindings } from "../key-bindings";
 import { SlidingLimiter } from "../limiter";
 
 /**
@@ -33,6 +34,9 @@ export interface AuthLimits {
   /** Window of the per-account ceiling */
   accountWindowMs: number;
 }
+/** Saves of one user's keyboard shortcuts per minute (each save is a whole map; a person needs a handful) */
+const KEY_BINDING_SAVES = 30;
+
 export const AUTH_LIMITS: AuthLimits = {
   loginFailuresPerIpAccount: 10, loginFailuresPerIp: 30, loginFailuresPerAccount: 30,
   totpFailuresPerIpAccount: 10, totpFailuresPerIp: 30, totpFailuresPerAccount: 30,
@@ -80,7 +84,9 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     for (const [k, v] of totpFailures) if (now - v.at > 3600_000) totpFailures.delete(k);
   }, 600_000);
   sweep.unref();
+  const keySaves = new SlidingLimiter(KEY_BINDING_SAVES, 60_000);
   app.addHook("onClose", async () => {
+    keySaves.close();
     loginGate.close();
     totpGate.close();
     clearInterval(sweep);
@@ -208,6 +214,8 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       active: s.user.active, totpEnabled: s.user.totpEnabled, createdAt: s.user.createdAt, lastLoginAt: s.user.lastLoginAt,
       platformScoped: s.user.platformScoped,
     },
+    /** The user's own settings, the same on any computer. keyBindings: action id -> combos; {} = all desk defaults */
+    prefs: { keyBindings: s.user.keyBindings },
     permissions: PERMISSION_KEYS.filter((k) => s.user.permissions.has(k)),
     overrides: s.user.overrides,
     catalogue: PERMISSIONS,
@@ -239,6 +247,42 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       return meView({ ...s, user: { ...s.user, name } });
     },
   );
+
+  /**
+   * Your own keyboard shortcuts, saved whole (replacing what was there): action id -> 0-2 combos, [] turns the
+   * action off, an action left out keeps the desk's default; { bindings: {} } resets everything. Only ever the
+   * signed-in user's own row. Two actions on one combo is a 400 key_clash.
+   */
+  app.put("/me/key-bindings", { schema: { body: KeyBindingsBody } }, async (req, reply) => {
+    const s = guard(req);
+    if (!keySaves.take(s.user.id)) {
+      reply.header("retry-after", "60");
+      throw new HttpError(429, "rate_limited", "Too many shortcut saves in a minute. Wait a moment and try again.");
+    }
+    const keyBindings = req.body.bindings;
+    const bad = invalidBindings(keyBindings);
+    if (bad) throw new HttpError(400, "invalid", bad);
+    const clashes = findClashes(keyBindings);
+    if (clashes.length) throw new HttpError(400, "key_clash", clashMessage(clashes));
+    await db.transaction(async (tx) => {
+      // Only this key of prefs changes; anything else stored there stays
+      const [before] = await tx
+        .select({ prefs: users.prefs })
+        .from(users)
+        .where(eq(users.id, s.user.id))
+        .for("update");
+      await tx
+        .update(users)
+        .set({ prefs: sql`${users.prefs} || jsonb_build_object('keyBindings', ${JSON.stringify(keyBindings)}::jsonb)` })
+        .where(eq(users.id, s.user.id));
+      const beforeCount = Object.keys(readKeyBindings(before?.prefs)).length;
+      await audit(tx, {
+        orgId: s.user.orgId, actorId: s.user.id, action: "user.key_bindings_changed", entityType: "user", entityId: s.user.id,
+        before: { actions: beforeCount }, after: { actions: Object.keys(keyBindings).length },
+      });
+    });
+    return { keyBindings };
+  });
 
   /** Change your own password; every other session of yours is signed out. */
   app.post(

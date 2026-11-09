@@ -1,15 +1,19 @@
 // The library: hashtag rules, the verified handle directory, and Wikidata staging. Changing them needs
 // the Settings permission (editors and admins by default); every role can search handles (the @
-// dropdown in the editor).
+// dropdown in the editor). One exception: anyone who can edit drafts adds a new handle straight from a
+// post's tag line (POST /handles/desk, owner decision: no approval), with keywords found inside it.
 //
 // Schemas are strict (unknown keys → 400) and every insert/update is built from named fields only, so a
 // client can never set orgId, id, verifiedAt, source or any other column.
 
+import { fileLookalike } from "@socia/core";
 import { audit, handleDirectory, handleDirectoryStaging, hashtagRules } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox, type Static } from "@fastify/type-provider-typebox";
 import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { HttpError, guard, requirePermission } from "../auth";
 import type { AppDeps } from "../app";
+import { DeskHandleChecks } from "../handle-keywords";
+import { SlidingLimiter } from "../limiter";
 
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) }, { additionalProperties: false });
 const bare = (handle: string) => handle.replace(/^@/, "");
@@ -34,6 +38,11 @@ const HandleBody = Type.Object({
   handle: Type.String({ pattern: "^@?\\w{1,15}$" }),
   priority: Type.Integer({ minimum: 0, maximum: 1000 }),
 }, { additionalProperties: false });
+const DeskHandleBody = Type.Object({ handle: Type.String({ pattern: "^@?\\w{1,15}$" }) }, { additionalProperties: false });
+/** New handles one person may add from the desk per window; returning a handle the org already has is not counted */
+export const DESK_HANDLE_ADDS = 20;
+export const DESK_HANDLE_WINDOW_MS = 10 * 60_000;
+const DEVANAGARI = /[ऀ-ॿ]/;
 const RulePatch = Type.Partial(RuleBody, { additionalProperties: false });
 const HandlePatch = Type.Partial(HandleBody, { additionalProperties: false });
 
@@ -62,6 +71,10 @@ const handleFields = (b: HandleFields) => ({
 
 
 export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db }) => {
+  const deskAdds = new SlidingLimiter(DESK_HANDLE_ADDS, DESK_HANDLE_WINDOW_MS);
+  app.addHook("onClose", async () => deskAdds.close());
+  const deskChecks = new DeskHandleChecks(app.log);
+
   // ─── Hashtag rules ─────────────────────────────────────────────────────────
 
   app.get("/hashtag-rules", async (req) => {
@@ -137,6 +150,66 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
       .returning();
     await audit(db, { orgId: user.orgId, actorId: user.id, action: "handle.create", entityType: "handle", entityId: row!.id, after: row });
     return row;
+  });
+
+  /**
+   * A handle typed on a post's tag line that the directory does not have: added at once, verified by the person who
+   * typed it (source "desk"), so the draft's PATCH accepts it as a mention straight away. Its keywords (the
+   * district and subject names inside it) make the phase-1 composer suggest it later; a handle of the data files or
+   * a lookalike of one (or of a handle already in the org's directory: "@JhalawarUpdatse" next to
+   * "@JhalawarUpdates"), a party's or an official's handle gets none (`keywordsWithheld` says why) and is never
+   * suggested, only tagged by hand. A handle the org already has (any case, with or without @) comes back as it is,
+   * 200; a new one is 201; one the org has but has not verified is a 409 (an editor verifies it in Settings).
+   */
+  app.post("/handles/desk", { schema: { body: DeskHandleBody } }, async (req, reply) => {
+    const { user } = guard(req);
+    requirePermission(user, "draft.edit", "x");
+    const handle = bare(req.body.handle);
+    // Worked out before the lock: it may read the data files
+    const checked = await deskChecks.keywords(handle);
+    const { row, created, withheld } = await db.transaction(async (tx): Promise<{ row: typeof handleDirectory.$inferSelect; created: boolean; withheld: typeof checked.withheld }> => {
+      // One add per handle at a time: two people typing the same new handle get one row
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`handle_directory:${user.orgId}:${handle.toLowerCase()}`}))`);
+      const [existing] = await tx
+        .select()
+        .from(handleDirectory)
+        .where(and(eq(handleDirectory.orgId, user.orgId), eq(handleDirectory.platform, "x"), sql`lower(ltrim(${handleDirectory.handle}, '@')) = ${handle.toLowerCase()}`))
+        .orderBy(sql`${handleDirectory.verifiedAt} IS NULL`, asc(handleDirectory.createdAt))
+        .limit(1);
+      if (existing) {
+        if (existing.verifiedAt === null) {
+          throw new HttpError(409, "handle_unverified", `@${bare(existing.handle)} is in the handle directory but not verified yet. Ask an editor to verify it in Settings.`);
+        }
+        return { row: existing, created: false, withheld: null };
+      }
+      // Not atomic with the record() below: two adds by one person at the same moment can both pass at the limit.
+      // Accepted: it is a per-instance brake on one person, not a quota.
+      if (deskAdds.isOver(user.id)) {
+        throw new HttpError(429, "rate_limited", `Up to ${DESK_HANDLE_ADDS} new handles in ${DESK_HANDLE_WINDOW_MS / 60_000} minutes. Wait a moment and try again.`);
+      }
+      // A near copy of a handle the directory already has (a typo of it, any source) is never suggested: two
+      // handles would otherwise be tagged on every story naming the place
+      let { keywords, withheld } = checked;
+      if (keywords.length) {
+        const others = await tx.select({ handle: handleDirectory.handle }).from(handleDirectory).where(and(eq(handleDirectory.orgId, user.orgId), eq(handleDirectory.platform, "x")));
+        if (fileLookalike(handle, others.map((o) => o.handle)) !== null) ({ keywords, withheld } = { keywords: [], withheld: "lookalike" });
+      }
+      const [inserted] = await tx
+        .insert(handleDirectory)
+        .values({
+          orgId: user.orgId, entityName: keywords[0] ?? handle, entityNameHi: keywords.find((k) => DEVANAGARI.test(k)) ?? null, aliases: keywords, platform: "x",
+          handle, priority: 0, source: "desk", verifiedAt: new Date(), verifiedBy: user.id,
+        })
+        .returning();
+      await audit(tx, { orgId: user.orgId, actorId: user.id, action: "handle.desk_add", entityType: "handle", entityId: inserted!.id, after: { ...inserted, keywordsWithheld: withheld } });
+      return { row: inserted!, created: true, withheld };
+    });
+    // Counted only once the handle is in: a failed add costs nothing
+    if (created) deskAdds.record(user.id);
+    return reply.status(created ? 201 : 200).send({
+      id: row.id, handle: `@${bare(row.handle)}`, entityName: row.entityName, keywords: row.aliases, source: row.source, verified: true, created,
+      keywordsWithheld: created ? withheld : null,
+    });
   });
 
   app.patch("/handles/:id", { schema: { params: Id, body: HandlePatch } }, async (req) => {

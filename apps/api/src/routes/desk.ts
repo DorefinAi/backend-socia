@@ -1,6 +1,8 @@
 // The X console: queue, draft, claim, edit, approve, undo, reject, recall.
 
-import { DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, xLen, X_LIMIT } from "@socia/core";
+import {
+  DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, parseLinkSlug, storyLinkName, xLen, X_LIMIT,
+} from "@socia/core";
 import {
   approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, copyPosted, extendClaim, ingestedFiles, markPosted, postDrafts, postedView, publishedPosts,
   rejectDraft, releaseDraft, requestCardRender, requestRecall, restoreDraft, retryFailed, setCustomCard, stories, undoCopyPosted, undoPost, updateDraft,
@@ -224,6 +226,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               status: held || r.status !== "claimed" ? r.status : "ready",
               version: r.version,
               slug: r.slug,
+              /** The story's name for the editor link (?story=) and downloaded files, instead of the draft id */
+              ...storyLinkName({ district: r.district, headline: r.headline, receivedAt: r.receivedAt }),
               headline: r.headline,
               bodyText: r.bodyText,
               storyBody: r.storyBody ?? "",
@@ -332,6 +336,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       viewName === "posted" ? gte(postDrafts.updatedAt, postedSince(1)) : undefined,
     );
     const desk = sql<string | null>`${stories.fileTags}->>'desk'`;
+    // The desk's headline numbers are for stories received today (IST); the full view stays in `total`
+    const receivedToday = gte(stories.createdAt, istDayStart(new Date()));
     const [[totals], districts, desks] = await Promise.all([
       db
         .select({
@@ -339,6 +345,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           big: sql<number>`(count(*) FILTER (WHERE ${and(...filterWhere({ big: true }))}))::int`,
           update: sql<number>`(count(*) FILTER (WHERE ${and(...filterWhere({ update: true }))}))::int`,
           needsCheck: sql<number>`(count(*) FILTER (WHERE ${and(...filterWhere({ needsCheck: true }))}))::int`,
+          todayTotal: sql<number>`(count(*) FILTER (WHERE ${receivedToday}))::int`,
+          todayNeedsCheck: sql<number>`(count(*) FILTER (WHERE ${and(receivedToday, ...filterWhere({ needsCheck: true }))}))::int`,
         })
         .from(postDrafts)
         .innerJoin(stories, eq(stories.id, postDrafts.storyId))
@@ -365,10 +373,50 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       update: Number(totals?.update ?? 0),
       needsCheck: Number(totals?.needsCheck ?? 0),
       total: Number(totals?.total ?? 0),
+      /** Stories received today (IST, from midnight) in this view: the desk's "To post" and "Needs check" */
+      today: { total: Number(totals?.todayTotal ?? 0), needsCheck: Number(totals?.todayNeedsCheck ?? 0) },
     };
   });
 
   app.get("/drafts/:id", { schema: { params: Id } }, async (req) => view(guard(req).user, req.params.id));
+
+  /**
+   * A story link (?story=<linkSlug>) back to its draft id: { id }, or 404 not_found. The slug ends in the story's
+   * received time (HHMM IST), so only the org's drafts received at that hour and minute in the last 30 days (and with
+   * or without a district, as the slug says) are named again; the newest exact match wins.
+   */
+  app.get(
+    "/drafts/resolve",
+    { schema: { querystring: Type.Object({ story: Type.String({ pattern: "^[a-z0-9-]{3,120}$" }) }) } },
+    async (req) => {
+      const { user } = guard(req);
+      const slug = req.query.story;
+      const notFound = () => new HttpError(404, "not_found", "This story link does not match a story. It may be older than 30 days.");
+      const parsed = parseLinkSlug(slug);
+      if (!parsed) throw notFound();
+      const istAt = sql`(${stories.createdAt} AT TIME ZONE 'Asia/Kolkata')`;
+      const rows = await db
+        .select({ id: postDrafts.id, district: stories.district, headline: stories.headline, receivedAt: stories.createdAt })
+        .from(stories)
+        .innerJoin(postDrafts, and(eq(postDrafts.storyId, stories.id), eq(postDrafts.orgId, stories.orgId)))
+        .where(
+          and(
+            eq(stories.orgId, user.orgId),
+            eq(postDrafts.platform, "x"),
+            gte(stories.createdAt, sql`now() - interval '30 days'`),
+            sql`extract(hour from ${istAt}) = ${parsed.hour}`,
+            sql`extract(minute from ${istAt}) = ${parsed.minute}`,
+            // "news-…" is a story without a district (or one whose district has no Latin letters to name it by)
+            parsed.noDistrict ? undefined : sql`${stories.district} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(stories.createdAt), desc(postDrafts.createdAt))
+        .limit(200);
+      const hit = rows.find((r) => storyLinkName(r).linkSlug === slug);
+      if (!hit) throw notFound();
+      return { id: hit.id };
+    },
+  );
 
   app.post("/drafts/:id/claim", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);

@@ -1,6 +1,6 @@
 // What the digital desk receives for a draft: everything one screen needs, nothing more.
 
-import { LOW_CONFIDENCE, X_LIMIT, checkXPost } from "@socia/core";
+import { LOW_CONFIDENCE, X_LIMIT, checkXPost, storyLinkName } from "@socia/core";
 import {
   asCategory, asPriority, assets, cardState, copiedPostInfo, ingestedFiles, postDrafts, postText, postedCardKey, publishJobs, stories, users, type Db, type StoryExternal,
   type StoryPriority,
@@ -96,6 +96,8 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
 
   return {
     id: draft.id,
+    /** The story's name for the editor link (?story=) and downloaded files, instead of the draft id */
+    ...storyLinkName({ district: story.district, headline: story.headline, receivedAt: story.createdAt }),
     platform: draft.platform,
     status: draft.status,
     version: draft.version,

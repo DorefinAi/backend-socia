@@ -172,6 +172,53 @@ const tags = (over: Partial<FileTags>): FileTags => ({
     expect((await call("POST", `/drafts/${held}/copy-posted`, { version: 1 })).body).toMatchObject({ error: "held_by_other", heldBy: "Op Two" });
   });
 
+  it("posted rows carry the exact post record: its text and card, not the draft's current ones", async () => {
+    const id = ids["jodhpur-big"]!; // marked posted in the test above
+    const [record] = await h.db.select().from(publishedPosts).where(eq(publishedPosts.draftId, id));
+    const item = async () => (await call("GET", "/x/queue?view=posted")).body.items.find((i: { id: string }) => i.id === id);
+    const sent = record!.text;
+
+    const [before] = await h.db.select({ bodyText: postDrafts.bodyText, cardKey: postDrafts.cardKey }).from(postDrafts).where(eq(postDrafts.id, id));
+    // The draft changes after it went out: the posted record still shows what was sent
+    await h.db.update(postDrafts).set({ bodyText: "#Jodhpur: changed later", cardKey: "cards/draft-now.png" }).where(eq(postDrafts.id, id));
+    const first = await item();
+    expect(first.postText).toContain("changed later");
+    expect(first.posted).toEqual({
+      at: record!.publishedAt.toISOString(),
+      by: { id: expect.any(String), name: "Op" },
+      undoUntil: expect.any(String),
+      text: sent,
+      // No card recorded with the post: the draft's rendered card, as GET /posts
+      cardUrl: expect.stringContaining("cards/draft-now.png"),
+      permalink: null,
+      publishedAt: record!.publishedAt.toISOString(),
+      publishedBy: "Op",
+      manual: true,
+      copied: true,
+      recalled: null,
+    });
+
+    // The card recorded with the post wins over the draft's
+    await h.db.update(publishedPosts).set({ cardKey: "cards/as-sent.png" }).where(eq(publishedPosts.id, record!.id));
+    expect((await item()).posted.cardUrl).toContain("cards/as-sent.png");
+
+    // A newer recalled record does not hide the live one; with only recalled records, the newest of them shows
+    const [recalled] = await h.db
+      .insert(publishedPosts)
+      .values({ orgId, draftId: id, platform: "x", text: "recalled text", permalink: "https://x.com/i/1", manual: false, recalledAt: new Date(), recallReason: "typo" })
+      .returning();
+    expect((await item()).posted).toMatchObject({ text: sent, recalled: null, undoUntil: expect.any(String) });
+    await h.db.update(publishedPosts).set({ recalledAt: new Date(), recallReason: "old" }).where(eq(publishedPosts.id, record!.id));
+    expect((await item()).posted).toMatchObject({ text: "recalled text", permalink: "https://x.com/i/1", manual: false, copied: false, recalled: { reason: "typo" }, undoUntil: null }); // nothing left to undo
+
+    // Other views carry no post record
+    expect((await call("GET", "/x/queue")).body.items.every((i: { posted: unknown }) => i.posted === null)).toBe(true);
+
+    await h.db.delete(publishedPosts).where(eq(publishedPosts.id, recalled!.id));
+    await h.db.update(publishedPosts).set({ recalledAt: null, recallReason: null, cardKey: null }).where(eq(publishedPosts.id, record!.id));
+    await h.db.update(postDrafts).set({ bodyText: before!.bodyText, cardKey: before!.cardKey }).where(eq(postDrafts.id, id));
+  });
+
   it("Add card asks the render worker for a card, once", async () => {
     const id = ids["too-long"]!;
     const res = await call("POST", `/drafts/${id}/card/render`);

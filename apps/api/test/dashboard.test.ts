@@ -104,6 +104,8 @@ const URL = process.env.TEST_DATABASE_URL;
       id: samvadiaDraft, source: "samvadia", district: "Baran", priority: "breaking", category: "राजनीति/Politics",
       media: { images: 1, videos: 1, state: "attached" }, createdAt: expect.any(String), rejectReason: null, rejectNote: null,
     });
+    // The card is drawn from the story's own points, not the tweet text
+    expect(typeof body.items[0].storyBody).toBe("string");
   });
 
   it("rejected items carry the reject note; a story without Samvadia labels is normal / null", async () => {

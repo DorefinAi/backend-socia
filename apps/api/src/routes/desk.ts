@@ -15,6 +15,20 @@ import { NOT_A_CHECK, breakingFields, cardUrl, draftView, storyLabels } from "..
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
 
+/** view=posted: a draft's newest post record (who, when, the undo window) and exactly what went out */
+type PostedRecord = Omit<ReturnType<typeof postedView>, "undoUntil"> & {
+  /** The Copy & Posted undo deadline; null when the record shown was recalled (nothing left to undo) */
+  undoUntil: Date | null;
+  text: string;
+  cardUrl: string | null;
+  permalink: string | null;
+  publishedAt: Date;
+  publishedBy: string | null;
+  manual: boolean;
+  copied: boolean;
+  recalled: { at: Date; reason: string | null } | null;
+};
+
 /** Holding a draft is the first step of every desk action, so any one of them allows a claim. */
 const CLAIM = ["draft.edit", "draft.card", "post.publish", "post.mark_posted", "draft.reject"] as const;
 
@@ -168,6 +182,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           images: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'image')`,
           videos: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'video')`,
           headline: stories.headline,
+          /** The story's points, one per line: the card text (bodyText is the tweet) */
+          storyBody: stories.body,
           receivedAt: stories.createdAt,
           sourcePath: ingestedFiles.sourcePath,
           lowConfidence: sql<boolean>`coalesce(${stories.conversionConfidence} < 0.97, false)`,
@@ -195,7 +211,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const nextCursor = rows.length === limit && last ? `${last.sortAt.toISOString()}|${last.id}` : null;
 
       const now = new Date();
-      const posted = viewName === "posted" ? await postedBy(rows.map((r) => r.id)) : new Map<string, ReturnType<typeof postedView>>();
+      const posted = viewName === "posted" ? await postedBy(user.orgId, rows.map((r) => r.id)) : new Map<string, PostedRecord>();
       return {
         cap: await capUsage(db, user.orgId),
         nextCursor,
@@ -210,6 +226,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               slug: r.slug,
               headline: r.headline,
               bodyText: r.bodyText,
+              storyBody: r.storyBody ?? "",
               receivedAt: r.receivedAt,
               createdAt: r.createdAt,
               /** The original file's path (ingested_files.source_path); null when the story has no file */
@@ -238,17 +255,69 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     },
   );
 
-  /** Who marked each draft posted and when (the newest post record of each), for the posted view */
-  async function postedBy(draftIds: string[]) {
-    const out = new Map<string, ReturnType<typeof postedView>>();
+  /**
+   * The posted view's post record for each draft: who marked it posted and when (with the Copy & Posted undo
+   * window), and exactly what went out. One query: per draft, a LATERAL pick of its newest published_posts row
+   * (published_posts_draft_idx), a live record ahead of a recalled one.
+   */
+  async function postedBy(orgId: string, draftIds: string[]) {
+    const out = new Map<string, PostedRecord>();
     if (!draftIds.length) return out;
-    const rows = await db
-      .selectDistinctOn([publishedPosts.draftId], { draftId: publishedPosts.draftId, at: publishedPosts.publishedAt, byId: publishedPosts.publishedBy, byName: users.name })
+    const newest = db
+      .select({
+        text: publishedPosts.text,
+        cardKey: publishedPosts.cardKey,
+        permalink: publishedPosts.permalink,
+        publishedAt: publishedPosts.publishedAt,
+        publishedBy: publishedPosts.publishedBy,
+        byName: sql<string | null>`${users.name}`.as("by_name"),
+        manual: publishedPosts.manual,
+        recalledAt: publishedPosts.recalledAt,
+        recallReason: publishedPosts.recallReason,
+      })
       .from(publishedPosts)
       .leftJoin(users, eq(users.id, publishedPosts.publishedBy))
-      .where(and(inArray(publishedPosts.draftId, draftIds), isNull(publishedPosts.recalledAt)))
-      .orderBy(publishedPosts.draftId, desc(publishedPosts.publishedAt));
-    for (const r of rows) out.set(r.draftId, postedView(r));
+      .where(and(eq(publishedPosts.draftId, postDrafts.id), eq(publishedPosts.orgId, orgId)))
+      .orderBy(sql`${publishedPosts.recalledAt} IS NOT NULL`, desc(publishedPosts.publishedAt))
+      .limit(1)
+      .as("newest_post");
+    const rows = await db
+      .select({
+        draftId: postDrafts.id,
+        text: newest.text,
+        permalink: newest.permalink,
+        publishedAt: newest.publishedAt,
+        publishedBy: newest.publishedBy,
+        byName: newest.byName,
+        manual: newest.manual,
+        recalledAt: newest.recalledAt,
+        recallReason: newest.recallReason,
+        // The card that went out; rows from before it was recorded fall back to the draft's rendered card (as GET /posts)
+        cardKey: sql<string | null>`coalesce(${newest.cardKey}, ${postDrafts.cardKey})`,
+      })
+      .from(postDrafts)
+      .innerJoinLateral(newest, sql`true`)
+      .where(and(eq(postDrafts.orgId, orgId), inArray(postDrafts.id, draftIds)));
+    await Promise.all(
+      rows.map(async ({ draftId, cardKey, ...p }) => {
+        out.set(draftId, {
+          ...postedView({ at: p.publishedAt, byId: p.publishedBy, byName: p.byName }),
+          // Only recalled records left: the post is gone from X, so there is no undo window to offer
+          ...(p.recalledAt && { undoUntil: null }),
+          /** Exactly the text that went out */
+          text: p.text,
+          cardUrl: await cardUrl(storage, cardKey),
+          permalink: p.permalink,
+          publishedAt: p.publishedAt,
+          /** The marker's name, as GET /posts returns it; null when unknown */
+          publishedBy: p.byName,
+          manual: p.manual,
+          /** Copy & Posted: pasted on X by hand, no link recorded */
+          copied: p.manual && !p.permalink,
+          recalled: p.recalledAt ? { at: p.recalledAt, reason: p.recallReason } : null,
+        });
+      }),
+    );
     return out;
   }
 

@@ -3,7 +3,7 @@
 // action makes a story directly (a Web Scraper trend).
 
 import { RuleComposer, handleGazetteer, hashtagGazetteer, type HashtagRule, type MatchType } from "@socia/core";
-import { and, count, eq, isNotNull, max } from "drizzle-orm";
+import { and, count, eq, isNotNull, max, ne } from "drizzle-orm";
 import type { Db } from "./client";
 import { handleDirectory, hashtagRules, orgs } from "./schema";
 
@@ -27,10 +27,12 @@ export async function loadRuleComposer(db: Db, orgId: string, version?: string):
   const v = version ?? (await dictionaryFingerprint(db, orgId));
   const [org] = await db.select({ settings: orgs.settings }).from(orgs).where(eq(orgs.id, orgId));
   if (!org) throw new Error(`ORG_ID ${orgId} is not in the orgs table`);
+  // Handles the desk added from a tag line (source "desk") are suggested only by the phase-1 breaking composer,
+  // under its safety rules (core desk-handles.ts); this composer (non-breaking stories, Web Scraper trends) has none
   const handles = await db
     .select()
     .from(handleDirectory)
-    .where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.platform, "x"), isNotNull(handleDirectory.verifiedAt)));
+    .where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.platform, "x"), isNotNull(handleDirectory.verifiedAt), ne(handleDirectory.source, "desk")));
   const composer = new RuleComposer({
     version: v,
     hashtagConfig: { script: org.settings.hashtagScript, fixed: org.settings.fixedHashtags, max: org.settings.maxHashtags },

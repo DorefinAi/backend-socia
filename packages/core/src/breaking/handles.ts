@@ -4,6 +4,7 @@
 // about come from subject-handles.json (subjects.ts).
 
 import { fold } from "../fold";
+import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
 
 /** One entry of district-handles.json */
@@ -28,6 +29,11 @@ export interface HandleRules {
   state: { government: string[]; cm: string[]; police: string[] };
   /** Keyed by districtKey() of the district */
   districts: Record<string, { police: string[]; collector: string[] }>;
+  /**
+   * Every handle in the file, verified or not, lowercase without the @: the desk-added handles rule never tags
+   * these or their lookalikes (desk-handles.ts)
+   */
+  all?: ReadonlySet<string>;
 }
 
 export const EMPTY_HANDLE_RULES: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {} };
@@ -58,8 +64,10 @@ export function parseHandleRules(json: unknown): HandleRules {
     });
   };
   const bare = (e: DistrictHandleEntry) => e.handle.replace(/^@/, "");
-  const rules: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {} };
+  const all = new Set<string>();
+  const rules: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {}, all };
   for (const e of entries(root!.state, "state")) {
+    all.add(bare(e).toLowerCase());
     if (!e.verified) continue;
     if (e.role === "govt") rules.state.government.push(bare(e));
     else if (e.role === "cm") rules.state.cm.push(bare(e));
@@ -70,6 +78,7 @@ export function parseHandleRules(json: unknown): HandleRules {
     if (name.startsWith("_")) continue;
     const d = { police: [] as string[], collector: [] as string[] };
     for (const e of entries(list, `districts.${name}`)) {
+      all.add(bare(e).toLowerCase());
       if (e.verified && (e.role === "police" || e.role === "collector")) d[e.role].push(bare(e));
     }
     rules.districts[districtKey(name)] = d;
@@ -84,10 +93,12 @@ export function parseHandleRules(json: unknown): HandleRules {
 //   - the people and organisations the story is about (subject-handles.json), headline first;
 //   - the district police / collector, only when the story names them as acting ("पुलिस ने", "थाना पुलिस कर
 //     रही तलाश", "कलेक्टर ने", "जिला प्रशासन ने", "कलेक्टर की अध्यक्षता"): crime words alone tag nobody;
-//   - Rajasthan Police HQ when the headline names it; the state government on its own decisions.
-// A handle picked from the headline goes before one picked from the points.
+//   - Rajasthan Police HQ when the headline names it; the state government on its own decisions;
+//   - last, handles the desk added (desk-handles.ts) whose keywords the headline or points name as whole words,
+//     unless the files above already govern that handle (their rules, e.g. "police only when acting", stand).
+// A handle picked from the headline goes before one picked from the points (desk-added ones after all the rest).
 
-const PARTY = /भाजपा|बीजेपी|कांग्रेस|प्रत्याशी|उम्मीदवार|जनसंपर्क|चुनाव\s*प्रचार|चुनावी|पंचायत\s*चुनाव|पंचायतीराज\s*चुनाव|सरपंच\s*चुनाव|मतदान|नामांकन|रैली|प्रदेशाध्यक्ष|पीसीसी|\bBJP\b|\bCongress\b|\bINC\b/iu;
+export const PARTY = /भाजपा|बीजेपी|कांग्रेस|प्रत्याशी|उम्मीदवार|जनसंपर्क|चुनाव\s*प्रचार|चुनावी|पंचायत\s*चुनाव|पंचायतीराज\s*चुनाव|सरपंच\s*चुनाव|मतदान|नामांकन|रैली|प्रदेशाध्यक्ष|पीसीसी|\bBJP\b|\bCongress\b|\bINC\b/iu;
 /** The government deciding: "राज्य सरकार ने", "...का फैसला", "...के आदेश"; not "राज्य सरकार के खिलाफ धरना" */
 const GOVT_ACTS = String.raw`\s*(?:ने|(?:का|की|के)\s*(?:बड़ा\s*|बड़ी\s*|बड़े\s*|नई\s*|नया\s*)?(?:फैसला|फैसले|निर्णय|आदेश|निर्देश|योजना|घोषणा|मंजूरी|पहल|अधिसूचना))`;
 const GOVT = new RegExp(String.raw`(?:राज्य|प्रदेश)\s*सरकार${GOVT_ACTS}|सरकार\s*का\s*(?:बड़ा\s*)?फैसला|सरकार\s*ने\s*(?:जारी|लिया|दी|किया)|कैबिनेट|मंत्रिमंडल|अधिसूचना\s*जारी|आदेश\s*जारी|भजनलाल\s*सरकार`, "u");
@@ -286,6 +297,8 @@ export interface HandlePickInput {
   district: string | null;
   rajasthan: boolean;
   leaderPost: boolean;
+  /** The file's headline line before its place prefix was taken off ("#Kota: ..."), when known */
+  rawHeadline?: string;
   /** Whether a word names a district other than the story's (from the places file); none: never */
   elsewhere?: (word: string) => boolean;
 }
@@ -293,18 +306,27 @@ export interface HandlePickInput {
 export interface HandlePick {
   handle: string;
   /** Why: shown on the draft as the suggestion's entity */
-  reason: "cm" | "police" | "collector" | "government" | "state_police" | "subject";
-  /** The subject's title from subject-handles.json (reason "subject") */
+  reason: "cm" | "police" | "collector" | "government" | "state_police" | "subject" | "desk";
+  /** The subject's title from subject-handles.json (reason "subject"); the directory name (reason "desk") */
   title?: string;
 }
 
-/** 0–2 verified handles for the post, headline picks first. */
-export function pickHandles(story: HandlePickInput, rules: HandleRules, subjects: SubjectRules = EMPTY_SUBJECT_RULES, max = 2): HandlePick[] {
+/** Every handle the district-handles rules can tag, lowercase */
+function ruleHandles(rules: HandleRules): Set<string> {
+  const all = [...rules.state.government, ...rules.state.cm, ...rules.state.police, ...Object.values(rules.districts).flatMap((d) => [...d.police, ...d.collector])];
+  return new Set(all.map((h) => h.toLowerCase()));
+}
+
+/** 0–2 verified handles for the post, headline picks first, desk-added handles last. */
+export function pickHandles(
+  story: HandlePickInput, rules: HandleRules, subjects: SubjectRules = EMPTY_SUBJECT_RULES, desk: DeskHandleRules = EMPTY_DESK_HANDLE_RULES, max = 2,
+): HandlePick[] {
   // A leader's own post, party/election news, and news outside Rajasthan tag nobody
   if (story.leaderPost || !story.rajasthan) return [];
   const head = story.headline.normalize("NFC");
   const body = story.points.join("\n").normalize("NFC");
-  if (PARTY.test(`${head}\n${body}`)) return [];
+  // The raw headline line too: a "#BJP #Kota:" prefix the parser took off still marks party news
+  if (PARTY.test(`${story.rawHeadline?.normalize("NFC") ?? ""}\n${head}\n${body}`)) return [];
 
   const picks: (HandlePick & { inHeadline: boolean })[] = [];
   const add = (handles: string[] | undefined, reason: HandlePick["reason"], inHeadline: boolean, title?: string) => {
@@ -335,9 +357,23 @@ export function pickHandles(story: HandlePickInput, rules: HandleRules, subjects
   if (GOVT.test(head)) add(rules.state.government, "government", true);
   else if (GOVT.test(body)) add(rules.state.government, "government", false);
 
-  // Headline picks first (stable), one per handle, at most max
+  // Desk-added handles named by a keyword, after every file rule; never a handle of the files (verified or not)
+  // nor a lookalike of one: the files' own rules decide when those are tagged
+  const deskPicks: typeof picks = [];
+  if (desk.count) {
+    const governed = new Set([...(rules.all ?? ruleHandles(rules)), ...(subjects.handles ?? [])]);
+    const inHead = desk.gazetteer.find(head).sort((a, b) => a.start - b.start);
+    const inBody = desk.gazetteer.find(body).sort((a, b) => a.start - b.start);
+    for (const [list, inHeadline] of [[inHead, true], [inBody, false]] as const) {
+      for (const m of list) {
+        if (fileLookalike(m.entry.data.handle, governed) === null) deskPicks.push({ handle: m.entry.data.handle, reason: "desk", inHeadline, title: m.entry.data.title });
+      }
+    }
+  }
+
+  // Headline picks first (stable), then desk-added ones; one per handle, at most max
   const out: HandlePick[] = [];
-  for (const { inHeadline: _, ...p } of [...picks.filter((p) => p.inHeadline), ...picks.filter((p) => !p.inHeadline)]) {
+  for (const { inHeadline: _, ...p } of [...picks.filter((p) => p.inHeadline), ...picks.filter((p) => !p.inHeadline), ...deskPicks]) {
     if (out.length >= max) break;
     if (!out.some((o) => o.handle.toLowerCase() === p.handle.toLowerCase())) out.push(p);
   }

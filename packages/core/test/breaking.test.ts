@@ -117,6 +117,120 @@ describe("parseBreaking", () => {
     expect(leader.needsCheck).toEqual([]);
   });
 
+  describe("hashtag place prefix", () => {
+    const file = (headline: string, name = "BTN_RJ_BREAKING_29OCT_2702_AM_CONTROL_JPR_BIG.txt") =>
+      parseBreaking(["BTN_RJ_BREAKING_x", headline, "पहला बिंदु यहां है", "दूसरा बिंदु"].join("\n"), name, book);
+
+    it("reads '#Jhalawar #डग:' as district and town, and keeps only the text after the colon", () => {
+      const s = file("#Jhalawar #डग: विद्युत विभाग की बड़ी लापरवाही, बड़ा हादसा टला");
+      expect([s.district, s.town, s.districtFrom]).toEqual(["Jhalawar", "डग", "headline_prefix"]);
+      expect(s.headline).toBe("विद्युत विभाग की बड़ी लापरवाही, बड़ा हादसा टला");
+      expect(s.points).toEqual(["पहला बिंदु यहां है", "दूसरा बिंदु"]);
+    });
+
+    it("lets '#Alwar:' win over the file code and the CM words", () => {
+      const s = file("#Alwar: मुख्यमंत्री भजनलाल शर्मा ने किया लोकार्पण");
+      expect([s.district, s.town, s.districtFrom]).toEqual(["Alwar", null, "headline_prefix"]);
+      expect(s.headline).toBe("मुख्यमंत्री भजनलाल शर्मा ने किया लोकार्पण");
+    });
+
+    it("takes a district from a town tag on its own, and an ambiguous town by the district tag", () => {
+      const s = file("#डग: विद्युत विभाग की लापरवाही", "x_breaking.txt");
+      expect([s.district, s.town, s.headline]).toEqual(["Jhalawar", "डग", "विद्युत विभाग की लापरवाही"]);
+      const g = file("#SawaiMadhopur #गंगापुर: सड़क पर जाम", "x_breaking.txt");
+      expect([g.district, g.town, g.headline]).toEqual(["Sawai Madhopur", "गंगापुर", "सड़क पर जाम"]);
+    });
+
+    it("keeps the prefix in the headline unless every tag is a place: '#Foo:', '#BJP:', '#ब्रेकिंग:'", () => {
+      const s = file("#Foo: झालावाड़ में बिजली गुल", "x_breaking.txt");
+      expect([s.district, s.town, s.districtFrom, s.headline]).toEqual(["Jhalawar", null, "text", "#Foo: झालावाड़ में बिजली गुल"]);
+      const t = file("#Jhalawar #Foo: बिजली गुल", "x_breaking.txt");
+      expect(t.headline).toBe("#Jhalawar #Foo: बिजली गुल");
+      expect(file("#BJP: कोटा में सभा", "x_breaking.txt")).toMatchObject({ headline: "#BJP: कोटा में सभा", district: "Kota", districtFrom: "text" });
+      const b = file("#ब्रेकिंग: झालावाड़: हादसा", "x_breaking.txt");
+      expect([b.headline, b.district]).toEqual(["#ब्रेकिंग: झालावाड़: हादसा", "Jhalawar"]);
+    });
+
+    it("tags no official on party news under a place tag: '#Congress #Kota:', '#BJP:'", () => {
+      for (const headline of ["#Congress #Kota: कोटा में धरना, पुलिस मौजूद", "#BJP: कोटा में धरना, पुलिस मौजूद", "#Kota #भाजपा: कोटा में धरना, पुलिस मौजूद"]) {
+        const s = file(headline, "x_breaking.txt");
+        expect(s.headline).toBe(headline); // the party tag is not taken off
+        expect(s.district).toBe("Kota");
+        const d = composeBreaking(s, rules, book, { topics });
+        expect(d.mentions).toEqual([]);
+        // The desk's own tags are line 1 as written: no "#Kota: " put in front of them
+        expect(d.bodyText.split("\n")[0]).toBe(headline);
+      }
+      // The raw headline line is read too, should a caller pass a headline without its prefix
+      const story = { headline: "कोटा में धरना, पुलिस ने संभाला मोर्चा", rawHeadline: "#BJP #Kota: कोटा में धरना, पुलिस ने संभाला मोर्चा", points: ["पुलिस ने की कार्रवाई"], district: "Kota", rajasthan: true, leaderPost: false };
+      expect(pickHandles(story, rules)).toEqual([]);
+      expect(pickHandles({ ...story, rawHeadline: undefined }, rules)).not.toEqual([]);
+    });
+
+    it("keeps a plain party prefix in the headline and tags nobody, with no raw headline passed", () => {
+      for (const head of ["भाजपा: कोटा में धरना, पुलिस ने संभाला मोर्चा", "कांग्रेस : कोटा में धरना, पुलिस ने संभाला मोर्चा", "BJP: कोटा में धरना, पुलिस ने संभाला मोर्चा", "Congress: कोटा में धरना, पुलिस ने संभाला मोर्चा", "#BJP: कोटा में धरना, पुलिस ने संभाला मोर्चा"]) {
+        const s = file(head, "x_breaking.txt");
+        expect([s.headline, s.district, s.town]).toEqual([head, "Kota", null]);
+        const { rawHeadline: _raw, ...stored } = s; // as the worker composes: from the stored story, no raw line
+        const d = composeBreaking(stored, rules, book, { topics });
+        expect(d.mentions).toEqual([]);
+        expect(d.bodyText).not.toContain("#भाजपा");
+      }
+      // A party word on its own line is not a place line either
+      expect(parseBreaking(["x_breaking", "भाजपा", "कोटा में धरना", "बिंदु"].join("\n"), "x_breaking.txt", book).town).toBeNull();
+    });
+
+    it("prefers a Rajasthan district over a national place: '#Delhi #Jaipur:'", () => {
+      const s = file("#Delhi #Jaipur: बैठक में फैसला", "x_breaking.txt");
+      expect([s.district, s.rajasthan, s.headline]).toEqual(["Jaipur", true, "बैठक में फैसला"]);
+      expect(s.needsCheck).not.toContain("place_conflict");
+    });
+
+    it("flags tags naming two districts, directly or through a town; the first stands", () => {
+      const two = file("#Kota #Jhalawar: बिजली गुल", "x_breaking.txt");
+      expect([two.district, two.town, two.headline]).toEqual(["Kota", null, "बिजली गुल"]);
+      expect(two.needsCheck).toContain("place_conflict");
+      const viaTown = file("#Kota #डग: बिजली गुल", "x_breaking.txt");
+      expect([viaTown.district, viaTown.town]).toEqual(["Kota", null]);
+      expect(viaTown.needsCheck).toContain("place_conflict");
+      expect(file("#Jhalawar #डग: बिजली गुल", "x_breaking.txt").needsCheck).not.toContain("place_conflict");
+    });
+
+    it("keeps one unknown one-word Hindi tag after a district as its town: '#Jhalawar #नयागांव:'", () => {
+      const s = file("#Jhalawar #नयागांव: सड़क पर जाम", "x_breaking.txt");
+      expect([s.district, s.town, s.headline]).toEqual(["Jhalawar", "नयागांव", "सड़क पर जाम"]);
+      expect(composeBreaking(s, rules, book, { topics }).bodyText.split("\n")[0]).toBe("#Jhalawar #नयागांव: सड़क पर जाम");
+      // Not before the district, not two of them, not a non-place word
+      expect(file("#नयागांव #Jhalawar: सड़क पर जाम", "x_breaking.txt").headline).toBe("#नयागांव #Jhalawar: सड़क पर जाम");
+      expect(file("#Jhalawar #नयागांव #पुरागांव: जाम", "x_breaking.txt").headline).toBe("#Jhalawar #नयागांव #पुरागांव: जाम");
+      expect(file("#Jhalawar #ब्रेकिंग: जाम", "x_breaking.txt").headline).toBe("#Jhalawar #ब्रेकिंग: जाम");
+    });
+
+    it("lets the tag win over a place line naming another district, and flags it", () => {
+      const s = parseBreaking(["x_breaking", "कोटा", "#Jhalawar: बिजली गुल", "बिंदु"].join("\n"), "x_breaking.txt", book);
+      expect([s.district, s.districtFrom, s.headline]).toEqual(["Jhalawar", "headline_prefix", "बिजली गुल"]);
+      expect(s.needsCheck).toContain("place_conflict");
+      const same = parseBreaking(["x_breaking", "झालावाड़ के डग से खबर", "#Jhalawar: बिजली गुल", "बिंदु"].join("\n"), "x_breaking.txt", book);
+      expect([same.district, same.town, same.districtFrom, same.needsCheck]).toEqual(["Jhalawar", "डग", "place_line", []]);
+    });
+
+    it("composes line 1 as the desk tagged it, with no repeated or glued tags", () => {
+      const line1 = (headline: string) => composeBreaking(file(headline), rules, book, { topics }).bodyText.split("\n")[0];
+      expect(line1("#Jhalawar #डग: विद्युत विभाग की बड़ी लापरवाही, बड़ा हादसा टला")).toBe("#Jhalawar #डग: विद्युत विभाग की बड़ी लापरवाही, बड़ा हादसा टला");
+      expect(line1("#Alwar: मुख्यमंत्री भजनलाल शर्मा ने किया लोकार्पण")).toBe("#Alwar: मुख्यमंत्री भजनलाल शर्मा ने किया लोकार्पण");
+    });
+
+    it("leaves 'Jaipur:' and Hindi 'place:' prefixes as before", () => {
+      const s = file("मेड़तासिटी : पंच व सरपंच के चुनाव कल", "x_breaking.txt");
+      expect(s.headline).toBe("पंच व सरपंच के चुनाव कल");
+      expect(s.town).toBeNull(); // an unknown town with no district is not tagged, as before
+      const r = file("रावतभाटा : परमाणु बिजलीघर में मॉक ड्रिल", "x_breaking.txt");
+      expect([r.district, r.districtFrom, r.headline]).toEqual(["Chittorgarh", "headline_prefix", "परमाणु बिजलीघर में मॉक ड्रिल"]);
+      const j = file("Jaipur: बिजली गुल", "x_breaking.txt");
+      expect(j.headline).toBe("Jaipur: बिजली गुल");
+    });
+  });
+
   it("never crashes on empty, Latin-only, precomposed-nukta or very long files", () => {
     expect(parse("BTN_RJ_BREAKING_9999_29OCT_US_CONTROL_EMPTY.txt").needsCheck).toContain("empty");
     expect(parseBreaking("x_breaking\nOnly English text here\nmore", "x_breaking.txt", book).needsCheck).toContain("no_hindi");

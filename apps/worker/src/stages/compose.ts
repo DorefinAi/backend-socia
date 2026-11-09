@@ -1,12 +1,13 @@
 // Compose: pure rules turn a story into an X draft. The dictionaries are loaded into memory and
 // reloaded when an editor changes them; compose_version records which tables produced a draft.
-// Breaking files (phase 1) use their own layout, the district- and subject-handles files, and the org's topic
-// hashtag rules for their category tags.
+// Breaking files (phase 1) use their own layout, the district- and subject-handles files, the org's topic
+// hashtag rules for their category tags, and the handles the desk added with keywords (handle_directory, source
+// "desk"), which are suggested after the files' picks.
 
 import { createHash } from "node:crypto";
-import { LEADER_POST, asFileTags, composeBreaking, hashtagGazetteer, type Composer, type HashtagGazetteer } from "@socia/core";
-import { activeHashtagRules, dictionaryFingerprint, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
-import { and, eq, sql } from "drizzle-orm";
+import { LEADER_POST, asFileTags, composeBreaking, deskHandleRules, hashtagGazetteer, type Composer, type DeskHandleRules, type HashtagGazetteer } from "@socia/core";
+import { activeHashtagRules, dictionaryFingerprint, handleDirectory, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { nextStoryIsolated } from "./isolate";
 import type { PhaseOneData } from "../data-files";
 import type { Logger } from "pino";
@@ -14,7 +15,7 @@ import type { Logger } from "pino";
 const RELOAD_MS = 60_000;
 
 export class Dictionaries {
-  private cached: { composer: Composer; topics: HashtagGazetteer; version: string; at: number } | null = null;
+  private cached: { composer: Composer; topics: HashtagGazetteer; desk: DeskHandleRules; version: string; at: number } | null = null;
 
   constructor(private readonly db: Db, private readonly orgId: string) {}
 
@@ -28,7 +29,14 @@ export class Dictionaries {
     const { composer } = await loadRuleComposer(this.db, this.orgId, version);
     // Breaking posts take only the topic rules (category tags); their places come from the places file
     const topics = hashtagGazetteer((await activeHashtagRules(this.db, this.orgId)).filter((r) => r.matchType === "entity"));
-    this.cached = { composer, topics, version, at: Date.now() };
+    // The fingerprint counts verified handles and their latest verification, so an add, edit or delete reloads these
+    const desk = deskHandleRules(
+      await this.db
+        .select({ handle: handleDirectory.handle, entityName: handleDirectory.entityName, aliases: handleDirectory.aliases })
+        .from(handleDirectory)
+        .where(and(eq(handleDirectory.orgId, this.orgId), eq(handleDirectory.platform, "x"), eq(handleDirectory.source, "desk"), isNotNull(handleDirectory.verifiedAt))),
+    );
+    this.cached = { composer, topics, desk, version, at: Date.now() };
     return this.cached;
   }
 
@@ -37,10 +45,10 @@ export class Dictionaries {
     return { composer, version };
   }
 
-  /** The org's active topic hashtag rules, for the breaking posts' category tags */
-  async topics(): Promise<{ topics: HashtagGazetteer; version: string }> {
-    const { topics, version } = await this.load();
-    return { topics, version };
+  /** The org's active topic hashtag rules, for the breaking posts' category tags; the desk-added handles */
+  async topics(): Promise<{ topics: HashtagGazetteer; desk: DeskHandleRules; version: string }> {
+    const { topics, desk, version } = await this.load();
+    return { topics, desk, version };
   }
 }
 
@@ -62,7 +70,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   const { value: book, version: placesVersion } = await opts.data.places.get();
   const { value: rules, version: handlesVersion } = await opts.data.handles.get();
   const { value: subjects, version: subjectsVersion } = await opts.data.subjects.get();
-  const { topics, version: topicsVersion } = await dictionaries.topics();
+  const { topics, desk, version: topicsVersion } = await dictionaries.topics();
   const tags = asFileTags(story.fileTags);
   const place = book.district(story.district);
   const headline = story.headline ?? "";
@@ -78,7 +86,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     },
     rules,
     book,
-    { version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.t${shortVersion(topicsVersion)}`, topics, subjects },
+    { version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.t${shortVersion(topicsVersion)}`, topics, subjects, desk },
   );
   const needsCheck = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
   const content = {

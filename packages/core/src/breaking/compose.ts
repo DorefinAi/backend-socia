@@ -14,9 +14,12 @@ import type { HashtagGazetteer } from "../hashtags";
 import { xLen } from "../xtext";
 import { pickCategoryTags } from "./categories";
 import { pickHandles, type HandlePick, type HandleRules } from "./handles";
+import { EMPTY_DESK_HANDLE_RULES, type DeskHandleRules } from "./desk-handles";
 import type { PlaceBook } from "./places";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
 
+/** A headline that starts with the desk's own hashtags and a colon ("#BJP:", "#Congress #Kota:") */
+const DESK_TAG_RUN = /^(?:#\S+\s*){1,3}[:：]/u;
 export const RAJASTHAN_FOOTER = "#RajasthanWithFirstIndia";
 export const NATIONAL_FOOTER = "#FirstIndiaNews";
 /** The desk cuts with three dots */
@@ -38,6 +41,8 @@ export interface BreakingComposeInput {
   town: string | null;
   rajasthan: boolean;
   leaderPost: boolean;
+  /** The headline line as the file had it, place prefix included (parseBreaking); read by the party check */
+  rawHeadline?: string;
 }
 
 export interface BreakingComposeOptions {
@@ -47,6 +52,8 @@ export interface BreakingComposeOptions {
   topics?: HashtagGazetteer | null;
   /** subject-handles.json */
   subjects?: SubjectRules;
+  /** Handles the desk added with keywords (the org's handle_directory, source "desk") */
+  desk?: DeskHandleRules;
   limit?: number;
   target?: number;
 }
@@ -168,7 +175,7 @@ export function joinPoints(points: string[], budget: number): string {
 }
 
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
-  const { version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, limit = X_LIMIT, target = BREAKING_TARGET } = opts;
+  const { version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES, limit = X_LIMIT, target = BREAKING_TARGET } = opts;
   const place = book.district(story.district);
   const rajasthan = place ? place.rajasthan : story.rajasthan;
   // A word naming another district: "बूंदी SP ने" in a Jaipur story does not tag Jaipur's police
@@ -176,14 +183,15 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     const p = book.lookup(word);
     return p?.kind === "district" && !p.districts.some((d) => d.name === place?.name);
   };
-  const handles = pickHandles({ ...story, rajasthan, elsewhere }, rules, subjects);
+  const handles = pickHandles({ ...story, rajasthan, elsewhere }, rules, subjects, desk);
   const footer = rajasthan ? RAJASTHAN_FOOTER : NATIONAL_FOOTER;
   const hashtags = [footer, ...pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer])];
   const mentions = handles.map((h) => `@${h.handle}`);
 
   const tags = [place ? `#${place.tag}` : "", story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : ""].filter(Boolean);
-  const prefix = tags.length ? `${tags.join(" ")}: ` : "";
   const headline = story.headline.normalize("NFC").replace(/\s+/g, " ").trim();
+  // The desk's own tag run kept in the headline ("#Congress #Kota: ...", "#BJP: ..."): line 1 as written, no tags added
+  const prefix = tags.length && !DESK_TAG_RUN.test(headline) ? `${tags.join(" ")}: ` : "";
   // Room for lines 1–2: the limit less the footer and its blank line
   const room = limit - xLen(assemblePostText("x", hashtags, mentions)) + 1;
 

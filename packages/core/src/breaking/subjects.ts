@@ -43,6 +43,11 @@ export interface SubjectData {
 export interface SubjectRules {
   gazetteer: Gazetteer<SubjectData>;
   count: number;
+  /**
+   * Every handle in the file, whatever its entry (unverified, party, no names), lowercase without the @: the
+   * desk-added handles rule never tags these or their lookalikes (desk-handles.ts)
+   */
+  handles?: ReadonlySet<string>;
 }
 
 export const EMPTY_SUBJECT_RULES: SubjectRules = { gazetteer: new Gazetteer<SubjectData>([]), count: 0 };
@@ -61,7 +66,10 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
   const root = json as Partial<SubjectHandlesData> | null;
   if (!root || typeof root !== "object" || !Array.isArray(root.entries)) throw new Error("subject handles: expected { version, entries: [...] }");
   const entries: { id: string; name: string; aliases: string[]; priority: number; data: SubjectData }[] = [];
+  const handles = new Set<string>();
   root.entries.forEach((raw, i) => {
+    const h = (raw as { handle?: unknown } | null)?.handle;
+    if (typeof h === "string" && HANDLE.test(h.trim())) handles.add(h.trim().replace(/^@/, "").toLowerCase());
     const e = raw as Partial<SubjectHandleEntry> | null;
     const where = `entries[${i}]`;
     if (!e || typeof e !== "object") return problem(`${where}: not an object`);
@@ -83,5 +91,5 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
       data: { handle, kind: e.kind as SubjectData["kind"], title: typeof e.title === "string" ? e.title : handle, names },
     });
   });
-  return { gazetteer: new Gazetteer(entries), count: entries.length };
+  return { gazetteer: new Gazetteer(entries), count: entries.length, handles };
 }

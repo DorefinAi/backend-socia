@@ -7,3 +7,4 @@ export * from "./compose";
 export * from "./folders";
 export * from "./categories";
 export * from "./subjects";
+export * from "./desk-handles";

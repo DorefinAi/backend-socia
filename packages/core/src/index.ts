@@ -19,3 +19,4 @@ export * from "./permissions";
 export * from "./rewrite";
 export * from "./phase";
 export * from "./breaking";
+export * from "./story-name";

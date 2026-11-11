@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "_note": "State and national party handles, read by packages/core/src/breaking/parties.ts. The desk DOES tag parties on campaign and party-activity copy — @BJP4Rajasthan 42 posts, @INCRajasthan 39, @INCIndia 11, @BJP4India 7 across 1,002 published posts (30 Oct and 9-10 Nov 2026): 99 party tags that the old blanket 'election news tags nobody' guard dropped. A party handle is tagged beside the leader the copy names, NEVER beside a district police handle or a collector (handles.ts keeps those on separate classes). Keywords are matched as whole words, so short Latin keys like INC cannot fire on 'since' or 'incident'.",
+  "_clash_rule": "Copy that names two parties ('कांग्रेस ने भाजपा पर साधा निशाना') tags NEITHER: the desk does not pick a side on an attack story, and tagging both burns the slot the leader should have.",
+  "entries": [
+    {
+      "handle": "@BJP4Rajasthan",
+      "name": "BJP Rajasthan",
+      "party": "bjp",
+      "scope": "state",
+      "keywords_hi": [
+        "भाजपा",
+        "बीजेपी",
+        "भारतीय जनता पार्टी"
+      ],
+      "keywords_en": [
+        "BJP"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 42
+    },
+    {
+      "handle": "@INCRajasthan",
+      "name": "Congress Rajasthan",
+      "party": "congress",
+      "scope": "state",
+      "keywords_hi": [
+        "कांग्रेस",
+        "पीसीसी"
+      ],
+      "keywords_en": [
+        "Congress",
+        "INC",
+        "PCC"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 39
+    },
+    {
+      "handle": "@BJP4India",
+      "name": "BJP",
+      "party": "bjp",
+      "scope": "national",
+      "keywords_hi": [
+        "भाजपा",
+        "बीजेपी"
+      ],
+      "keywords_en": [
+        "BJP"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline — appears almost only on Delhi-datelined copy",
+      "evidence": 7
+    },
+    {
+      "handle": "@INCIndia",
+      "name": "Congress",
+      "party": "congress",
+      "scope": "national",
+      "keywords_hi": [
+        "कांग्रेस"
+      ],
+      "keywords_en": [
+        "Congress",
+        "INC"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline — appears almost only on Delhi-datelined copy",
+      "evidence": 11
+    },
+    {
+      "handle": "@Rajasthan_PYC",
+      "name": "Youth Congress",
+      "party": "congress",
+      "scope": "youth",
+      "keywords_hi": [
+        "युवा कांग्रेस"
+      ],
+      "keywords_en": [
+        "Youth Congress",
+        "PYC"
+      ],
+      "verified": false,
+      "source": "@1stIndiaNews timeline",
+      "evidence": 1,
+      "note": "Seen once. Left unverified on purpose: one post does not corroborate a handle, and a wrong party tag is a reputational incident."
+    }
+  ]
+}

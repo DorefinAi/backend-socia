@@ -258,10 +258,40 @@ describe("the sink", () => {
     expect((await h.db.execute(sql`SELECT to_regclass('ops_log')::text AS t`)).rows).toEqual([{ t: "ops_log" }]);
   });
 
+  /** Rolls back `tag` and every migration newer than it, newest first — each down file guards on being last */
+  async function rollBackTo(tag: string): Promise<void> {
+    const journal = JSON.parse(await readFile(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8")) as { entries: { tag: string }[] };
+    const at = journal.entries.findIndex((e) => e.tag === tag);
+    for (const later of journal.entries.slice(at).reverse()) {
+      await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", `${later.tag}.down.sql`), "utf8"));
+    }
+  }
+
   it("0020 adds users.prefs (jsonb, not null, default {}), rolls back and migrates forward again", async () => {
     const col = sql`SELECT data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'prefs'`;
     expect((await h.db.execute(col)).rows).toEqual([{ data_type: "jsonb", is_nullable: "NO", column_default: "'{}'::jsonb" }]);
-    await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0020_user_prefs.down.sql"), "utf8"));
+    await rollBackTo("0020_user_prefs");
+    expect((await h.db.execute(col)).rows).toEqual([]);
+    await runMigrations(TEST_URL!);
+    expect((await h.db.execute(col)).rows).toHaveLength(1);
+  });
+
+  it("0022 adds hashtag_staging and post_drafts.hashtag_suggestions, rolls back and migrates forward again", async () => {
+    const col = sql`SELECT data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'post_drafts' AND column_name = 'hashtag_suggestions'`;
+    expect((await h.db.execute(col)).rows).toEqual([{ data_type: "ARRAY", is_nullable: "NO", column_default: "'{}'::text[]" }]);
+    expect((await h.db.execute(sql`SELECT to_regclass('hashtag_staging')::text AS t`)).rows).toEqual([{ t: "hashtag_staging" }]);
+    await rollBackTo("0022_hashtag_suggestions");
+    expect((await h.db.execute(col)).rows).toEqual([]);
+    expect((await h.db.execute(sql`SELECT to_regclass('hashtag_staging') AS t`)).rows).toEqual([{ t: null }]);
+    await runMigrations(TEST_URL!);
+    expect((await h.db.execute(col)).rows).toHaveLength(1);
+  });
+
+  it("0021 adds post_drafts.handle_pick (jsonb, nullable), rolls back and migrates forward again", async () => {
+    const col = sql`SELECT data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'post_drafts' AND column_name = 'handle_pick'`;
+    // Nullable with no default: drafts composed before this read NULL and keep the handles they went out with
+    expect((await h.db.execute(col)).rows).toEqual([{ data_type: "jsonb", is_nullable: "YES", column_default: null }]);
+    await rollBackTo("0021_draft_handle_pick");
     expect((await h.db.execute(col)).rows).toEqual([]);
     await runMigrations(TEST_URL!);
     expect((await h.db.execute(col)).rows).toHaveLength(1);

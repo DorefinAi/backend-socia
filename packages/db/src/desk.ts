@@ -2,7 +2,7 @@
 // audit row, and the live event commit together or not at all.
 
 import {
-  COPY_UNDO_SECONDS, LEASE_SECONDS, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus,
+  COPY_UNDO_SECONDS, LEASE_SECONDS, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus, reporterKey,
   type DraftAction, type DraftStatus, type RejectReason,
 } from "@socia/core";
 import { randomUUID } from "node:crypto";
@@ -10,7 +10,7 @@ import { and, count, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { audit } from "./audit";
 import type { Db, Executor } from "./client";
 import { notify } from "./events";
-import { handleDirectory, orgs, postDrafts, publishJobs, publishedPosts, users } from "./schema";
+import { REPORTER_SOURCE, handleDirectory, hashtagStaging, orgs, postDrafts, publishJobs, publishedPosts, users, type DraftHandlePick } from "./schema";
 
 export interface Actor {
   id: string;
@@ -148,11 +148,20 @@ export interface DraftPatch {
   mentions?: string[];
 }
 
+export interface UpdateDraftOptions {
+  /**
+   * Every handle in the desk's reporter list, lower-cased without the @ (the API reads
+   * apps/worker/config/reporter-handles.json). Two jobs: a reporter's handle counts as a verified handle
+   * an editor may add, and adding one teaches us the file-name token it belongs to.
+   */
+  reporterHandles?: ReadonlySet<string>;
+}
+
 /**
  * Save the operator's edits. The client sends the version it loaded; a different version on the
  * server means a colleague saved in between, and the 409 carries the current copy for a diff.
  */
-export async function updateDraft(db: Db, actor: Actor, draftId: string, version: number, patch: DraftPatch): Promise<Draft> {
+export async function updateDraft(db: Db, actor: Actor, draftId: string, version: number, patch: DraftPatch, opts: UpdateDraftOptions = {}): Promise<Draft> {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
     if (draft.version !== version) {
@@ -160,7 +169,7 @@ export async function updateDraft(db: Db, actor: Actor, draftId: string, version
     }
     requireLease(draft, actor);
 
-    if (patch.mentions) await assertVerifiedMentions(tx, actor.orgId, patch.mentions, draft);
+    if (patch.mentions) await assertVerifiedMentions(tx, actor.orgId, patch.mentions, draft, opts.reporterHandles);
 
     // A draft with no card asked for (phase 1, card_rev 0) stays without one when its card text changes
     const cardChanged = patch.cardHeadline !== undefined && patch.cardHeadline.trim() !== draft.cardHeadline && draft.cardRev > 0;
@@ -179,9 +188,154 @@ export async function updateDraft(db: Db, actor: Actor, draftId: string, version
       .returning();
 
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.edit", entityType: "post_draft", entityId: draftId, before: pickEditable(draft), after: pickEditable(updated!) });
+    // An editor putting a reporter's handle on a draft tells us whose byline that file name means
+    if (patch.mentions) await learnReporterTokens(tx, actor, draft, patch.mentions, opts.reporterHandles);
+    // A hashtag the editor typed that no rule of ours produced is a rule we are missing
+    if (patch.hashtags) await stageNewHashtags(tx, actor, draft, patch.hashtags);
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
     return updated!;
   });
+}
+
+/** How many example headlines a staged hashtag keeps, newest first */
+const HASHTAG_EXAMPLES = 5;
+
+/**
+ * The write-back loop for hashtags: what the desk tags that we do not.
+ *
+ * A breaking post carries the footer tag and nothing else automatically — the topic rules are offered,
+ * not applied, because applying them was wrong far more often than right. So every other hashtag on a
+ * published post was typed by an editor, and that is the most direct evidence there is of a rule the
+ * desk wants and we do not have. Each one is counted here with a few example headlines, for the weekly
+ * pass that decides whether it earns a rule and which keywords should fire it.
+ *
+ * Nothing staged here is ever tagged automatically. A row is a question for a human: the tag the desk
+ * reached for, how often, and on what kind of story. Accepting one of our own suggestions is not staged
+ * — that is the rule working, not a gap.
+ */
+async function stageNewHashtags(tx: Executor, actor: Actor, draft: Draft, hashtags: string[]): Promise<void> {
+  const known = new Set(
+    [...draft.hashtags, ...draft.hashtagSuggestions].map((t) => t.replace(/^#/, "").toLowerCase()),
+  );
+  const added = new Map<string, string>();
+  for (const raw of hashtags) {
+    const tag = raw.trim();
+    const key = tag.replace(/^#/, "").toLowerCase();
+    if (!key || known.has(key) || added.has(key)) continue;
+    added.set(key, tag.startsWith("#") ? tag : `#${tag}`);
+  }
+  if (!added.size) return;
+
+  const example = { draftId: draft.id, headline: draft.cardHeadline.slice(0, 200), at: new Date().toISOString() };
+  for (const [tagKey, tag] of added) {
+    await tx
+      .insert(hashtagStaging)
+      .values({ orgId: actor.orgId, tag, tagKey, uses: 1, examples: [example] })
+      .onConflictDoUpdate({
+        target: [hashtagStaging.orgId, hashtagStaging.tagKey],
+        set: {
+          uses: sql`${hashtagStaging.uses} + 1`,
+          lastSeenAt: sql`now()`,
+          // Newest first, capped — enough to see what kind of story it goes on without growing forever
+          examples: sql`(
+            SELECT COALESCE(jsonb_agg(e), '[]'::jsonb)
+            FROM (
+              SELECT e FROM jsonb_array_elements(${JSON.stringify([example])}::jsonb || ${hashtagStaging.examples}) AS e
+              LIMIT ${HASHTAG_EXAMPLES}
+            ) t
+          )`,
+        },
+      });
+  }
+  await audit(tx, {
+    orgId: actor.orgId, actorId: actor.id, action: "hashtag.staged", entityType: "post_draft", entityId: draft.id,
+    before: { tags: [] }, after: { tags: [...added.values()] },
+  });
+}
+
+/**
+ * The write-back loop that keeps the reporter list from decaying.
+ *
+ * A breaking file name carries a reporter token ("...NDR_PK_AGARWAL_BIG"). When the list does not know
+ * that token the post goes out with no byline and the token is recorded on the draft. If an editor then
+ * adds a reporter's handle by hand, that is the desk telling us the token belongs to that reporter: it is
+ * stored as an alias in handle_directory (source "reporter"), and the worker merges it into the list on
+ * its next reload, so the same file name resolves by itself from then on.
+ *
+ * Only handles the desk already lists as reporters are learned from. Any other handle an editor adds —
+ * a district police handle, a minister — says nothing about whose byline the file carries, and learning
+ * from it would put that handle on every future story by the same reporter.
+ */
+async function learnReporterTokens(tx: Executor, actor: Actor, draft: Draft, mentions: string[], reporterHandles?: ReadonlySet<string>): Promise<void> {
+  if (!reporterHandles?.size) return;
+  const pick = draft.handlePick as DraftHandlePick | null;
+  // jsonb from the database: never trusted to have the shape the type claims
+  const token = typeof pick?.reporterToken === "string" ? pick.reporterToken : null;
+  if (!token) return;
+  // The name already resolved to a reporter, so this edit is about something else — a second byline, a
+  // correction. Learning from it would hand the name to two reporters at once, and a name two reporters
+  // claim is then tagged for NEITHER of them, on every later story that carries it.
+  if (Array.isArray(pick?.handles) && pick.handles.some((h) => h?.reason === "reporter")) return;
+  const key = reporterKey(token);
+  if (!key) return;
+  const had = new Set(draft.mentions.map((m) => m.replace(/^@/, "").toLowerCase()));
+  const added = [
+    ...new Map(
+      mentions
+        .map((m) => m.replace(/^@/, ""))
+        .filter((h) => !had.has(h.toLowerCase()) && reporterHandles.has(h.toLowerCase()))
+        .map((h) => [h.toLowerCase(), h] as const),
+    ).values(),
+  ];
+
+  for (const handle of added) {
+    const [row] = await tx
+      .select({ id: handleDirectory.id })
+      .from(handleDirectory)
+      .where(
+        and(
+          eq(handleDirectory.orgId, actor.orgId),
+          eq(handleDirectory.platform, "x"),
+          eq(handleDirectory.source, REPORTER_SOURCE),
+          sql`lower(ltrim(${handleDirectory.handle}, '@')) = ${handle.toLowerCase()}`,
+        ),
+      )
+      .limit(1);
+    if (row) {
+      // Appended in one statement, so two editors teaching two names at the same moment cannot lose one
+      // of them to a read-modify-write. The guard makes a name we already hold a no-op.
+      //
+      // verified_at doubles as the directory's change stamp — dictionaryFingerprint is built from the
+      // row count and max(verified_at) — so bumping it is what makes the worker reload and start
+      // resolving the new name. A row an admin has UN-verified stays un-verified: they took that handle
+      // out of use on purpose, and nothing here may put it back. verified_by is left alone either way:
+      // it records who vouched for the handle, not who taught us a name for it.
+      const [changed] = await tx
+        .update(handleDirectory)
+        .set({
+          aliases: sql`array_append(${handleDirectory.aliases}, ${key})`,
+          verifiedAt: sql`CASE WHEN ${handleDirectory.verifiedAt} IS NULL THEN NULL ELSE now() END`,
+        })
+        .where(and(eq(handleDirectory.id, row.id), sql`NOT (${handleDirectory.aliases} @> ARRAY[${key}]::text[])`))
+        .returning({ id: handleDirectory.id });
+      if (!changed) continue;
+    } else {
+      await tx.insert(handleDirectory).values({
+        orgId: actor.orgId,
+        entityName: handle,
+        aliases: [key],
+        platform: "x",
+        handle: `@${handle}`,
+        source: REPORTER_SOURCE,
+        verifiedAt: sql`now()`,
+        verifiedBy: actor.id,
+      });
+    }
+    await audit(tx, {
+      orgId: actor.orgId, actorId: actor.id, action: "handle.reporter_token_learned", entityType: "post_draft", entityId: draft.id,
+      before: { token: key, handle: null }, after: { token: key, handle: `@${handle}` },
+    });
+  }
 }
 
 // ─── Custom card ─────────────────────────────────────────────────────────────
@@ -248,10 +402,13 @@ function pickEditable(d: Draft) {
   return { bodyText: d.bodyText, cardHeadline: d.cardHeadline, hashtags: d.hashtags, mentions: d.mentions, version: d.version };
 }
 
-/** A mention must be one the composer suggested or a verified directory handle. Never a free guess. */
-async function assertVerifiedMentions(db: Executor, orgId: string, mentions: string[], draft: Draft): Promise<void> {
+/**
+ * A mention must be one the composer suggested, a handle in the desk's own reporter list, or a verified
+ * directory handle. Never a free guess.
+ */
+async function assertVerifiedMentions(db: Executor, orgId: string, mentions: string[], draft: Draft, reporterHandles?: ReadonlySet<string>): Promise<void> {
   const suggested = new Set((draft.mentionSuggestions as { handle: string }[]).map((m) => m.handle.toLowerCase()));
-  const unknown = mentions.filter((m) => !suggested.has(m.toLowerCase()));
+  const unknown = mentions.filter((m) => !suggested.has(m.toLowerCase()) && !reporterHandles?.has(m.replace(/^@/, "").toLowerCase()));
   if (!unknown.length) return;
   const bare = unknown.map((m) => m.replace(/^@/, "").toLowerCase());
   const rows = await db

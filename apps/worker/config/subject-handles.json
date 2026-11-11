@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "_note": "The people and organisations a breaking story is about, and their X handles. Edited without a code change; the worker reads it again within a minute. Only entries with \"verified\": true are tagged, never kind \"party\". kind: person | department | party | company | institution | police. names_* / keywords_* are matched as whole words (Hindi and English) in the headline (first) or the points. District police and collectors stay in district-handles.json.",
   "entries": [
     {
@@ -1990,6 +1990,321 @@
       "source": "https://api.fxtwitter.com/UltraTechCement",
       "checkedAt": "2026-10-31",
       "note": "X profile with gold Organization badge and matching bio | X profile name 'UltraTech Cement Ltd', bio: \"UltraTech is India’s No. 1 Cement’\nVisit - http://ultratechcement.com for claim details. \nWe never ask for any advance payments for dealersh\", badge: gold Organization badge"
+    },
+    {
+      "handle": "@OmMathur_Raj",
+      "kind": "person",
+      "title": "राज्यपाल ओम माथुर",
+      "names_hi": [
+        "ओम माथुर",
+        "राज्यपाल ओम"
+      ],
+      "names_en": [
+        "Om Mathur"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 5,
+      "note": "Taken from the desk's own published output, corroborated by 5 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@SoniaGandhi",
+      "kind": "person",
+      "title": "सोनिया गांधी",
+      "names_hi": [
+        "सोनिया गांधी"
+      ],
+      "names_en": [
+        "Sonia Gandhi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 6,
+      "note": "Taken from the desk's own published output, corroborated by 6 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@RahulGandhi",
+      "kind": "person",
+      "title": "राहुल गांधी",
+      "names_hi": [
+        "राहुल गांधी"
+      ],
+      "names_en": [
+        "Rahul Gandhi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 3,
+      "note": "Taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@kharge",
+      "kind": "person",
+      "title": "कांग्रेस अध्यक्ष मल्लिकार्जुन खड़गे",
+      "names_hi": [
+        "मल्लिकार्जुन खड़गे",
+        "खड़गे"
+      ],
+      "names_en": [
+        "Mallikarjun Kharge"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 5,
+      "note": "Taken from the desk's own published output, corroborated by 5 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@KuldipIndoraINC",
+      "kind": "person",
+      "title": "कुलदीप इंदौरा",
+      "names_hi": [
+        "कुलदीप इंदौरा",
+        "इंदौरा"
+      ],
+      "names_en": [
+        "Kuldeep Indora"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 3,
+      "note": "Taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@KatariaLalchand",
+      "kind": "person",
+      "title": "लालचंद कटारिया",
+      "names_hi": [
+        "लालचंद कटारिया",
+        "कटारिया"
+      ],
+      "names_en": [
+        "Lalchand Kataria"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@MPSumedhanand",
+      "kind": "person",
+      "title": "सांसद सुमेधानंद सरस्वती",
+      "names_hi": [
+        "सुमेधानंद सरस्वती",
+        "सुमेधानंद"
+      ],
+      "names_en": [
+        "Sumedhanand Saraswati"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@priyankagandhi",
+      "kind": "person",
+      "title": "प्रियंका गांधी",
+      "names_hi": [
+        "प्रियंका गांधी"
+      ],
+      "names_en": [
+        "Priyanka Gandhi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@JM_Scindia",
+      "kind": "person",
+      "title": "केंद्रीय मंत्री ज्योतिरादित्य सिंधिया",
+      "names_hi": [
+        "ज्योतिरादित्य सिंधिया",
+        "सिंधिया"
+      ],
+      "names_en": [
+        "Jyotiraditya Scindia"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@alka_gurjar",
+      "kind": "person",
+      "title": "सांसद अलका गुर्जर",
+      "names_hi": [
+        "अलका गुर्जर"
+      ],
+      "names_en": [
+        "Alka Gurjar"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@ramlalsharmabjp",
+      "kind": "person",
+      "title": "रामलाल शर्मा",
+      "names_hi": [
+        "रामलाल शर्मा"
+      ],
+      "names_en": [
+        "Ramlal Sharma"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": false,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@ForestRajasthan",
+      "kind": "department",
+      "title": "राजस्थान वन विभाग",
+      "names_hi": [
+        "वन विभाग"
+      ],
+      "names_en": [
+        "Forest Department"
+      ],
+      "keywords_hi": [
+        "पैंथर",
+        "बाघ",
+        "टाइगर",
+        "वन्यजीव",
+        "लेपर्ड",
+        "तेंदुआ"
+      ],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 11,
+      "note": "Taken from the desk's own published output, corroborated by 11 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@RSPCB_official",
+      "kind": "department",
+      "title": "राजस्थान राज्य प्रदूषण नियंत्रण बोर्ड",
+      "names_hi": [
+        "प्रदूषण नियंत्रण बोर्ड"
+      ],
+      "names_en": [
+        "RSPCB"
+      ],
+      "keywords_hi": [
+        "AQI",
+        "प्रदूषण का स्तर",
+        "वायु गुणवत्ता"
+      ],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 4,
+      "note": "Taken from the desk's own published output, corroborated by 4 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@IMDJaipur",
+      "kind": "department",
+      "title": "मौसम विभाग जयपुर",
+      "names_hi": [
+        "मौसम विभाग",
+        "मौसम केंद्र"
+      ],
+      "names_en": [
+        "IMD Jaipur"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 3,
+      "note": "Taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@ECISVEEP",
+      "kind": "department",
+      "title": "भारत निर्वाचन आयोग",
+      "names_hi": [
+        "भारत निर्वाचन आयोग",
+        "निर्वाचन आयोग"
+      ],
+      "names_en": [
+        "Election Commission of India"
+      ],
+      "keywords_hi": [
+        "एक देश एक चुनाव"
+      ],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 3,
+      "note": "Taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@Swachh_Jaipur",
+      "kind": "department",
+      "title": "नगर निगम जयपुर, स्वच्छता",
+      "names_hi": [
+        "नगर निगम जयपुर"
+      ],
+      "names_en": [
+        "Swachh Jaipur"
+      ],
+      "keywords_hi": [
+        "सफाई",
+        "कचरा"
+      ],
+      "keywords_en": [],
+      "verified": false,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@BSF_India",
+      "kind": "institution",
+      "title": "सीमा सुरक्षा बल",
+      "names_hi": [
+        "सीमा सुरक्षा बल",
+        "बीएसएफ",
+        "तनोट"
+      ],
+      "names_en": [
+        "BSF"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "evidence": 3,
+      "note": "Taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
     }
   ],
   "checkedAt": "2026-10-31T10:08:28+00:00"

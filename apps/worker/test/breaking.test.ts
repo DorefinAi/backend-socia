@@ -153,6 +153,21 @@ describe("BreakingShareSource (no database)", () => {
     const [draft] = await h.db.select().from(postDrafts);
     expect(draft).toMatchObject({ status: "ready", cardRev: 0, hashtags: ["#RajasthanWithFirstIndia"], mentions: ["@KotaPolice"] });
     expect(draft!.bodyText.startsWith("#Kota: कोटा में हिस्ट्रीशीटर")).toBe(true);
+    // Why those handles, stored with the draft for the desk: the class the rules hung off, the reason,
+    // and the reporter name the file carried. "REPORTER" is the fixture's placeholder for a real name,
+    // so it resolves to no byline and is reported rather than guessed at.
+    expect(draft!.handlePick).toMatchObject({ cls: "incident", handles: [{ handle: "@KotaPolice", reason: "police" }], reporterToken: "REPORTER" });
+    expect((draft!.handlePick as { why: string }).why).toMatch(/crime, fire or accident/);
+    // A crime story carries no byline anyway, so the unknown name is not raised as something to look at
+    // — but it is still stored, which is what lets an editor's own edit teach it. Kota has a city and a
+    // rural force, and the draft says which one went on the post.
+    expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).toMatch(/Kota has 2 police handles/);
+    expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).not.toMatch(/reporter list/);
+    expect(draft!.composeVersion.startsWith("b5.")).toBe(true);
+    // The footer is the only hashtag that goes on a post by itself. This org has no topic rules, so
+    // there is nothing to offer either; packages/core covers the case where a rule matches.
+    expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
+    expect(draft!.hashtagSuggestions).toEqual([]);
 
     // A restart skips the first-start files and the ingested ones without reading them again
     expect(await settle(ingestFor())).toBe(0);

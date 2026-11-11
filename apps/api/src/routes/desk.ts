@@ -12,6 +12,7 @@ import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "
 import { and, count, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
+import { ReporterHandles } from "../handle-keywords";
 import { NOT_A_CHECK, breakingFields, cardUrl, draftView, storyLabels } from "../views";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
@@ -108,6 +109,9 @@ function filterWhere(q: { district?: string; big?: boolean; update?: boolean; de
 }
 
 export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage, config }) => {
+  /** The desk's own reporters (apps/worker/config/reporter-handles.json), re-read when the file changes */
+  const reporters = new ReporterHandles(app.log);
+
   /** Phase 1 posts by hand: nothing that would reach the X API is accepted */
   const xApiOff = () => {
     if (config.phase === 1) throw new HttpError(409, "phase_off", PHASE_OFF_MESSAGE);
@@ -454,7 +458,9 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const { user } = guard(req);
       requirePermission(user, "draft.edit", "x");
       const { version, ...patch } = req.body;
-      await updateDraft(db, actor(user), req.params.id, version, patch);
+      // The desk's reporter list: a reporter's handle may be added without a directory row, and adding
+      // one teaches us the file-name token it belongs to (packages/db desk.ts learnReporterTokens)
+      await updateDraft(db, actor(user), req.params.id, version, patch, { reporterHandles: await reporters.handles() });
       return view(user, req.params.id);
     },
   );

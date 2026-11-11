@@ -260,13 +260,16 @@ describe("parseBreaking", () => {
 });
 
 describe("composeBreaking", () => {
-  it("writes the house layout: a category tag, and the district police because the story has them acting", () => {
+  it("writes the house layout: the footer tag alone, and the district police because the story is an incident", () => {
     const { text, d } = post("btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt");
     expect(text.startsWith("#Kota: कोटा में हिस्ट्रीशीटर")).toBe(true);
-    // "वारदात" → #RajasthanPolice; "दादाबाड़ी थाना पुलिस कर रही बदमाशों की तलाश" → @KotaPolice
-    expect(text.endsWith("\n\n#RajasthanWithFirstIndia #RajasthanPolice @KotaPolice")).toBe(true);
+    // The footer is the only tag applied on its own; "दादाबाड़ी थाना पुलिस कर रही बदमाशों की तलाश" → @KotaPolice
+    expect(text.endsWith("\n\n#RajasthanWithFirstIndia @KotaPolice")).toBe(true);
+    // "वारदात" still matches #RajasthanPolice — it is offered to the desk, not put on the post
+    expect(d.hashtagSuggestions).toContain("#RajasthanPolice");
+    expect(text).not.toContain("#RajasthanPolice");
     expect(text).toContain("तलवारे और डंडे लेकर आए बदमाशों ने किया हमला, दादाबाड़ी");
-    expect(d.composeVersion).toBe("b2.0");
+    expect(d.composeVersion).toBe("b5.0");
   });
 
   it("adds the Hindi town tag and cuts the points right after a linking word with ...", () => {
@@ -289,16 +292,20 @@ describe("composeBreaking", () => {
     const s = parseBreaking("x\nदिल्ली\nभाजपा मुख्यालय में बैठक\nबिंदु एक", "x_breaking.txt", book);
     const d = composeBreaking(s, rules, book, { topics });
     expect(d.bodyText.startsWith("#Delhi: ")).toBe(true);
-    expect([d.hashtags, d.mentions]).toEqual([["#FirstIndiaNews", "#BJP"], []]);
+    expect([d.hashtags, d.mentions]).toEqual([["#FirstIndiaNews"], []]);
+    expect(d.hashtagSuggestions).toEqual(["#BJP"]); // offered, not applied
     const crime = composeBreaking(parseBreaking("x\nदिल्ली\nहत्या का आरोपी गिरफ्तार\nपुलिस ने की कार्रवाई", "x_breaking.txt", book), rules, book, { topics });
     expect([crime.hashtags, crime.mentions]).toEqual([["#FirstIndiaNews"], []]);
+    // A national story is never even offered a Rajasthan-only tag
+    expect(crime.hashtagSuggestions).toEqual([]);
   });
 
-  it("carries at most 3 hashtags, the footer first, and stays within 280 with tags and handles", () => {
+  it("puts the footer tag on the post and offers the topic tags, headline match first", () => {
     const points = Array.from({ length: 8 }, (_, i) => `सड़क हादसे में ${i} लोग घायल, मानसून की भारी बारिश के बाद ट्रेन रद्द`);
     const s = parseBreaking(`जयपुर\nपुलिस ने हत्या के आरोपी को किया गिरफ्तार\n${points.join("\n")}`, "x_breaking.txt", book);
     const d = composeBreaking(s, rules, book, { topics });
-    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia", "#RajasthanPolice", "#RoadAccident"]); // the headline's tag first
+    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
+    expect(d.hashtagSuggestions).toEqual(["#RajasthanPolice", "#RoadAccident"]); // the headline's tag first
     expect(d.mentions).toEqual(["@jaipur_police"]);
     expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(280);
   });
@@ -432,8 +439,10 @@ describe("handle rules", () => {
   const story = (headline: string, district = "Jaipur", points: string[] = []) => ({ headline, points, district, rajasthan: true, leaderPost: false });
   const acting = (text: string) => [...actingAgents(text)].sort();
 
-  it("tags police and the collector when the story has them acting, the government on its decisions", () => {
-    expect(pickHandles(story("जयपुर में चोरी का आरोपी गिरफ्तार"), rules)).toEqual([]); // crime words alone tag nobody
+  it("tags the district police on any incident, the collector on administration, the government on its decisions", () => {
+    // Crime words alone now DO tag the district police: 248 of 302 police tags in the published corpus
+    // were the only handle on the post, and "बेकाबू कार ने मारी टक्कर" names no police at all
+    expect(pickHandles(story("जयपुर में चोरी का आरोपी गिरफ्तार"), rules).map((h) => h.handle)).toEqual(["jaipur_police"]);
     expect(pickHandles(story("पुलिस ने चोरी के आरोपी को किया गिरफ्तार"), rules).map((h) => h.handle)).toEqual(["jaipur_police"]);
     expect(pickHandles(story("जिला कलेक्टर ने की जनसुनवाई"), rules).map((h) => h.handle)).toEqual(["DcDmJaipur"]);
     expect(pickHandles(story("राज्य सरकार ने जारी किए आदेश"), rules).map((h) => h.handle)).toEqual(["RajGovOfficial"]);
@@ -464,12 +473,16 @@ describe("handle rules", () => {
     expect(acting("SP को सौंपा ज्ञापन")).toEqual([]);
   });
 
-  it("never tags anyone on party or election news, or in a leader's post", () => {
-    expect(pickHandles(story("मुख्यमंत्री भजनलाल शर्मा ने भाजपा प्रत्याशी के लिए किया जनसंपर्क"), rules)).toEqual([]);
+  it("tags the leader on campaign copy and nobody in a leader's own post, never the police beside a party", () => {
+    // Campaign copy is political: it tags the leader (and the party, where party rules are loaded) — the
+    // old blanket "party news tags nobody" guard dropped 99 party tags across the published corpus
+    expect(pickHandles(story("मुख्यमंत्री भजनलाल शर्मा ने भाजपा प्रत्याशी के लिए किया जनसंपर्क"), rules).map((h) => h.handle)).toEqual(["BhajanlalBjp"]);
+    // What the old guard was protecting is still enforced: no police handle on political copy
+    expect(pickHandles(story("भाजपा प्रत्याशी के समर्थन में जनसंपर्क, पुलिस ने संभाला मोर्चा"), rules).map((h) => h.reason)).not.toContain("police");
     expect(pickHandles({ ...story("पुलिस ने किया गिरफ्तार"), leaderPost: true }, rules)).toEqual([]);
-    // Not because Tonk has no handle (it has a verified one): the police are not named as acting
+    // An incident tags the district's own verified handle, named as acting or not
     expect(rules.districts.tonk?.police.length).toBeGreaterThan(0);
-    expect(pickHandles(story("चोरी का आरोपी गिरफ्तार", "Tonk"), rules)).toEqual([]);
+    expect(pickHandles(story("चोरी का आरोपी गिरफ्तार", "Tonk"), rules).map((h) => h.reason)).toEqual(["police"]);
     expect(pickHandles(story("टोंक पुलिस ने चोरी का आरोपी किया गिरफ्तार", "Tonk"), rules).map((h) => h.reason)).toEqual(["police"]);
   });
 
@@ -507,7 +520,7 @@ describe("subject handles", () => {
     (m) => problems.push(m),
   );
   const story = (headline: string, points: string[] = [], rajasthan = true) => ({ headline, points, district: "Jaipur", rajasthan, leaderPost: false });
-  const handles = (headline: string, points: string[] = [], rajasthan = true) => pickHandles(story(headline, points, rajasthan), rules, subjects).map((h) => h.handle);
+  const handles = (headline: string, points: string[] = [], rajasthan = true) => pickHandles(story(headline, points, rajasthan), rules, { subjects }).map((h) => h.handle);
 
   it("keeps only verified, non-party entries and reports malformed ones instead of failing", () => {
     expect(subjects.count).toBe(2);
@@ -526,25 +539,29 @@ describe("subject handles", () => {
     expect(handles("ASHOK GEHLOT met railway officials")).toEqual(["ashokgehlot51"]);
     expect(handles("मुख्यमंत्री भजनलाल शर्मा और अशोक गहलोत रेलवे स्टेशन पहुंचे")).toEqual(["BhajanlalBjp", "ashokgehlot51"]);
     expect(handles("रेलवे स्टेशन पर भीड़", [], false)).toEqual([]); // national: nobody
-    const pick = pickHandles(story("उत्तर पश्चिम रेलवे ने चलाई नई ट्रेन"), rules, subjects)[0];
+    const pick = pickHandles(story("उत्तर पश्चिम रेलवे ने चलाई नई ट्रेन"), rules, { subjects })[0];
     expect(pick).toEqual({ handle: "NWRailways", reason: "subject", title: "North Western Railway" });
   });
 
-  it("with the shipped file, tags no police or department that is not acting, and no person on a common or partial name", () => {
+  it("with the shipped file, tags no state institution that is not acting, and no person on a common or partial name", () => {
     const shipped = parseSubjectHandles(json("../../../apps/worker/config/subject-handles.json"));
-    const real = (headline: string, points: string[] = []) => pickHandles(story(headline, points), rules, shipped).map((h) => h.handle);
-    expect(real("जयपुर पुलिस पर पथराव")).toEqual([]); // the police are the target
-    expect(real("राजस्थान पुलिस के जवान की हादसे में मौत")).toEqual([]);
-    expect(real("DGP से मिले अधिकारी")).toEqual([]); // Police HQ too: only acting
+    const real = (headline: string, points: string[] = []) => pickHandles(story(headline, points), rules, { subjects: shipped }).map((h) => h.handle);
+    // An incident in the district tags the district's police, whoever the copy makes the actor — the
+    // force is still the one in the story when it is the target or the victim
+    expect(real("जयपुर पुलिस पर पथराव")).toEqual(["jaipur_police"]);
+    expect(real("राजस्थान पुलिस के जवान की हादसे में मौत")).toEqual(["jaipur_police"]);
+    expect(real("ट्रेन से कटकर युवक की मौत", ["रेलवे ट्रैक पर मिला शव"])).toEqual(["jaipur_police"]);
+    expect(real("खींवसर में सड़क हादसा")).toEqual(["jaipur_police"]); // a town, not the minister
+    expect(real("संजय शर्मा नाम के आरोपी को पकड़ा")).toEqual(["jaipur_police"]); // a common name: no subject
+    // State institutions are still tagged only when the copy names them acting
+    expect(real("DGP से मिले अधिकारी")).toEqual([]);
     expect(real("डीजीपी राजीव शर्मा ने ली बैठक")).toEqual(["PoliceRajasthan"]);
     expect(real("राज्य सरकार के खिलाफ धरना")).toEqual([]);
     expect(real("राज्य सरकार का बड़ा फैसला")).toEqual(["RajGovOfficial"]); // deciding: still the government
-    expect(real("ट्रेन से कटकर युवक की मौत", ["रेलवे ट्रैक पर मिला शव"])).toEqual([]);
-    expect(real("खींवसर में सड़क हादसा")).toEqual([]); // a town, not the minister
-    expect(real("संजय शर्मा नाम के आरोपी को पकड़ा")).toEqual([]); // a common name
     expect(real("शिवराज और हेमंत मीणा पहुंचे")).toEqual([]);
     // Still tagged: a named person, a department acting, the police acting
     expect(real("गजेंद्र सिंह खींवसर ने किया अस्पताल का दौरा")).toEqual(["GajendraKhimsar"]);
+    // An exam result is not an election bulletin: bare "परिणाम" only means one in an election's company
     expect(real("आरपीएससी ने जारी किया परिणाम")).toEqual(["RPSC1"]);
     expect(real("जयपुर पुलिस ने पकड़ा चोर")).toEqual(["jaipur_police"]);
   });

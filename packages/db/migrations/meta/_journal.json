@@ -148,6 +148,20 @@
       "when": 1794258175817,
       "tag": "0020_user_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794341863044,
+      "tag": "0021_draft_handle_pick",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794348387953,
+      "tag": "0022_hashtag_suggestions",
+      "breakpoints": true
     }
   ]
 }

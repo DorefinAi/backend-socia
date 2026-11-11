@@ -5,8 +5,11 @@
 // "desk"), which are suggested after the files' picks.
 
 import { createHash } from "node:crypto";
-import { LEADER_POST, asFileTags, composeBreaking, deskHandleRules, hashtagGazetteer, type Composer, type DeskHandleRules, type HashtagGazetteer } from "@socia/core";
-import { activeHashtagRules, dictionaryFingerprint, handleDirectory, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
+import {
+  LEADER_POST, asFileTags, composeBreaking, deskHandleRules, hashtagGazetteer, mergeReporterTokens, slotFromTags,
+  type Composer, type DeskHandleRules, type HashtagGazetteer, type LearnedReporterToken, type ReporterRules,
+} from "@socia/core";
+import { REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { nextStoryIsolated } from "./isolate";
 import type { PhaseOneData } from "../data-files";
@@ -15,7 +18,7 @@ import type { Logger } from "pino";
 const RELOAD_MS = 60_000;
 
 export class Dictionaries {
-  private cached: { composer: Composer; topics: HashtagGazetteer; desk: DeskHandleRules; version: string; at: number } | null = null;
+  private cached: { composer: Composer; topics: HashtagGazetteer; desk: DeskHandleRules; learnedReporters: LearnedReporterToken[]; version: string; at: number } | null = null;
 
   constructor(private readonly db: Db, private readonly orgId: string) {}
 
@@ -36,7 +39,14 @@ export class Dictionaries {
         .from(handleDirectory)
         .where(and(eq(handleDirectory.orgId, this.orgId), eq(handleDirectory.platform, "x"), eq(handleDirectory.source, "desk"), isNotNull(handleDirectory.verifiedAt))),
     );
-    this.cached = { composer, topics, desk, version, at: Date.now() };
+    // File-name tokens editors taught us by adding a reporter's handle to a draft by hand (desk.ts). The
+    // fingerprint above counts every verified directory row, so a newly learned token reloads these too.
+    const reporterRows = await this.db
+      .select({ handle: handleDirectory.handle, entityName: handleDirectory.entityName, aliases: handleDirectory.aliases })
+      .from(handleDirectory)
+      .where(and(eq(handleDirectory.orgId, this.orgId), eq(handleDirectory.platform, "x"), eq(handleDirectory.source, REPORTER_SOURCE), isNotNull(handleDirectory.verifiedAt)));
+    const learnedReporters = reporterRows.flatMap((r) => r.aliases.map((token) => ({ handle: r.handle, token, name: r.entityName })));
+    this.cached = { composer, topics, desk, learnedReporters, version, at: Date.now() };
     return this.cached;
   }
 
@@ -46,14 +56,28 @@ export class Dictionaries {
   }
 
   /** The org's active topic hashtag rules, for the breaking posts' category tags; the desk-added handles */
-  async topics(): Promise<{ topics: HashtagGazetteer; desk: DeskHandleRules; version: string }> {
-    const { topics, desk, version } = await this.load();
-    return { topics, desk, version };
+  async topics(): Promise<{ topics: HashtagGazetteer; desk: DeskHandleRules; learnedReporters: LearnedReporterToken[]; version: string }> {
+    const { topics, desk, learnedReporters, version } = await this.load();
+    return { topics, desk, learnedReporters, version };
   }
 }
 
 /** A short, stable tag for a dictionary fingerprint, for the composeVersion */
 const shortVersion = (v: string) => createHash("sha1").update(v).digest("hex").slice(0, 8);
+
+/**
+ * The reporter list plus the names editors taught us, merged once per version rather than once per
+ * story. Both inputs are already cached for a minute each, so this only rebuilds when one really
+ * changes — which also means a contested name is reported once per change instead of once per post.
+ */
+let mergedRoster: { key: string; value: ReporterRules } | null = null;
+function mergedReporters(roster: ReporterRules, rosterVersion: string, learned: LearnedReporterToken[], dictVersion: string, log: Logger): ReporterRules {
+  const key = `${rosterVersion}|${dictVersion}|${learned.length}`;
+  if (mergedRoster?.key === key) return mergedRoster.value;
+  const value = mergeReporterTokens(roster, learned, (m) => log.warn({ problem: m }, "learned reporter name skipped"));
+  mergedRoster = { key, value };
+  return value;
+}
 
 export interface ComposeOptions {
   /** Phase 1: a draft goes straight to the queue with no card; "Add card" asks for one */
@@ -69,11 +93,20 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   if (!opts.data) throw new Error("Breaking stories need the places and handles files (compose started without them)");
   const { value: book, version: placesVersion } = await opts.data.places.get();
   const { value: rules, version: handlesVersion } = await opts.data.handles.get();
-  const { value: subjects, version: subjectsVersion } = await opts.data.subjects.get();
-  const { topics, desk, version: topicsVersion } = await dictionaries.topics();
+  const [{ value: subjects, version: subjectsVersion }, { value: roster, version: reportersVersion }, { value: parties, version: partiesVersion }, dict] = await Promise.all([
+    opts.data.subjects.get(),
+    opts.data.reporters.get(),
+    opts.data.parties.get(),
+    dictionaries.topics(),
+  ]);
+  const { topics, desk, learnedReporters, version: topicsVersion } = dict;
   const tags = asFileTags(story.fileTags);
   const place = book.district(story.district);
   const headline = story.headline ?? "";
+  // The reporter and the district the file name states. The copy's district still decides (it sets the
+  // hashtag); the file name fills a gap, cross-checks, and is the only source of the byline.
+  const slot = slotFromTags(tags);
+  const reporters = mergedReporters(roster, reportersVersion, learnedReporters, topicsVersion, log);
   const out = composeBreaking(
     {
       headline,
@@ -83,21 +116,43 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       // No place: Rajasthan, unless the file came from the national desk
       rajasthan: place ? place.rajasthan : !tags?.other.includes("NWS"),
       leaderPost: LEADER_POST.test(headline),
+      reporterToken: slot.reporterToken,
+      fileDistrict: slot.district,
+      unknownBureauCode: slot.unknownCode,
     },
     rules,
     book,
-    { version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.t${shortVersion(topicsVersion)}`, topics, subjects, desk },
+    {
+      version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.r${reportersVersion}.y${partiesVersion}.t${shortVersion(topicsVersion)}`,
+      topics, subjects, desk, reporters, parties,
+    },
   );
   const needsCheck = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
   const content = {
     bodyText: out.bodyText,
     cardHeadline: headline,
     hashtags: out.hashtags,
+    // Offered to the desk, never applied on their own
+    hashtagSuggestions: out.hashtagSuggestions,
     mentions: out.mentions,
     // The rule-picked handles are in the post already; as suggestions too, they stay valid when the post is edited
     mentionSuggestions: out.handles.map((h) => ({ handleId: `rule:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact: true })),
     composeMethod: "rules",
     composeVersion: out.composeVersion,
+    // Why these handles: the class every rule hung off, and what the desk should look at but that never
+    // blocked a tag (an unknown reporter token, an unknown district code)
+    handlePick: {
+      cls: out.cls,
+      why: out.why,
+      // The desk sees the missing byline as a line it can act on; the log keeps it out of `warnings`
+      // because it is routine and would drown the rest
+      warnings: [
+        ...out.warnings,
+        ...(out.unmatchedReporter ? [`the file names ${out.unmatchedReporter}, who is not in the reporter list, so no byline was added`] : []),
+      ],
+      handles: out.handles.map((h) => ({ handle: `@${h.handle}`, reason: h.reason, ...(h.title && { title: h.title }) })),
+      reporterToken: slot.reporterToken,
+    },
   };
 
   // A re-saved file (the ingest stage sent its story back here): rewrite the unposted draft in place
@@ -134,7 +189,15 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   await tx.update(stories).set({ status: "composed", needsCheck, updatedAt: sql`now()` }).where(eq(stories.id, story.id));
   // With no card to wait for the draft is in the queue now; otherwise the render worker announces it
   if (draft && ready) await notify(tx, story.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft.id] });
-  log.info({ storyId: story.id, draftId: draft?.id, district: story.district, hashtags: out.hashtags, handles: out.mentions }, "breaking draft composed");
+  // A reporter the list does not carry yet is routine — it is true of about 45% of files today and the
+  // name is on the draft for the desk to see — so it goes in at info and does not fill the ops log with
+  // warnings. Anything else (an unknown district code, a reporter filing from another district) is rarer
+  // and worth a warning.
+  if (out.warnings.length) log.warn({ storyId: story.id, draftId: draft?.id, cls: out.cls, warnings: out.warnings }, "breaking handles: something to look at");
+  if (out.unmatchedReporter) {
+    log.info({ storyId: story.id, draftId: draft?.id, reporterToken: out.unmatchedReporter }, "breaking handles: no byline, this reporter is not in the list");
+  }
+  log.info({ storyId: story.id, draftId: draft?.id, district: story.district, cls: out.cls, hashtags: out.hashtags, handles: out.mentions }, "breaking draft composed");
 }
 
 export async function composeNext(db: Db, dictionaries: Dictionaries, log: Logger, opts: ComposeOptions = {}): Promise<boolean> {

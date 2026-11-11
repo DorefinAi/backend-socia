@@ -85,10 +85,11 @@ const log = pino({ level: "silent" });
     expect(suggested).not.toContain("@JhalawarUpdates");
   });
 
-  it("keeps the cap of 2 with the files' picks first", async () => {
+  it("keeps the cap of 3 with the files' picks first", async () => {
     const d = await compose("cm-jhalawar", "मुख्यमंत्री भजनलाल शर्मा ने झालावाड़ और कोटा में किया लोकार्पण", "", "Jhalawar");
-    expect(d.mentions).toHaveLength(2);
+    expect(d.mentions).toHaveLength(3);
     expect(d.mentions[0]).toBe("@BhajanlalBjp");
     expect(d.mentions[1]).toBe("@JhalawarUpdates");
+    expect(d.mentions[2]).toBe("@KotaNewsDesk");
   });
 });

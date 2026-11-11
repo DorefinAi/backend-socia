@@ -1,10 +1,47 @@
-// Which official X accounts a breaking post tags: 0 to 2, chosen by rules, and only handles marked verified
-// in the editable district-handles file (apps/worker/config/district-handles.json). A wrong government tag is
-// a reputational incident, so every rule errs towards tagging nobody. The people and organisations a story is
-// about come from subject-handles.json (subjects.ts).
+// Which official X accounts a breaking post tags. Rebuilt from published output rather than from
+// guesses: 1,002 posts from @1stIndiaNews (602 from 9–10 Nov 2026, Diwali week; 400 from 30 Oct 2026, a
+// panchayat polling day), every handle and every combination counted.
+//
+// ─── WHAT THE DESK ACTUALLY DOES ─────────────────────────────────────────────
+//
+// How many handles per post:            Which roles, and how often alone:
+//   0 handles   199   19.9%               police      303 uses, 248 of them the ONLY handle (82%)
+//   1 handle    485   48.4%               collector   117 uses, 101 of them the ONLY handle (86%)
+//   2 handles   204   20.4%               politician  230 uses, usually with a party and a reporter
+//   3 handles   100   10.0%               party       101 uses, never with police or a collector
+//   4+          14     1.4%               reporter    339 uses, LAST in 290 of them (85.5%)
+//
+// Four findings drive the rules below, and each contradicts the implementation before it:
+//
+//   1. 19.9% OF POSTS TAG NOBODY. Festivals, pujas, obituaries, columns, election machinery and result
+//      bulletins. So a fallback that tags @RajGovOfficial whenever nothing else fires is wrong: it would
+//      fire on all 199. Across both windows @RajGovOfficial appeared on 83 posts, every one of them
+//      state-administration copy — the secretariat, state commissions, government employees, state
+//      schemes — and not one a district incident or a festival. It is a beat, not a fallback.
+//
+//   2. THE CEILING IS 3, NOT 2. 114 posts carried three or more handles, nearly all political. `max = 2`
+//      silently dropped the party or the reporter on every one.
+//
+//   3. POLICE AND THE COLLECTOR ARE EXCLUSIVE. An incident gets the district police and stops; an
+//      administration story gets the collector and stops. Our own reporter rode along on only 14.6% and
+//      6.0% of those, against 54–67% for political and government copy.
+//
+//   4. PARTY NEWS TAGS THE PARTY. 99 party tags in two days, every one of which the old PARTY regex
+//      dropped. What that guard was protecting is still true and still enforced: no police handle and no
+//      collector ever appears beside a party.
+//
+// ─── THE SAFETY MODEL, UNCHANGED ─────────────────────────────────────────────
+//
+// Only `verified` handles from the editable data files are ever tagged. A wrong government tag is a
+// reputational incident, so every rule still errs towards tagging nobody: a leader's own post tags
+// nobody, copy from outside Rajasthan tags no state institution, another district's officer is not ours,
+// an unknown reporter tags nobody, and nothing here can invent a handle that is not in a data file.
 
 import { fold } from "../fold";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
+import { EMPTY_PARTY_RULES, namesAnyParty, pickParty, type PartyRules } from "./parties";
+import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
+import { classify, type StoryClass } from "./storyclass";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
 
 /** One entry of district-handles.json */
@@ -14,6 +51,8 @@ export interface DistrictHandleEntry {
   role: "police" | "collector" | "govt" | "cm";
   verified: boolean;
   source?: string;
+  /** How many published posts corroborated this handle for this district */
+  evidence?: number;
 }
 
 /** district-handles.json */
@@ -30,8 +69,8 @@ export interface HandleRules {
   /** Keyed by districtKey() of the district */
   districts: Record<string, { police: string[]; collector: string[] }>;
   /**
-   * Every handle in the file, verified or not, lowercase without the @: the desk-added handles rule never tags
-   * these or their lookalikes (desk-handles.ts)
+   * Every handle in the file, verified or not, lowercase without the @: the desk-added handles rule never
+   * tags these or their lookalikes (desk-handles.ts)
    */
   all?: ReadonlySet<string>;
 }
@@ -76,35 +115,30 @@ export function parseHandleRules(json: unknown): HandleRules {
   if (root!.districts !== undefined && (typeof root!.districts !== "object" || Array.isArray(root!.districts))) fail("districts must be an object keyed by district");
   for (const [name, list] of Object.entries(root!.districts ?? {})) {
     if (name.startsWith("_")) continue;
-    const d = { police: [] as string[], collector: [] as string[] };
+    // districtKey strips everything but ASCII letters and digits, so a name written only in Devanagari
+    // would key on "" — and then every district whose name does not fold to ASCII would read that one
+    // bucket's handles. The file is keyed by English name; say so rather than tag the wrong force.
+    const key = districtKey(name);
+    if (!key) fail(`districts.${name}: a district must be keyed by its English name`);
+    // "Sawai Madhopur" and "SawaiMadhopur" are one district: merge, never let the later spelling
+    // silently replace the earlier one's verified handles
+    const d = rules.districts[key] ?? { police: [] as string[], collector: [] as string[] };
     for (const e of entries(list, `districts.${name}`)) {
       all.add(bare(e).toLowerCase());
-      if (e.verified && (e.role === "police" || e.role === "collector")) d[e.role].push(bare(e));
+      if (e.verified && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) d[e.role].push(bare(e));
     }
-    rules.districts[districtKey(name)] = d;
+    rules.districts[key] = d;
   }
   return rules;
 }
 
-// ─── Which handles a story gets ──────────────────────────────────────────────
+// ─── Acting agents: unchanged, and still needed ─────────────────────────────
 //
-// Party/election news, a leader's own post and news outside Rajasthan tag nobody. Otherwise, at most `max`:
-//   - the CM, when the headline names him;
-//   - the people and organisations the story is about (subject-handles.json), headline first;
-//   - the district police / collector, only when the story names them as acting ("पुलिस ने", "थाना पुलिस कर
-//     रही तलाश", "कलेक्टर ने", "जिला प्रशासन ने", "कलेक्टर की अध्यक्षता"): crime words alone tag nobody;
-//   - Rajasthan Police HQ when the headline names it; the state government on its own decisions;
-//   - last, handles the desk added (desk-handles.ts) whose keywords the headline or points name as whole words,
-//     unless the files above already govern that handle (their rules, e.g. "police only when acting", stand).
-// A handle picked from the headline goes before one picked from the points (desk-added ones after all the rest).
-
-export const PARTY = /भाजपा|बीजेपी|कांग्रेस|प्रत्याशी|उम्मीदवार|जनसंपर्क|चुनाव\s*प्रचार|चुनावी|पंचायत\s*चुनाव|पंचायतीराज\s*चुनाव|सरपंच\s*चुनाव|मतदान|नामांकन|रैली|प्रदेशाध्यक्ष|पीसीसी|\bBJP\b|\bCongress\b|\bINC\b/iu;
-/** The government deciding: "राज्य सरकार ने", "...का फैसला", "...के आदेश"; not "राज्य सरकार के खिलाफ धरना" */
-const GOVT_ACTS = String.raw`\s*(?:ने|(?:का|की|के)\s*(?:बड़ा\s*|बड़ी\s*|बड़े\s*|नई\s*|नया\s*)?(?:फैसला|फैसले|निर्णय|आदेश|निर्देश|योजना|घोषणा|मंजूरी|पहल|अधिसूचना))`;
-const GOVT = new RegExp(String.raw`(?:राज्य|प्रदेश)\s*सरकार${GOVT_ACTS}|सरकार\s*का\s*(?:बड़ा\s*)?फैसला|सरकार\s*ने\s*(?:जारी|लिया|दी|किया)|कैबिनेट|मंत्रिमंडल|अधिसूचना\s*जारी|आदेश\s*जारी|भजनलाल\s*सरकार`, "u");
-const CM_SUBJECT = /(?:मुख्यमंत्री|सीएम|CM)\s*(?:श्री\s*)?भजनलाल|भजनलाल\s*शर्मा/u;
-const POLICE_HQ = /पुलिस\s*मुख्यालय|डीजीपी|\bDGP\b|राजस्थान\s*पुलिस/gu;
-const DGP = /डीजीपी|DGP/u;
+// The class-driven rules below cover the shapes the desk uses most. This machinery still decides the
+// residual: the police on a NON-incident story ("पुलिस ने निकाली तिरंगा यात्रा"), the collector, police
+// headquarters, whether a police or department subject is actually acting — and, on an incident, whether
+// the officer the copy names belongs to ANOTHER district, which is the one case where a district's own
+// police must not be tagged.
 
 type Agent = "police" | "collector";
 
@@ -114,9 +148,7 @@ const AGENT_WORDS = new Map<string, Agent>([
   ...[
     "थानाधिकारी", "थानाप्रभारी", "एसएचओ", "SHO", "एसपी", "SP", "एएसपी", "ASP", "डीएसपी", "DSP", "डीसीपी", "DCP", "एडीसीपी", "ADCP", "सीओ", "कोतवाल",
     "सीआई", "CI", "एसआई", "SI", "एएसआई", "ASI", "डीएसटी", "DST",
-  ].map(
-    (w) => [fold(w), "police"] as [string, Agent],
-  ),
+  ].map((w) => [fold(w), "police"] as [string, Agent]),
   ...["कलेक्टर", "कलक्टर", "जिलाधिकारी", "जिलाधीश", "डीएम", "DM"].map((w) => [fold(w), "collector"] as [string, Agent]),
 ]);
 /** Two-word titles; "पुलिस" alone is the institution (below). The flag: a name may follow (a person's title) */
@@ -156,6 +188,17 @@ const OTHER_FORCE = folded([
   "ACB", "एसीबी", "SOG", "एसओजी", "CBI", "सीबीआई", "ED", "ईडी", "NIA", "एनआईए", "ATS", "एटीएस", "NCB", "एनसीबी", "CID", "सीआईडी", "GRP", "जीआरपी",
   "RPF", "आरपीएफ", "BSF", "बीएसएफ", "CISF", "सीआईएसएफ", "CRPF", "सीआरपीएफ", "आर्मी", "सेना",
 ]);
+const POLICE_HQ = /पुलिस\s*मुख्यालय|डीजीपी|\bDGP\b|राजस्थान\s*पुलिस/gu;
+const DGP = /डीजीपी|DGP/u;
+const CM_SUBJECT = /(?:मुख्यमंत्री|सीएम|CM)\s*(?:श्री\s*)?भजनलाल|भजनलाल\s*शर्मा/u;
+/**
+ * The state government DECIDING: "राज्य सरकार ने", "...का फैसला", "...के आदेश"; never "राज्य सरकार के
+ * खिलाफ धरना". Kept as a precise test rather than letting the `government` class tag @RajGovOfficial on
+ * its own: the class fires on any departmental word, and the handle's 83 posts were all the secretariat,
+ * a state commission, a state scheme or government employees — a beat, not everything with a विभाग in it.
+ */
+const GOVT_ACTS = String.raw`\s*(?:ने|(?:का|की|के)\s*(?:बड़ा\s*|बड़ी\s*|बड़े\s*|नई\s*|नया\s*)?(?:फैसला|फैसले|निर्णय|आदेश|निर्देश|योजना|घोषणा|मंजूरी|पहल|अधिसूचना))`;
+const GOVT = new RegExp(String.raw`(?:राज्य|प्रदेश)\s*सरकार${GOVT_ACTS}|सरकार\s*का\s*(?:बड़ा\s*)?फैसला|सरकार\s*ने\s*(?:जारी|लिया|दी|किया)|कैबिनेट|मंत्रिमंडल|अधिसूचना\s*जारी|आदेश\s*जारी|भजनलाल\s*सरकार`, "u");
 const NE = fold("ने");
 const BY = fold("द्वारा");
 const TO = fold("को");
@@ -198,12 +241,21 @@ function actsAt(t: string[], j: number, police: boolean): boolean {
   return false;
 }
 
+/** Agents the text names as acting, split by whether they are this story's district or another's */
+export interface ActingAgents {
+  /** Ours: the district police / collector of this story */
+  ours: Set<Agent>;
+  /** Named as acting, but belonging to another district ("बूंदी SP ने" in a Jaipur story) */
+  elsewhere: Set<Agent>;
+}
+
 /**
- * Which of the district police and the collector the text names as acting, clause by clause. `elsewhere` says a
- * word names another district: "बूंदी SP ने" in a Jaipur story is not Jaipur's police.
+ * Which of the district police and the collector the text names as acting, clause by clause. `elsewhere`
+ * says a word names another district: "बूंदी SP ने" in a Jaipur story is not Jaipur's police, and it is
+ * reported separately so an incident rule can decline to tag our own force.
  */
-export function actingAgents(text: string, elsewhere: (word: string) => boolean = () => false): Set<Agent> {
-  const out = new Set<Agent>();
+export function agentsActing(text: string, elsewhere: (word: string) => boolean = () => false): ActingAgents {
+  const out: ActingAgents = { ours: new Set<Agent>(), elsewhere: new Set<Agent>() };
   for (const clause of text.normalize("NFC").split(CLAUSE)) {
     const t = fold(clause).split(" ").filter(Boolean);
     for (let i = 0; i < t.length; ) {
@@ -237,17 +289,33 @@ export function actingAgents(text: string, elsewhere: (word: string) => boolean 
         break;
       }
       // What stands before the run: "सेवानिवृत्त", another force ("ACB सीआई"), or another district ("बूंदी SP",
-      // "सवाई माधोपुर एसपी", "बूंदी जिले के एसपी", "बूंदी जिला पुलिस")
+      // "सवाई माधोपुर एसपी", "बूंदी जिले के एसपी", "बूंदी जिला पुलिस", "बूंदी के एसपी", "बूंदी की पुलिस").
+      //
+      // The possessive is stepped over on its own, not only as part of "जिले के". "बूंदी के एसपी ने" is
+      // the commonest way the copy names another district's officer, and while this only looked for
+      // "[district] [जिला|जिले] [का|की|के]" that sentence tagged OUR district's police — the one error
+      // this whole file is built to avoid, and now the likeliest, because an incident tags the district
+      // force whether or not the copy names it acting.
       let k = i - 1;
-      if (POSSESSIVE.has(t[k] ?? "") && DISTRICT_WORD.has(t[k - 1] ?? "")) k -= 2;
-      else if (DISTRICT_WORD.has(t[k] ?? "")) k -= 1;
+      if (POSSESSIVE.has(t[k] ?? "")) k -= 1;
+      if (DISTRICT_WORD.has(t[k] ?? "")) k -= 1;
       const place = (t[k] !== undefined && elsewhere(t[k]!)) || (k >= 1 && elsewhere(`${t[k - 1]} ${t[k]}`));
-      const notOurs = FORMER.has(t[i - 1] ?? "") || OTHER_FORCE.has(t[i - 1] ?? "") || place;
-      if (!notOurs && actsAt(t, j, kinds.has("police"))) for (const k of kinds) out.add(k);
+      const former = FORMER.has(t[i - 1] ?? "") || OTHER_FORCE.has(t[i - 1] ?? "");
+      if (actsAt(t, j, kinds.has("police"))) {
+        for (const kk of kinds) {
+          if (place) out.elsewhere.add(kk);
+          else if (!former) out.ours.add(kk);
+        }
+      }
       i = Math.max(j, i + 1);
     }
   }
   return out;
+}
+
+/** The agents of THIS district the text names as acting. */
+export function actingAgents(text: string, elsewhere: (word: string) => boolean = () => false): Set<Agent> {
+  return agentsActing(text, elsewhere).ours;
 }
 
 /**
@@ -290,15 +358,30 @@ function policeHqActs(text: string): boolean {
 
 /** Police and department subjects are tagged only when acting, as the district police are; people and the rest when named */
 const ONLY_ACTING: ReadonlySet<string> = new Set(["police", "department"]);
+/** Classes where the district force or the collector stands alone: nothing of the desk's joins them */
+const EXCLUSIVE: ReadonlySet<StoryClass> = new Set<StoryClass>(["incident", "administration"]);
+/** Classes the desk puts our own reporter on (54–67% of posts), and never on an incident (14.6%) */
+const WANTS_REPORTER: ReadonlySet<StoryClass> = new Set<StoryClass>(["political", "government", "other", "judicial"]);
 
 export interface HandlePickInput {
   headline: string;
   points: string[];
+  /** stories.district: the district the copy states. It also sets the post's visible hashtag. */
   district: string | null;
   rajasthan: boolean;
   leaderPost: boolean;
-  /** The file's headline line before its place prefix was taken off ("#Kota: ..."), when known */
+  /** The file's headline line before its place prefix was taken off ("#BJP #Kota: ..."), when known */
   rawHeadline?: string;
+  /**
+   * The district the file name's code states (slotFromTags().district). A FALLBACK, not an override:
+   * measured over 6,878 of this desk's files it fills a gap the copy left 18 times and disagrees with
+   * the copy 195 times, and the copy is what the post's hashtag shows.
+   */
+  fileDistrict?: string | null;
+  /** The reporter token from the file name (slotFromTags().reporterToken). Never read from the post text. */
+  reporterToken?: string | null;
+  /** slotFromTags().unknownCode — a code-shaped token the places file does not carry. Surfaced as a warning. */
+  unknownBureauCode?: string | null;
   /** Whether a word names a district other than the story's (from the places file); none: never */
   elsewhere?: (word: string) => boolean;
 }
@@ -306,9 +389,49 @@ export interface HandlePickInput {
 export interface HandlePick {
   handle: string;
   /** Why: shown on the draft as the suggestion's entity */
-  reason: "cm" | "police" | "collector" | "government" | "state_police" | "subject" | "desk";
-  /** The subject's title from subject-handles.json (reason "subject"); the directory name (reason "desk") */
+  reason: "cm" | "police" | "collector" | "government" | "state_police" | "subject" | "desk" | "party" | "reporter";
+  /** The subject's title, the party's name, the reporter's name, or the directory name (reason "desk") */
   title?: string;
+}
+
+export interface HandleResult {
+  handles: HandlePick[];
+  /** The story class every rule hung off, for the draft's audit line */
+  cls: StoryClass;
+  why: string;
+  /**
+   * Things the desk should see that never block a tag: a reporter token the roster does not carry, a
+   * code the places file does not carry, a reporter whose districts disagree with the story's. The
+   * unmatched tokens are how the roster gets completed — log them.
+   */
+  warnings: string[];
+  /**
+   * The file named a reporter this post would have carried a byline for, and the list does not have
+   * them. A field rather than a string in `warnings` so callers can tell this apart from a real problem:
+   * it is true of about 45% of files today and will stay common until the list fills in.
+   */
+  unmatchedReporter: string | null;
+}
+
+export interface PickOptions {
+  subjects?: SubjectRules;
+  /** Handles the desk added with keywords (the org's handle_directory, source "desk") */
+  desk?: DeskHandleRules;
+  reporters?: ReporterRules;
+  parties?: PartyRules;
+  /**
+   * The ceiling. 3 is what the desk uses: 114 of 1,002 posts carried 3 or more handles, nearly all
+   * political. Raise to 4 only if the political 4-handle shape (two leaders + party + reporter) matters
+   * more than the risk of a wider tag.
+   */
+  max?: number;
+}
+
+/** One entry per handle, first occurrence wins */
+function dedupe(picks: readonly HandlePick[]): HandlePick[] {
+  const out: HandlePick[] = [];
+  for (const p of picks) if (!out.some((o) => o.handle.toLowerCase() === p.handle.toLowerCase())) out.push(p);
+  return out;
 }
 
 /** Every handle the district-handles rules can tag, lowercase */
@@ -317,16 +440,69 @@ function ruleHandles(rules: HandleRules): Set<string> {
   return new Set(all.map((h) => h.toLowerCase()));
 }
 
-/** 0–2 verified handles for the post, headline picks first, desk-added handles last. */
-export function pickHandles(
-  story: HandlePickInput, rules: HandleRules, subjects: SubjectRules = EMPTY_SUBJECT_RULES, desk: DeskHandleRules = EMPTY_DESK_HANDLE_RULES, max = 2,
-): HandlePick[] {
-  // A leader's own post, party/election news, and news outside Rajasthan tag nobody
-  if (story.leaderPost || !story.rajasthan) return [];
-  const head = story.headline.normalize("NFC");
+/**
+ * 0–3 verified handles for the post, with the class they were chosen by.
+ *
+ * The shape is chosen by story class, because that is what the published output says drives it:
+ *
+ *   leader_post    → nobody, not even the reporter
+ *   soft           → nobody (19.9% of posts: festivals, pujas, obituaries, columns, election bulletins)
+ *   judicial       → our reporter only, no institution (16 of 22 court posts)
+ *   incident       → the district police, ALONE (248 of 302 police tags were the only handle)
+ *   administration → the district collector, ALONE (101 of 117)
+ *   political      → named leaders, then the party, then our reporter (the 3- and 4-handle shape)
+ *   government     → the department or the state government, then our reporter
+ *   other          → subjects named in the copy, then our reporter; nobody if nothing is named
+ *
+ * Within a class a handle found in the headline ranks before one found in the body, handles the desk
+ * added come after the files' own, and the reporter is always last (290 of 339 placements).
+ */
+export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules, opts: PickOptions = {}): HandleResult {
+  const {
+    subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES, reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, max = 3,
+  } = opts;
+  const warnings: string[] = [];
+
+  // The desk's own tag run is part of the headline for classification: a file whose line 1 is
+  // "#BJP #Kota: ..." is party copy even after the parser has taken the prefix off the stored headline.
+  const head = (story.rawHeadline?.trim() || story.headline).normalize("NFC");
   const body = story.points.join("\n").normalize("NFC");
-  // The raw headline line too: a "#BJP #Kota:" prefix the parser took off still marks party news
-  if (PARTY.test(`${story.rawHeadline?.normalize("NFC") ?? ""}\n${head}\n${body}`)) return [];
+  const all = `${head}\n${body}`;
+
+  // The copy's district decides, because it is also what the post's hashtag shows. The file name's code
+  // fills a gap and cross-checks it.
+  const district = story.district || story.fileDistrict || null;
+  if (story.fileDistrict && story.district && districtKey(story.fileDistrict) !== districtKey(story.district)) {
+    warnings.push(`the file name says ${story.fileDistrict}, the copy says ${story.district}; the copy decides (it sets the hashtag)`);
+  }
+  if (story.unknownBureauCode) {
+    warnings.push(`the file name's district code "${story.unknownBureauCode}" is not in the places file; add it there to use it`);
+  }
+  const local = district ? rules.districts[districtKey(district)] : undefined;
+
+  // Devanagari gives proper nouns no orthographic cue, so a headline that is nothing but "अशोक गहलोत"
+  // has no political signal without this hint. Measured: political recall 92.5% with it, 84.4% without.
+  const namedPolitical =
+    (subjects.count > 0 && subjects.gazetteer.find(head).some((m) => m.entry.data.kind === "person")) || namesAnyParty(head, parties);
+  const { cls, why } = classify({ headline: head, points: story.points, leaderPost: story.leaderPost, namedPolitical });
+
+  // The reporter, resolved now and appended last. An unresolved name is reported, never guessed at.
+  const rep = pickReporter(story.reporterToken, reporters);
+  let unmatchedReporter: string | null = null;
+  let noted = false;
+  /**
+   * Called where a byline slot really exists. A crime story in Rajasthan has none — the district force
+   * takes the post — so saying "no byline" there would bury the warnings that do mean something. The
+   * name itself is still stored on the draft whatever the class, so an editor's edit can still teach it.
+   */
+  const noteByline = () => {
+    if (noted) return;
+    noted = true;
+    unmatchedReporter = rep.unmatchedToken;
+    if (rep.match && districtMismatch(rep.match, district)) {
+      warnings.push(`@${rep.match.handle} usually files from ${rep.match.districts.join("/")}, not ${district}`);
+    }
+  };
 
   const picks: (HandlePick & { inHeadline: boolean })[] = [];
   const add = (handles: string[] | undefined, reason: HandlePick["reason"], inHeadline: boolean, title?: string) => {
@@ -334,48 +510,152 @@ export function pickHandles(
     const h = handles?.[0];
     if (h) picks.push({ handle: h, reason, inHeadline, ...(title && { title }) });
   };
-  const local = story.district ? rules.districts[districtKey(story.district)] : undefined;
+  /**
+   * The district's own force. Four districts have two verified ones — a city commissionerate and a rural
+   * SP (Jaipur, Jodhpur, Kota, Khairthal-Tijara) — and which one a story belongs to is decided by the
+   * police-station town, a list the desk has not confirmed yet. The first is used and the draft says so,
+   * because otherwise nothing would tell the desk a rural story went out tagging the city force.
+   */
+  const addDistrictPolice = (inHeadline: boolean) => {
+    if (!local?.police.length) return;
+    add(local.police, "police", inHeadline);
+    if (local.police.length > 1) {
+      warnings.push(`${district} has ${local.police.length} police handles (@${local.police.join(", @")}); @${local.police[0]} was used — check the town`);
+    }
+  };
+  const namedSubjects = (text: string, inHeadline: boolean) => {
+    if (!subjects.count) return;
+    const acting = actingSubjects(text, subjects);
+    const found = subjects.gazetteer
+      .find(text)
+      .filter((m) => !ONLY_ACTING.has(m.entry.data.kind) || acting.has(m.entry.id))
+      .sort((a, b) => a.start - b.start);
+    for (const m of found) add([m.entry.data.handle], "subject", inHeadline, m.entry.data.title);
+  };
 
-  // The CM is the subject only when the headline names him
-  if (CM_SUBJECT.test(head)) add(rules.state.cm, "cm", true);
-  if (subjects.count) {
-    const found = (text: string) => {
-      const acting = actingSubjects(text, subjects);
-      return subjects.gazetteer.find(text).filter((m) => !ONLY_ACTING.has(m.entry.data.kind) || acting.has(m.entry.id)).sort((a, b) => a.start - b.start);
-    };
-    const inHead = found(head);
-    const named = new Set(inHead.map((m) => m.entry.id));
-    const inBody = found(body).filter((m) => !named.has(m.entry.id));
-    for (const m of inHead) add([m.entry.data.handle], "subject", true, m.entry.data.title);
-    for (const m of inBody) add([m.entry.data.handle], "subject", false, m.entry.data.title);
-  }
-  const headActs = actingAgents(head, story.elsewhere);
-  const bodyActs = actingAgents(body, story.elsewhere);
-  if (headActs.has("police") || bodyActs.has("police")) add(local?.police, "police", headActs.has("police"));
-  if (policeHqActs(head)) add(rules.state.police, "state_police", true);
-  if (headActs.has("collector") || bodyActs.has("collector")) add(local?.collector, "collector", headActs.has("collector"));
-  if (GOVT.test(head)) add(rules.state.government, "government", true);
-  else if (GOVT.test(body)) add(rules.state.government, "government", false);
+  const done = (handles: HandlePick[]): HandleResult => ({ handles, cls, why, warnings, unmatchedReporter });
+  // Copy from outside Rajasthan tags no state institution. Our own reporter still goes on it — the
+  // Delhi-datelined posts in the window carried @vyaskamalkant or @ashvinigokul and nothing else.
+  const onlyReporter = (): HandleResult => {
+    // Outside Rajasthan there is no district force to take the post, so the byline is the whole tag
+    noteByline();
+    return done(rep.match && max > 0 ? [{ handle: rep.match.handle, reason: "reporter", title: rep.match.name }] : []);
+  };
 
-  // Desk-added handles named by a keyword, after every file rule; never a handle of the files (verified or not)
-  // nor a lookalike of one: the files' own rules decide when those are tagged
-  const deskPicks: typeof picks = [];
-  if (desk.count) {
-    const governed = new Set([...(rules.all ?? ruleHandles(rules)), ...(subjects.handles ?? [])]);
-    const inHead = desk.gazetteer.find(head).sort((a, b) => a.start - b.start);
-    const inBody = desk.gazetteer.find(body).sort((a, b) => a.start - b.start);
-    for (const [list, inHeadline] of [[inHead, true], [inBody, false]] as const) {
-      for (const m of list) {
-        if (fileLookalike(m.entry.data.handle, governed) === null) deskPicks.push({ handle: m.entry.data.handle, reason: "desk", inHeadline, title: m.entry.data.title });
+  // ── a leader's own post: nobody at all, not even the desk's own handle ────
+  if (cls === "leader_post") return done([]);
+
+  // Handles the desk added with keywords, computed here because they ride on every class except the two
+  // where the district force stands alone. Never a handle of the files (verified or not) nor a lookalike
+  // of one: the files' own rules decide when those are tagged.
+  const deskPicks: HandlePick[] = [];
+  if (desk.count && story.rajasthan && !EXCLUSIVE.has(cls)) {
+    const governed = new Set([...(rules.all ?? ruleHandles(rules)), ...(subjects.handles ?? []), ...(parties.handles ?? []), ...(reporters.handles ?? [])]);
+    // Headline matches before body matches, as the files' own picks are ordered
+    for (const text of [head, body]) {
+      for (const m of desk.gazetteer.find(text).sort((a, b) => a.start - b.start)) {
+        if (fileLookalike(m.entry.data.handle, governed) === null) deskPicks.push({ handle: m.entry.data.handle, reason: "desk", title: m.entry.data.title });
       }
     }
   }
 
-  // Headline picks first (stable), then desk-added ones; one per handle, at most max
-  const out: HandlePick[] = [];
-  for (const { inHeadline: _, ...p } of [...picks.filter((p) => p.inHeadline), ...picks.filter((p) => !p.inHeadline), ...deskPicks]) {
-    if (out.length >= max) break;
-    if (!out.some((o) => o.handle.toLowerCase() === p.handle.toLowerCase())) out.push(p);
+  // ── soft: no institution and no byline — the 19.9% the desk tags nobody on ─
+  // The desk's own handles are not an institution: the org asked for that keyword, so a fair or a puja
+  // still reaches the local handle it was added for.
+  if (cls === "soft") return done(dedupe(deskPicks).slice(0, max));
+
+  if (cls === "judicial") {
+    // ── judicial: our reporter, and no institution ──────────────────────────
+    // 16 of 22 court posts tagged the reporter and nothing else: a court story tags no police however
+    // much आरोपी and जमानत the copy carries.
+    if (!story.rajasthan) return onlyReporter();
+  } else if (cls === "incident") {
+    // ── incident: the district police, alone ────────────────────────────────
+    if (!story.rajasthan) return onlyReporter();
+    // An incident in the district tags its police whether or not the copy names them as the actor —
+    // "बेकाबू कार ने मारी टक्कर" names no police and the desk tagged @KotaPolice every time. The one
+    // exception is the guard that predates this patch: when the only officer the copy names as acting
+    // belongs to ANOTHER district, ours are not the force in the story.
+    const acting = agentsActing(all, story.elsewhere);
+    if (!(acting.elsewhere.has("police") && !acting.ours.has("police"))) addDistrictPolice(true);
+    if (policeHqActs(head)) add(rules.state.police, "state_police", true);
+    // A police subject in subject-handles.json that is acting (another force, a railway police unit)
+    namedSubjects(head, true);
+    if (!picks.length) namedSubjects(body, false);
+  } else if (cls === "administration") {
+    // ── administration: the collector, alone ────────────────────────────────
+    if (!story.rajasthan) return onlyReporter();
+    // The collector is tagged whether or not the copy names them as the actor, for the same reason the
+    // police are on an incident: 101 of 117 collector tags were the only handle on the post, and the
+    // copy often names only the office ("जिला प्रशासन अलर्ट").
+    const acting = agentsActing(all, story.elsewhere);
+    if (!(acting.elsewhere.has("collector") && !acting.ours.has("collector"))) {
+      add(local?.collector, "collector", acting.ours.has("collector"));
+    }
+    namedSubjects(head, true);
+  } else if (cls === "political") {
+    // ── political: leaders, then the party, then the reporter ───────────────
+    // The CM is a subject when the headline names him; he is also the most-tagged handle in the windows.
+    if (CM_SUBJECT.test(head)) add(rules.state.cm, "cm", true);
+    namedSubjects(head, true);
+    const named = new Set(picks.map((p) => p.handle.toLowerCase()));
+    if (subjects.count) {
+      const acting = actingSubjects(body, subjects);
+      for (const m of subjects.gazetteer.find(body).sort((a, b) => a.start - b.start)) {
+        if (ONLY_ACTING.has(m.entry.data.kind) && !acting.has(m.entry.id)) continue;
+        if (named.has(String(m.entry.data.handle).toLowerCase())) continue;
+        add([m.entry.data.handle], "subject", false, m.entry.data.title);
+      }
+    }
+    const party = pickParty(all, parties, story.rajasthan);
+    if (party) picks.push({ handle: party.handle, reason: "party", inHeadline: false, title: party.name });
+    // NOTE: no police and no collector in this branch, on purpose. Across 1,002 posts no party tag
+    // appeared beside a district police handle or a collector except twice, both desk slips.
+  } else if (cls === "government" || cls === "other") {
+    // ── government and other: whatever the copy names, else nobody ──────────
+    //
+    // One branch, because the difference between "a department story" and "an unclassified story" is not
+    // a difference in who gets tagged: both tag the institutions the copy actually names, and both carry
+    // our reporter. What separates them from the classes above is that nothing is assumed from the
+    // district — an institution is tagged here only when the copy names it, and acting where its own
+    // rule says so.
+    if (!story.rajasthan) return onlyReporter();
+    namedSubjects(head, true);
+    if (!picks.length) namedSubjects(body, false);
+    const headActs = agentsActing(head, story.elsewhere).ours;
+    const bodyActs = agentsActing(body, story.elsewhere).ours;
+    // The police acting on a non-incident story: "पुलिस ने निकाली तिरंगा यात्रा"
+    if (headActs.has("police") || bodyActs.has("police")) addDistrictPolice(headActs.has("police"));
+    if (headActs.has("collector") || bodyActs.has("collector")) add(local?.collector, "collector", headActs.has("collector"));
+    // Police headquarters is a state institution: "DGP ने ली अधिकारियों की बैठक" tagged @PoliceRajasthan
+    if (policeHqActs(head)) add(rules.state.police, "state_police", true);
+    // @RajGovOfficial only where the state government is the one deciding
+    if (GOVT.test(head)) add(rules.state.government, "government", true);
+    else if (GOVT.test(body)) add(rules.state.government, "government", false);
+  } else {
+    // A class added to storyclass.ts with no branch here must not fall into the one above and start
+    // tagging police and the state government; the compiler stops that from compiling at all.
+    const unhandled: never = cls;
+    void unhandled;
+    return done([]);
   }
-  return out;
+
+  // Headline picks first (stable), then the desk's; one entry per handle
+  const ranked = dedupe([
+    ...[...picks.filter((p) => p.inHeadline), ...picks.filter((p) => !p.inHeadline)].map(({ inHeadline: _drop, ...p }) => p),
+    ...deskPicks,
+  ]);
+
+  // The reporter takes the last slot, on the classes the desk puts it on
+  if (WANTS_REPORTER.has(cls)) noteByline();
+  const wants = WANTS_REPORTER.has(cls) && rep.match && !ranked.some((o) => o.handle.toLowerCase() === rep.match!.handle.toLowerCase());
+  const mine = wants ? rep.match! : null;
+  const out = ranked.slice(0, mine ? Math.max(0, max - 1) : max);
+  if (mine && max > 0) out.push({ handle: mine.handle, reason: "reporter", title: mine.name });
+  return done(out);
+}
+
+/** The handles only. `pickHandlesExplained` additionally returns the class, the reason and any warnings. */
+export function pickHandles(story: HandlePickInput, rules: HandleRules, opts: PickOptions = {}): HandlePick[] {
+  return pickHandlesExplained(story, rules, opts).handles;
 }

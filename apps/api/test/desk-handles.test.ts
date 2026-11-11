@@ -4,7 +4,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { auditLog, createDb, handleDirectory, loadRuleComposer, orgs, postDrafts, runMigrations, stories, users, type DbHandle } from "@socia/db";
+import { auditLog, createDb, handleDirectory, hashtagStaging, loadRuleComposer, orgs, postDrafts, runMigrations, stories, users, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -106,10 +106,12 @@ const URL_ = process.env.TEST_DATABASE_URL;
 
   it("adds party, official and file handles (mention-able at once) but gives them no keywords, so they are never suggested", async () => {
     const cases: [string, string][] = [
-      ["@BJP4Jhalawar", "party"], ["@KotaCongress", "party"], ["@INCJaipur", "party"],
+      ["@BJP4Jhalawar", "party"], ["@KotaCongress", "party"],
       ["@CollectorTonkX", "official"],
       ["@JhalawarPolice", "file_handle"], ["@DMSalumbar", "file_handle"], ["@AcbRajasthan", "file_handle"], ["@iitjodhpur", "file_handle"], ["@RuhsJaipur", "file_handle"],
-      ["@JhalawarPolic", "lookalike"], ["@SPJhalawar", "lookalike"],
+      // @INCJaipur is a party handle AND two letters from @IMDJaipur in subject-handles.json; the
+      // lookalike guard catches it first. Either way it gets no keywords and is never suggested.
+      ["@INCJaipur", "lookalike"], ["@JhalawarPolic", "lookalike"], ["@SPJhalawar", "lookalike"],
     ];
     for (const [handle, why] of cases) {
       const res = await call(op, "POST", "/handles/desk", { handle });
@@ -174,6 +176,192 @@ const URL_ = process.env.TEST_DATABASE_URL;
     const ok = await call(op, "PATCH", `/drafts/${draftId}`, { version: claimed.body.version, mentions: ["@JHALAWARUPDATES", "@RandomGuy123", "@BJP4Jhalawar"] });
     expect(ok.status).toBe(200);
     expect(ok.body.mentions).toEqual(["@JHALAWARUPDATES", "@RandomGuy123", "@BJP4Jhalawar"]); // no keywords, still taggable by hand
+  });
+
+  // ─── The loop that keeps the reporter list from decaying ──────────────────
+  // A breaking file names its reporter ("...NDR_PK_AGARWAL_BIG"). When the list does not know that name
+  // the post goes out with no byline and the name is recorded on the draft. An editor adding the
+  // reporter's handle by hand is the desk telling us whose name that is, so it is stored against the
+  // handle and the worker resolves the same file name by itself from then on.
+  it("learns the file's reporter name from the handle an editor adds, and only from a reporter's handle", async () => {
+    const [story] = await h.db
+      .insert(stories)
+      .values({ orgId, slug: "reporter-learn", status: "composed", headline: "बाजार में रौनक", body: "", layout: "breaking", mediaState: "none" })
+      .returning();
+    const [draft] = await h.db
+      .insert(postDrafts)
+      .values({
+        orgId, storyId: story!.id, status: "ready", bodyText: "बाजार में रौनक", cardHeadline: "बाजार में रौनक",
+        hashtags: ["#RajasthanWithFirstIndia"], composeVersion: "b4", cardRev: 0,
+        // What the composer left behind: the name it could not place
+        handlePick: { cls: "other", why: "no class matched", warnings: ["the file name's reporter \"PK_AGARWAL\" is not in the reporter list, so no byline was added"], handles: [], reporterToken: "PK AGARWAL" },
+      })
+      .returning();
+    const id = draft!.id;
+    const claimed = await call(op, "POST", `/drafts/${id}/claim`);
+    expect(claimed.status).toBe(200);
+
+    // A reporter's handle is one an editor may add even though it is in no directory row yet
+    const saved = await call(op, "PATCH", `/drafts/${id}`, { version: claimed.body.version, mentions: ["@omsharma8888"] });
+    expect(saved.status).toBe(200);
+    expect(saved.body.mentions).toEqual(["@omsharma8888"]);
+    const [learned] = await h.db
+      .select()
+      .from(handleDirectory)
+      .where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.source, "reporter"), sql`lower(${handleDirectory.handle}) = '@omsharma8888'`));
+    expect(learned!.aliases).toEqual(["PK_AGARWAL"]);
+    expect(learned!.verifiedAt).not.toBeNull();
+    expect((await h.db.select().from(auditLog).where(eq(auditLog.action, "handle.reporter_token_learned"))).length).toBe(1);
+
+    // Saving again does not store the same name twice
+    const again = await call(op, "PATCH", `/drafts/${id}`, { version: saved.body.version, mentions: ["@omsharma8888", "@JhalawarUpdates"] });
+    expect(again.status).toBe(200);
+    const [still] = await h.db.select().from(handleDirectory).where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.source, "reporter")));
+    expect(still!.aliases).toEqual(["PK_AGARWAL"]);
+    // ...and a handle that is not a reporter's teaches us nothing: it says nothing about whose byline
+    // the file carries, and learning from it would put it on every later story by the same reporter
+    expect(await h.db.select().from(handleDirectory).where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.source, "reporter")))).toHaveLength(1);
+  });
+
+  it("adds the name to a reporter row an admin un-verified, without putting the handle back in use", async () => {
+    // verified_at is what lets a handle be suggested, so un-verifying one takes it out of use. Teaching
+    // the row another file name must not quietly undo that decision.
+    await h.db
+      .update(handleDirectory)
+      .set({ verifiedAt: null })
+      .where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.source, "reporter")));
+    const [story] = await h.db
+      .insert(stories)
+      .values({ orgId, slug: "unverified-reporter", status: "composed", headline: "बाजार में रौनक", body: "", layout: "breaking", mediaState: "none" })
+      .returning();
+    const [draft] = await h.db
+      .insert(postDrafts)
+      .values({
+        orgId, storyId: story!.id, status: "ready", bodyText: "बाजार में रौनक", cardHeadline: "बाजार में रौनक",
+        hashtags: ["#RajasthanWithFirstIndia"], composeVersion: "b4", cardRev: 0,
+        handlePick: { cls: "other", why: "no class matched", warnings: [], handles: [], reporterToken: "RAJEEV" },
+      })
+      .returning();
+    const claimed = await call(op, "POST", `/drafts/${draft!.id}/claim`);
+    expect((await call(op, "PATCH", `/drafts/${draft!.id}`, { version: claimed.body.version, mentions: ["@omsharma8888"] })).status).toBe(200);
+    const [row] = await h.db.select().from(handleDirectory).where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.source, "reporter")));
+    expect(row!.aliases).toEqual(["PK_AGARWAL", "RAJEEV"]); // the name was still recorded
+    expect(row!.verifiedAt).toBeNull(); // ...and the handle stays out of use
+    await h.db.update(handleDirectory).set({ verifiedAt: new Date() }).where(eq(handleDirectory.id, row!.id));
+  });
+
+  it("learns nothing when the file's reporter already has a handle, and refuses an unverified one", async () => {
+    const [story] = await h.db
+      .insert(stories)
+      .values({ orgId, slug: "already-bylined", status: "composed", headline: "बाजार में रौनक", body: "", layout: "breaking", mediaState: "none" })
+      .returning();
+    const [draft] = await h.db
+      .insert(postDrafts)
+      .values({
+        orgId, storyId: story!.id, status: "ready", bodyText: "बाजार में रौनक", cardHeadline: "बाजार में रौनक",
+        hashtags: ["#RajasthanWithFirstIndia"], mentions: ["@rituraj9999"], composeVersion: "b4", cardRev: 0,
+        // The name already resolved: this post has its byline
+        handlePick: { cls: "other", why: "no class matched", warnings: [], handles: [{ handle: "@rituraj9999", reason: "reporter" }], reporterToken: "RITURAJ" },
+      })
+      .returning();
+    const claimed = await call(op, "POST", `/drafts/${draft!.id}/claim`);
+    // A second reporter's handle on the same post (a co-byline) must NOT teach us that RITURAJ means
+    // them: a name two reporters claim is then tagged for neither, on every later story carrying it
+    const saved = await call(op, "PATCH", `/drafts/${draft!.id}`, { version: claimed.body.version, mentions: ["@rituraj9999", "@aishwaryam99"] });
+    expect(saved.status).toBe(200);
+    const taught = await h.db.select().from(handleDirectory).where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.source, "reporter")));
+    expect(taught.map((r) => r.handle)).not.toContain("@aishwaryam99");
+
+    // A reporter the desk has left unverified is not a handle an editor may put on a post this way:
+    // the reporter list only waives the directory check for entries the desk has decided about
+    const bad = await call(op, "PATCH", `/drafts/${draft!.id}`, { version: saved.body.version, mentions: ["@satyatv99_news"] });
+    expect(bad.status).toBe(422);
+    expect(bad.body.error).toBe("bad_mention");
+  });
+
+  // ─── The same loop for hashtags ───────────────────────────────────────────
+  // A breaking post carries the footer tag and nothing else automatically, so every other hashtag on it
+  // was typed by an editor — the most direct evidence there is of a rule we are missing.
+  it("stages a hashtag the editor types that no rule of ours produced, counting repeats", async () => {
+    const make = async (slug: string) => {
+      const [story] = await h.db
+        .insert(stories)
+        .values({ orgId, slug, status: "composed", headline: "पंचायत चुनाव का परिणाम", body: "", layout: "breaking", mediaState: "none" })
+        .returning();
+      const [draft] = await h.db
+        .insert(postDrafts)
+        .values({
+          orgId, storyId: story!.id, status: "ready", bodyText: "पंचायत चुनाव का परिणाम", cardHeadline: "पंचायत चुनाव का परिणाम",
+          hashtags: ["#RajasthanWithFirstIndia"], hashtagSuggestions: ["#RajasthanElection"], composeVersion: "b5", cardRev: 0,
+        })
+        .returning();
+      return draft!.id;
+    };
+    const staged = () => h.db.select().from(hashtagStaging).where(eq(hashtagStaging.orgId, orgId));
+
+    const a = await make("hashtag-learn-1");
+    const claimedA = await call(op, "POST", `/drafts/${a}/claim`);
+    const savedA = await call(op, "PATCH", `/drafts/${a}`, {
+      version: claimedA.body.version,
+      // One tag we already have, one we offered, and one the desk reached for that we know nothing about
+      hashtags: ["#RajasthanWithFirstIndia", "#RajasthanElection", "#RajasthanPanchayatElection2026"],
+    });
+    expect(savedA.status).toBe(200);
+    let rows = await staged();
+    expect(rows.map((r) => r.tag)).toEqual(["#RajasthanPanchayatElection2026"]);
+    expect(rows[0]!.uses).toBe(1);
+    expect(rows[0]!.tagKey).toBe("rajasthanpanchayatelection2026");
+    expect((rows[0]!.examples as { headline: string }[])[0]!.headline).toBe("पंचायत चुनाव का परिणाम");
+
+    // The same tag on another post counts up rather than making a second row, whatever the casing
+    const b = await make("hashtag-learn-2");
+    const claimedB = await call(op, "POST", `/drafts/${b}/claim`);
+    expect((await call(op, "PATCH", `/drafts/${b}`, { version: claimedB.body.version, hashtags: ["#rajasthanPanchayatElection2026"] })).status).toBe(200);
+    rows = await staged();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.uses).toBe(2);
+    expect((rows[0]!.examples as unknown[]).length).toBe(2);
+    expect((await h.db.select().from(auditLog).where(eq(auditLog.action, "hashtag.staged"))).length).toBe(2);
+  });
+
+  it("stages nothing for a tag we applied or offered ourselves", async () => {
+    const before = (await h.db.select().from(hashtagStaging).where(eq(hashtagStaging.orgId, orgId))).length;
+    const [story] = await h.db
+      .insert(stories)
+      .values({ orgId, slug: "hashtag-noop", status: "composed", headline: "कोई खबर", body: "", layout: "breaking", mediaState: "none" })
+      .returning();
+    const [draft] = await h.db
+      .insert(postDrafts)
+      .values({
+        orgId, storyId: story!.id, status: "ready", bodyText: "कोई खबर", cardHeadline: "कोई खबर",
+        hashtags: ["#RajasthanWithFirstIndia"], hashtagSuggestions: ["#RoadAccident"], composeVersion: "b5", cardRev: 0,
+      })
+      .returning();
+    const claimed = await call(op, "POST", `/drafts/${draft!.id}/claim`);
+    // Accepting our own suggestion is the rule working, not a gap
+    const saved = await call(op, "PATCH", `/drafts/${draft!.id}`, { version: claimed.body.version, hashtags: ["#RajasthanWithFirstIndia", "#RoadAccident"] });
+    expect(saved.status).toBe(200);
+    expect((await h.db.select().from(hashtagStaging).where(eq(hashtagStaging.orgId, orgId))).length).toBe(before);
+  });
+
+  it("learns nothing from a draft whose file named no reporter", async () => {
+    const [story] = await h.db
+      .insert(stories)
+      .values({ orgId, slug: "no-reporter", status: "composed", headline: "बाजार में रौनक", body: "", layout: "breaking", mediaState: "none" })
+      .returning();
+    const [draft] = await h.db
+      .insert(postDrafts)
+      .values({
+        orgId, storyId: story!.id, status: "ready", bodyText: "बाजार में रौनक", cardHeadline: "बाजार में रौनक",
+        hashtags: ["#RajasthanWithFirstIndia"], composeVersion: "b4", cardRev: 0,
+        handlePick: { cls: "other", why: "no class matched", warnings: [], handles: [], reporterToken: null },
+      })
+      .returning();
+    const claimed = await call(op, "POST", `/drafts/${draft!.id}/claim`);
+    const saved = await call(op, "PATCH", `/drafts/${draft!.id}`, { version: claimed.body.version, mentions: ["@aishwaryam99"] });
+    expect(saved.status).toBe(200);
+    const reporterRows = await h.db.select().from(handleDirectory).where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.source, "reporter")));
+    expect(reporterRows.map((r) => r.handle)).toEqual(["@omsharma8888"]); // only the one learned above
   });
 
   it("limits how many new handles one person adds in a while; known ones stay free", async () => {

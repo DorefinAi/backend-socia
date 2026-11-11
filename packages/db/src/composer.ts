@@ -3,9 +3,9 @@
 // action makes a story directly (a Web Scraper trend).
 
 import { RuleComposer, handleGazetteer, hashtagGazetteer, type HashtagRule, type MatchType } from "@socia/core";
-import { and, count, eq, isNotNull, max, ne } from "drizzle-orm";
+import { and, count, eq, isNotNull, max, notInArray } from "drizzle-orm";
 import type { Db } from "./client";
-import { handleDirectory, hashtagRules, orgs } from "./schema";
+import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs } from "./schema";
 
 /** A fingerprint of both dictionaries: any edit, add or delete changes it */
 export async function dictionaryFingerprint(db: Db, orgId: string): Promise<string> {
@@ -28,11 +28,21 @@ export async function loadRuleComposer(db: Db, orgId: string, version?: string):
   const [org] = await db.select({ settings: orgs.settings }).from(orgs).where(eq(orgs.id, orgId));
   if (!org) throw new Error(`ORG_ID ${orgId} is not in the orgs table`);
   // Handles the desk added from a tag line (source "desk") are suggested only by the phase-1 breaking composer,
-  // under its safety rules (core desk-handles.ts); this composer (non-breaking stories, Web Scraper trends) has none
+  // under its safety rules (core desk-handles.ts); this composer (non-breaking stories, Web Scraper trends) has none.
+  // Reporter rows are excluded for a sharper reason: their aliases are file-name tokens ("ASHOK",
+  // "PK_AGARWAL"), so in a general gazetteer they would suggest a reporter's handle on any copy that
+  // happens to contain that word. They mean something only as a breaking file's byline.
   const handles = await db
     .select()
     .from(handleDirectory)
-    .where(and(eq(handleDirectory.orgId, orgId), eq(handleDirectory.platform, "x"), isNotNull(handleDirectory.verifiedAt), ne(handleDirectory.source, "desk")));
+    .where(
+      and(
+        eq(handleDirectory.orgId, orgId),
+        eq(handleDirectory.platform, "x"),
+        isNotNull(handleDirectory.verifiedAt),
+        notInArray(handleDirectory.source, ["desk", REPORTER_SOURCE]),
+      ),
+    );
   const composer = new RuleComposer({
     version: v,
     hashtagConfig: { script: org.settings.hashtagScript, fixed: org.settings.fixedHashtags, max: org.settings.maxHashtags },

@@ -4,8 +4,14 @@
 // flagged. Rules only: anything odd is flagged for a human, never guessed by a model.
 
 import { fileTags, type FileTags } from "./filename";
-import { PARTY } from "./handles";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
+
+/**
+ * Party and election words in a headline's prefix. A PARSING rule only: "भाजपा: ..." and "#BJP #Kota:"
+ * are not place prefixes, so they stay in the headline as the desk wrote them. Which handles party copy
+ * gets is storyclass.ts's and parties.ts's job — this regex no longer decides anything about tagging.
+ */
+export const PARTY = /भाजपा|बीजेपी|कांग्रेस|प्रत्याशी|उम्मीदवार|जनसंपर्क|चुनाव\s*प्रचार|चुनावी|पंचायत\s*चुनाव|पंचायतीराज\s*चुनाव|सरपंच\s*चुनाव|मतदान|नामांकन|रैली|प्रदेशाध्यक्ष|पीसीसी|\bBJP\b|\bCongress\b|\bINC\b/iu;
 
 export const NEEDS_CHECK = [
   "empty", "no_headline", "no_hindi", "very_long", "no_district", "desk_note", "headline_cut",

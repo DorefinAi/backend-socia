@@ -1,7 +1,7 @@
 // Tables: spec v1.1 §6.8 plus the Phase 1 additions in the backend architecture doc §10.
 // org_id is on every table from day one: Socia is meant to run for more than one media house.
 
-import type { FileTags } from "@socia/core";
+import type { FileTags, HandlePick, StoryClass } from "@socia/core";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid,
@@ -364,6 +364,11 @@ export const postDrafts = pgTable(
     mentions: text("mentions").array().notNull().default(sql`'{}'::text[]`),
     /** {handleId, entity, handle, exact}[]; never posted until accepted */
     mentionSuggestions: jsonb("mention_suggestions").notNull().default(sql`'[]'::jsonb`),
+    /**
+     * Topic hashtags the org's rules matched, offered to the desk and never applied on their own
+     * (migration 0022). Breaking drafts only; empty on everything else.
+     */
+    hashtagSuggestions: text("hashtag_suggestions").array().notNull().default(sql`'{}'::text[]`),
     composeMethod: text("compose_method").notNull().default("rules"),
     composeVersion: text("compose_version").notNull(),
     /** Bumped on every card-text edit; the PNG is current when rendered_rev = card_rev */
@@ -386,6 +391,8 @@ export const postDrafts = pgTable(
     rejectNote: text("reject_note"),
     /** How a Web Scraper draft was reworded from the publishers' text; null for every other draft */
     rewrite: jsonb("rewrite").$type<DraftRewrite>(),
+    /** Breaking drafts: the story class, the reason and the warnings behind the handles (migration 0021) */
+    handlePick: jsonb("handle_pick").$type<DraftHandlePick>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -550,6 +557,23 @@ export const trendItems = pgTable(
 );
 
 /** post_drafts.rewrite (handoff/web-scraper-contract.md, "Draft rewording") */
+/**
+ * Why a breaking draft got the handles it got (migration 0021). The class is the decision every handle
+ * rule hangs off, so an editor who disagrees with the class is telling us something that moves hundreds
+ * of posts, not one. `warnings` never blocked a tag: an unknown reporter token, an unknown district
+ * code, a reporter filing outside their usual district.
+ */
+export interface DraftHandlePick {
+  /** incident, administration, political, government, judicial, soft, leader_post, other */
+  cls: StoryClass;
+  why: string;
+  warnings: string[];
+  /** The handles the rules chose, with the reason each was chosen for */
+  handles: { handle: string; reason: HandlePick["reason"]; title?: string }[];
+  /** The reporter token read from the file name, matched or not — the roster's to-do list */
+  reporterToken?: string | null;
+}
+
 export interface DraftRewrite {
   /** REWRITE_MODE that made it; only "rules" exists */
   mode: "rules";
@@ -623,6 +647,52 @@ export const handleDirectory = pgTable(
   },
   (t) => [index("handle_directory_verified_idx").on(t.orgId, t.platform).where(sql`${t.verifiedAt} IS NOT NULL`)],
 );
+
+/**
+ * handle_directory.source for the reporter rows the desk teaches us: when an editor adds a reporter's
+ * handle to a breaking draft by hand, that story's file-name token is recorded in `aliases` here, and the
+ * worker merges those tokens into the reporter list on its next reload. "desk" rows are a different thing
+ * (handles with keywords, matched against the copy) and the two must not be mixed.
+ */
+export const REPORTER_SOURCE = "reporter";
+
+/**
+ * Hashtags the desk typed on a draft that no rule of ours produced (migration 0022).
+ *
+ * The composer applies only the footer tag and offers the topic rules; anything else on a post came from
+ * an editor's own hands, and that is the most direct evidence there is of a tag the rules are missing.
+ * Each one is counted here with a few example headlines, for the weekly pass where somebody decides
+ * whether it deserves a rule and what keywords should fire it. Nothing in this table is ever tagged
+ * automatically — a row is a question for a human, not a rule.
+ */
+export const hashtagStaging = pgTable(
+  "hashtag_staging",
+  {
+    id: id(),
+    orgId: orgId(),
+    /** As the editor wrote it, with the # ("#RajasthanPanchayatElection2026") */
+    tag: text("tag").notNull(),
+    /** Lower-cased without the #, so one tag is one row whatever the casing */
+    tagKey: text("tag_key").notNull(),
+    /** How many times an editor has added it */
+    uses: integer("uses").notNull().default(1),
+    /** A few recent headlines it was added to, for the weekly review: {draftId, headline, at}[] */
+    examples: jsonb("examples").notNull().default(sql`'[]'::jsonb`),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Set when somebody turned it into a hashtag_rules row; dismissed when it was judged a one-off */
+    promotedAt: timestamp("promoted_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("hashtag_staging_key").on(t.orgId, t.tagKey), index("hashtag_staging_review_idx").on(t.orgId, t.uses.desc())],
+);
+
+/** One example headline a staged hashtag was added to */
+export interface HashtagStagingExample {
+  draftId: string;
+  headline: string;
+  at: string;
+}
 
 /** Wikidata lands here; an editor promotes a row into handle_directory. */
 export const handleDirectoryStaging = pgTable(

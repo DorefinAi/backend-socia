@@ -6,7 +6,10 @@
 // Until a file has been read once there is no list of its handles to compare with, so (failing safe) no handle
 // gets keywords then.
 
-import { deskHandleKeywords, districtKeywordCandidates, parseHandleRules, parseSubjectHandles, subjectKeywordCandidates, type KeywordCandidate, type KeywordsWithheld } from "@socia/core";
+import {
+  deskHandleKeywords, districtKeywordCandidates, parseHandleRules, parseReporterHandles, parseSubjectHandles, subjectKeywordCandidates,
+  type KeywordCandidate, type KeywordsWithheld,
+} from "@socia/core";
 import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { FastifyBaseLogger } from "fastify";
@@ -15,6 +18,7 @@ const RECHECK_MS = 60_000;
 /** apps/api/src (dev, tests) and apps/api/dist (built) are both two levels under apps/ */
 export const SUBJECT_HANDLES_FILE = fileURLToPath(new URL("../../worker/config/subject-handles.json", import.meta.url));
 export const DISTRICT_HANDLES_FILE = fileURLToPath(new URL("../../worker/config/district-handles.json", import.meta.url));
+export const REPORTER_HANDLES_FILE = fileURLToPath(new URL("../../worker/config/reporter-handles.json", import.meta.url));
 
 class WatchedJson<T> {
   private value: T | null = null;
@@ -59,5 +63,29 @@ export class DeskHandleChecks {
     const [subjects, officials] = await Promise.all([this.subjects.get(), this.officials.get()]);
     if (!subjects || !officials) return { keywords: [], withheld: "files_unavailable" };
     return deskHandleKeywords(handle, { candidates: [...this.districts, ...subjects.candidates], fileHandles: [...officials, ...subjects.handles] });
+  }
+}
+
+/**
+ * The desk's own reporters, from the worker's reporter-handles.json, read again when it changes.
+ *
+ * VERIFIED ENTRIES ONLY. Two uses, both in the draft save (packages/db desk.ts): a reporter's handle is
+ * one an editor may add without it being in the handle directory, and adding one teaches us the
+ * file-name token behind it. An entry the desk has left unverified is one whose handle it has not
+ * decided about — @satyatv99_news, which may be another outlet — and it must not become taggable on
+ * every later story because somebody put it on one post. Those can still be added the ordinary way,
+ * through the handle directory.
+ *
+ * Until the file has been read once the set is empty, which only means the old rules apply.
+ */
+export class ReporterHandles {
+  private readonly file: WatchedJson<ReadonlySet<string>>;
+
+  constructor(log: FastifyBaseLogger, env = process.env) {
+    this.file = new WatchedJson(env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j) => parseReporterHandles(j).verifiedHandles ?? new Set<string>(), log);
+  }
+
+  async handles(): Promise<ReadonlySet<string>> {
+    return (await this.file.get()) ?? new Set<string>();
   }
 }

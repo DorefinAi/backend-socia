@@ -13,8 +13,11 @@ import { X_LIMIT, assemblePostText, cutOnWords } from "../compose";
 import type { HashtagGazetteer } from "../hashtags";
 import { xLen } from "../xtext";
 import { pickCategoryTags } from "./categories";
-import { pickHandles, type HandlePick, type HandleRules } from "./handles";
+import { pickHandlesExplained, type HandlePick, type HandleRules } from "./handles";
 import { EMPTY_DESK_HANDLE_RULES, type DeskHandleRules } from "./desk-handles";
+import { EMPTY_PARTY_RULES, type PartyRules } from "./parties";
+import { EMPTY_REPORTER_RULES, type ReporterRules } from "./reporters";
+import type { StoryClass } from "./storyclass";
 import type { PlaceBook } from "./places";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
 
@@ -29,8 +32,10 @@ export const BREAKING_TARGET = 265;
 /**
  * Bumped when the layout changes, so drafts of each format can be told apart.
  * b2: category hashtags, the cut after a linking word, subject handles, police/collector only when acting.
+ * b4: story-class routing, 3 slots, party and reporter handles, the judicial class, no government fallback.
+ * b5: the footer is the only hashtag applied on its own; topic rules are offered to the desk instead.
  */
-export const BREAKING_FORMAT = "b2";
+export const BREAKING_FORMAT = "b5";
 
 export interface BreakingComposeInput {
   headline: string;
@@ -41,8 +46,14 @@ export interface BreakingComposeInput {
   town: string | null;
   rajasthan: boolean;
   leaderPost: boolean;
-  /** The headline line as the file had it, place prefix included (parseBreaking); read by the party check */
+  /** The headline line as the file had it, place prefix included (parseBreaking); read by the class check */
   rawHeadline?: string;
+  /** slotFromTags().reporterToken — the reporter list's key. Never read from the post text. */
+  reporterToken?: string | null;
+  /** slotFromTags().district — used only when the copy names no district; the copy sets the hashtag */
+  fileDistrict?: string | null;
+  /** slotFromTags().unknownCode — surfaced as a warning so a missing district code gets found */
+  unknownBureauCode?: string | null;
 }
 
 export interface BreakingComposeOptions {
@@ -54,15 +65,33 @@ export interface BreakingComposeOptions {
   subjects?: SubjectRules;
   /** Handles the desk added with keywords (the org's handle_directory, source "desk") */
   desk?: DeskHandleRules;
+  /** reporter-handles.json plus the tokens editors taught us */
+  reporters?: ReporterRules;
+  /** party-handles.json */
+  parties?: PartyRules;
   limit?: number;
   target?: number;
 }
 
 export interface BreakingDraft {
   bodyText: string;
+  /** The tags that go on the post by themselves: the footer, and nothing else */
   hashtags: string[];
+  /**
+   * Topic tags the org's rules matched, for the desk to accept with a click. Never applied on their own:
+   * see the note in composeBreaking for what auto-applying them measured at.
+   */
+  hashtagSuggestions: string[];
   mentions: string[];
   handles: HandlePick[];
+  /** The class the handles were chosen by, for the draft's audit line */
+  cls: StoryClass;
+  /** Why that class, in words the desk can agree or disagree with */
+  why: string;
+  /** Never blocks a tag: an unknown district code, a reporter filing from another district */
+  warnings: string[];
+  /** The file named a reporter the list does not carry, so the post went out with no byline */
+  unmatchedReporter: string | null;
   /** The headline itself had to be cut to fit */
   headlineCut: boolean;
   composeVersion: string;
@@ -175,17 +204,32 @@ export function joinPoints(points: string[], budget: number): string {
 }
 
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
-  const { version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES, limit = X_LIMIT, target = BREAKING_TARGET } = opts;
+  const {
+    version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
+    reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = X_LIMIT, target = BREAKING_TARGET,
+  } = opts;
   const place = book.district(story.district);
   const rajasthan = place ? place.rajasthan : story.rajasthan;
+  // Which district the handle rules are working in. The post's hashtag comes from `place` — the copy —
+  // and is left alone; this is only for the "another district's officer is not ours" test, which has to
+  // know the district the rules actually chose. Without it, a story whose district came from the file
+  // name alone treats its OWN district as somebody else's and tags no police at all.
+  const handlePlace = place ?? (story.fileDistrict ? book.district(story.fileDistrict) : null);
   // A word naming another district: "बूंदी SP ने" in a Jaipur story does not tag Jaipur's police
   const elsewhere = (word: string) => {
     const p = book.lookup(word);
-    return p?.kind === "district" && !p.districts.some((d) => d.name === place?.name);
+    return p?.kind === "district" && !p.districts.some((d) => d.name === handlePlace?.name);
   };
-  const handles = pickHandles({ ...story, rajasthan, elsewhere }, rules, subjects, desk);
+  const picked = pickHandlesExplained({ ...story, rajasthan, elsewhere }, rules, { subjects, desk, reporters, parties, max: 3 });
+  const handles = picked.handles;
   const footer = rajasthan ? RAJASTHAN_FOOTER : NATIONAL_FOOTER;
-  const hashtags = [footer, ...pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer])];
+  // The footer is the only tag that goes on by itself. The topic rules are OFFERED, not applied: measured
+  // against 400 published posts (30 Oct 2026), auto-applying them put a tag the desk had not written on
+  // 283 posts — #RajasthanElection alone fired 111 times and the desk used it NOT ONCE — and dropped the
+  // trailing run's precision from 92.5% to 55.8%. Only 2 of 19 active rules beat a coin flip. A wrong tag
+  // costs the desk a deletion on a live post; a missing one costs a click.
+  const hashtags = [footer];
+  const hashtagSuggestions = pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer]);
   const mentions = handles.map((h) => `@${h.handle}`);
 
   const tags = [place ? `#${place.tag}` : "", story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : ""].filter(Boolean);
@@ -204,5 +248,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   }
   const body = headlineCut ? "" : joinPoints(story.points, Math.min(room, room - limit + target) - xLen(line1) - 2);
   const bodyText = body ? `${line1}\n\n${body}` : line1;
-  return { bodyText, hashtags, mentions, handles, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}` };
+  return {
+    bodyText, hashtags, hashtagSuggestions, mentions, handles, cls: picked.cls, why: picked.why, warnings: picked.warnings,
+    unmatchedReporter: picked.unmatchedReporter, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}`,
+  };
 }

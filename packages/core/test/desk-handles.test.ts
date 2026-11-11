@@ -189,7 +189,7 @@ describe("suggesting desk-added handles", () => {
   ]);
   const story = (headline: string, points: string[] = [], district: string | null = null) => ({ headline, points, district, rajasthan: true, leaderPost: false });
   const handles = (headline: string, points: string[] = [], district: string | null = null) =>
-    pickHandles(story(headline, points, district), rules, subjects, desk).map((h) => h.handle);
+    pickHandles(story(headline, points, district), rules, { subjects, desk }).map((h) => h.handle);
 
   it("leaves out rows with no keywords and officials' and parties' rows", () => {
     expect(desk.count).toBe(4);
@@ -201,7 +201,8 @@ describe("suggesting desk-added handles", () => {
     expect(handles("Heavy rain in Jhalawar")).toEqual(["JhalawarUpdates"]);
     expect(handles("कोटा में तेज बारिश से नदी उफान पर")).toEqual(["KotaNewsDesk"]);
     expect(handles("जयपुर में तेज बारिश")).toEqual([]);
-    const pick = pickHandles(story("झालावाड़ में हादसा"), rules, subjects, desk)[0];
+    // Not an incident headline: on those the district police stand alone and no desk handle joins them
+    const pick = pickHandles(story("झालावाड़ में तेज बारिश"), rules, { subjects, desk })[0];
     expect(pick).toEqual({ handle: "JhalawarUpdates", reason: "desk", title: "Jhalawar" });
   });
 
@@ -212,21 +213,24 @@ describe("suggesting desk-added handles", () => {
     expect(handles("झालावाड़ पुलिस ने चोर पकड़ा", [], "Jhalawar")).toEqual(["JhalawarPolice", "JhalawarUpdates"]); // the file's rule, then the desk's
   });
 
-  it("puts desk handles after the file rules, within the cap of 2, each once", () => {
-    // Two file picks fill the cap
-    expect(handles("मुख्यमंत्री भजनलाल शर्मा ने झालावाड़ में किया लोकार्पण, राज्य सरकार का बड़ा फैसला")).toEqual(["BhajanlalBjp", "RajGovOfficial"]);
-    // One file pick, then the desk one, even when the desk keyword is in the headline and the file pick in the points
-    expect(handles("झालावाड़ में चोरी", ["पुलिस ने आरोपी को पकड़ा"], "Jaipur")).toEqual(["jaipur_police", "JhalawarUpdates"]);
+  it("puts desk handles after the file rules, within the cap of 3, each once", () => {
+    // Political copy: the leader, then the desk's own handle. No state-government pick — on political
+    // copy the state government is not a party to the story
+    expect(handles("मुख्यमंत्री भजनलाल शर्मा ने झालावाड़ में किया लोकार्पण, राज्य सरकार का बड़ा फैसला")).toEqual(["BhajanlalBjp", "JhalawarUpdates"]);
+    // An incident is exclusive: the district police stand alone, and no desk handle joins them
+    expect(handles("झालावाड़ में चोरी", ["पुलिस ने आरोपी को पकड़ा"], "Jaipur")).toEqual(["jaipur_police"]);
     // Two desk handles, headline first
     expect(handles("झालावाड़ और कोटा में बारिश")).toEqual(["JhalawarUpdates", "KotaNewsDesk"]);
     expect(handles("कोटा में बारिश", ["झालावाड़ में भी"])).toEqual(["KotaNewsDesk", "JhalawarUpdates"]);
     expect(handles("झालावाड़ झालावाड़ कोटा कोटा")).toEqual(["JhalawarUpdates", "KotaNewsDesk"]);
   });
 
-  it("keeps the gates: party news, a leader's post and news outside Rajasthan tag nobody", () => {
-    expect(handles("झालावाड़ में भाजपा प्रत्याशी की रैली")).toEqual([]);
-    expect(pickHandles({ ...story("झालावाड़ में बारिश"), leaderPost: true }, rules, subjects, desk)).toEqual([]);
-    expect(pickHandles({ ...story("झालावाड़ में बारिश"), rajasthan: false }, rules, subjects, desk)).toEqual([]);
+  it("keeps the gates: a leader's own post and news outside Rajasthan tag nobody", () => {
+    // Campaign copy is no longer a blanket gate — it is political, so the desk's own local handle rides
+    // along. What stays barred there is a police handle or a collector beside a party.
+    expect(handles("झालावाड़ में भाजपा प्रत्याशी की रैली")).toEqual(["JhalawarUpdates"]);
+    expect(pickHandles({ ...story("झालावाड़ में बारिश"), leaderPost: true }, rules, { subjects, desk })).toEqual([]);
+    expect(pickHandles({ ...story("झालावाड़ में बारिश"), rajasthan: false }, rules, { subjects, desk })).toEqual([]);
   });
 
   it("reaches the composed post's mentions", () => {

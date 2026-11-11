@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "generated": "2026-10-30",
   "district_list_note": "41 districts: 33 pre-2023 + 8 of the 2023 districts kept (Balotra, Beawar, Deeg, Didwana-Kuchaman, Khairthal-Tijara, Kotputli-Behror, Phalodi, Salumber) after the 28 Dec 2024 cabinet decision abolished Dudu, Kekri, Shahpura, Neem Ka Thana, Gangapur City, Jaipur Rural, Jodhpur Rural, Anupgarh, Sanchore.",
   "state": [
@@ -16,6 +16,13 @@
       "verified": true,
       "source": "https://cdn.syndication.twimg.com/tweet-result?id=1908006863817343478&token=4mi6hq8n72aira2&lang=en",
       "note": "Chief Minister Bhajanlal Sharma (bio: 'Chief Minister of Rajasthan'); X embed endpoint: author 'Bhajanlal Sharma' @BhajanlalBjp, verified_type=Government (tweet https://x.com/BhajanlalBjp/status/1908006863817343478); profile name 'Bhajanlal Sharma', bio: \"Chief Minister of Rajasthan\", X grey Government badge [https://api.fxtwitter.com/BhajanlalBjp]"
+    },
+    {
+      "handle": "@RajCMO",
+      "role": "cm",
+      "verified": true,
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "note": "Chief Minister's Office, Rajasthan. Corroborated by 19 published posts. Listed after @BhajanlalBjp, which stays the handle a CM story tags."
     },
     {
       "handle": "@PoliceRajasthan",

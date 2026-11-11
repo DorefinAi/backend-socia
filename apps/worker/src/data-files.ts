@@ -4,7 +4,8 @@
 // copy and logs why, so a typo never stops the desk. Whether each file is readable goes to /ingest/status.
 
 import {
-  EMPTY_HANDLE_RULES, EMPTY_SUBJECT_RULES, PlaceBook, parseHandleRules, parsePlacesData, parseSubjectHandles, type HandleRules, type SubjectRules,
+  EMPTY_HANDLE_RULES, EMPTY_PARTY_RULES, EMPTY_REPORTER_RULES, EMPTY_SUBJECT_RULES, PlaceBook, parseHandleRules, parsePartyHandles, parsePlacesData,
+  parseReporterHandles, parseSubjectHandles, type HandleRules, type PartyRules, type ReporterRules, type SubjectRules,
 } from "@socia/core";
 import type { DataFileStatus } from "@socia/db";
 import { readFile, stat } from "node:fs/promises";
@@ -16,6 +17,8 @@ const RECHECK_MS = 60_000;
 export const PLACES_FILE = fileURLToPath(new URL("../config/rajasthan-places.json", import.meta.url));
 export const DISTRICT_HANDLES_FILE = fileURLToPath(new URL("../config/district-handles.json", import.meta.url));
 export const SUBJECT_HANDLES_FILE = fileURLToPath(new URL("../config/subject-handles.json", import.meta.url));
+export const REPORTER_HANDLES_FILE = fileURLToPath(new URL("../config/reporter-handles.json", import.meta.url));
+export const PARTY_HANDLES_FILE = fileURLToPath(new URL("../config/party-handles.json", import.meta.url));
 
 /** A data file the pipeline needs is not readable: retry later, do not fail the story */
 export class DataUnavailable extends Error {
@@ -86,6 +89,10 @@ export interface PhaseOneData {
   handles: JsonDataFile<HandleRules>;
   /** The people and organisations stories are about, and their handles */
   subjects: JsonDataFile<SubjectRules>;
+  /** 1st India's own reporters, keyed on the token in the breaking file name */
+  reporters: JsonDataFile<ReporterRules>;
+  /** State and national party handles, tagged on campaign and party-activity copy */
+  parties: JsonDataFile<PartyRules>;
 }
 
 export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process.env): PhaseOneData {
@@ -95,5 +102,9 @@ export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process
     handles: new JsonDataFile("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j), log, EMPTY_HANDLE_RULES, onStatus),
     // No subjects file (or a broken one at start): no subject handles
     subjects: new JsonDataFile("subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j, problem) => parseSubjectHandles(j, problem), log, EMPTY_SUBJECT_RULES, onStatus),
+    // No reporters file: posts go out without a byline rather than wait
+    reporters: new JsonDataFile("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j, problem) => parseReporterHandles(j, problem), log, EMPTY_REPORTER_RULES, onStatus),
+    // No party file: political posts go out with the leader and the reporter, no party handle
+    parties: new JsonDataFile("parties", env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j, problem) => parsePartyHandles(j, problem), log, EMPTY_PARTY_RULES, onStatus),
   };
 }

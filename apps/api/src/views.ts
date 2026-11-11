@@ -104,6 +104,8 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
     bodyText: draft.bodyText,
     cardHeadline: draft.cardHeadline,
     hashtags: draft.hashtags,
+    /** Topic tags the org's rules matched, for one-click accept; never applied on their own */
+    hashtagSuggestions: draft.hashtagSuggestions,
     mentions: draft.mentions,
     mentionSuggestions: draft.mentionSuggestions,
     postText: text,
@@ -132,6 +134,12 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
     job: job ? { id: job.id, kind: job.kind, status: job.status, sendAt: job.nextAttemptAt, attempts: job.attempts, error: job.lastError } : null,
     composeMethod: draft.composeMethod,
     composeVersion: draft.composeVersion,
+    /**
+     * Breaking drafts: why these handles — the story class the rules hung off, that reason in words, the
+     * reporter token read from the file name, and anything the desk should look at (an unknown reporter
+     * token, an unknown district code) that never blocked a tag. Null for drafts composed before this.
+     */
+    handlePick: draft.handlePick ?? null,
     /** Web Scraper drafts: how the publishers' text was reworded (mode, similarity, tooClose, sources); else null */
     rewrite: draft.rewrite ?? null,
     createdAt: draft.createdAt,

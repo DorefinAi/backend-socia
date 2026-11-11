@@ -1,7 +1,7 @@
 // The X console: queue, draft, claim, edit, approve, undo, reject, recall.
 
 import {
-  DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, assemblePostText, checkXPost, istDayStart, parseLinkSlug, storyLinkName, xLen, X_LIMIT,
+  DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, assemblePostText, checkXPost, istDayRange, istDayStart, parseLinkSlug, storyLinkName, xLen, X_LIMIT,
 } from "@socia/core";
 import {
   approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, copyPosted, extendClaim, ingestedFiles, markPosted, postDrafts, postedView, publishedPosts,
@@ -85,6 +85,15 @@ const QueueFilters = {
   needsCheck: Type.Optional(Type.Boolean()),
 };
 
+/** `day` ("YYYY-MM-DD", an India calendar day, not in the future) as [start, end); anything else is a 400 bad_day */
+export function parseQueueDay(value: string | undefined, now = new Date()): { start: Date; end: Date } | null {
+  if (value === undefined) return null;
+  const range = istDayRange(value);
+  if (!range) throw new HttpError(400, "bad_day", "The day must be a real date written as YYYY-MM-DD.");
+  if (range.start > istDayStart(now)) throw new HttpError(400, "bad_day", "The day cannot be in the future (India time).");
+  return range;
+}
+
 /** The posted view's window: from the start of the IST day `days - 1` days back */
 function postedSince(days: number): Date {
   return new Date(istDayStart(new Date()).getTime() - (days - 1) * 24 * 60 * 60 * 1000);
@@ -143,12 +152,15 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
           /** view=posted only: how many IST days back, today included (default 1 = today) */
           days: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
+          /** Only stories received (stories.created_at) on this India calendar day, "YYYY-MM-DD"; checked in the handler (400 bad_day) */
+          day: Type.Optional(Type.String({ maxLength: 40 })),
           ...QueueFilters,
         }),
       },
     },
     async (req) => {
       const { user } = guard(req);
+      const day = parseQueueDay(req.query.day);
       const viewName = (req.query.view ?? "inbox") as QueueViewName;
       // Rejected and posted page by when that happened (the draft's last change); the other views by when it was made
       const sortCol = viewName === "rejected" || viewName === "posted" ? postDrafts.updatedAt : postDrafts.createdAt;
@@ -208,6 +220,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
             cursor?.id ? sql`(${sortCol}, ${postDrafts.id}) < (${cursor.at.toISOString()}::timestamptz, ${cursor.id}::uuid)` : undefined,
             cursor && !cursor.id ? lt(sortCol, cursor.at) : undefined,
             viewName === "posted" ? gte(postDrafts.updatedAt, postedSince(req.query.days ?? 1)) : undefined,
+            day ? gte(stories.createdAt, day.start) : undefined,
+            day ? lt(stories.createdAt, day.end) : undefined,
             ...filterWhere(req.query),
           ),
         )

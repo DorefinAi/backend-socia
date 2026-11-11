@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  backoffSeconds, capLevel, draftActionsFrom, istDayStart, largestFitting, nextDraftStatus,
+  backoffSeconds, capLevel, draftActionsFrom, istDayRange, istDayStart, largestFitting, nextDraftStatus,
   matchTotpStep, parseStory, slugParts, totpCode, totpStep, verifyTotp,
 } from "../src";
 
@@ -66,6 +66,13 @@ describe("time rules", () => {
     // 17 Oct 2026, 02:00 IST = 16 Oct 20:30 UTC → day began 16 Oct 18:30 UTC
     expect(istDayStart(new Date("2026-10-16T20:30:00Z")).toISOString()).toBe("2026-10-16T18:30:00.000Z");
     expect(istDayStart(new Date("2026-10-16T18:29:00Z")).toISOString()).toBe("2026-10-15T18:30:00.000Z");
+  });
+
+  it("turns an India calendar day into [00:00 IST, next 00:00 IST)", () => {
+    const r = istDayRange("2026-11-01")!;
+    expect([r.start.toISOString(), r.end.toISOString()]).toEqual(["2026-10-31T18:30:00.000Z", "2026-11-01T18:30:00.000Z"]);
+    expect(istDayRange("2028-02-29")).not.toBeNull();
+    for (const bad of ["2026-02-30", "2027-02-29", "2026-13-01", "2026-00-10", "2026-1-1", "26-11-01", "2026-11-01T00:00", " 2026-11-01", ""]) expect(istDayRange(bad), bad).toBeNull();
   });
 
   it("backs off and caps at 10 minutes", () => {

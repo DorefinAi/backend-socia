@@ -15,6 +15,24 @@ export function istDayStart(now: Date): Date {
   return new Date(midnightIst - IST_OFFSET_MS);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * An India calendar day "YYYY-MM-DD" as [start, end): 00:00 IST to the next 00:00 IST (IST has no DST).
+ * Null when the text is not that shape or not a real date (2026-02-30).
+ */
+export function istDayRange(day: string): { start: Date; end: Date } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const utc = new Date(0);
+  utc.setUTCFullYear(y, mo - 1, d); // not Date.UTC, which maps years 0-99 to 1900+
+  // 02-30 rolls over to 03-02; a real date reads back the same
+  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() !== mo - 1 || utc.getUTCDate() !== d) return null;
+  const start = new Date(utc.getTime() - IST_OFFSET_MS);
+  return { start, end: new Date(start.getTime() + DAY_MS) };
+}
+
 /** Seconds before the next attempt: 15, 30, 60, 120, … capped at 10 minutes. */
 export function backoffSeconds(attempt: number): number {
   return Math.min(15 * 2 ** Math.max(0, attempt - 1), 600);

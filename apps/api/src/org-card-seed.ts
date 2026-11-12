@@ -30,7 +30,11 @@ export const ORG_CARD_TEMPLATES: readonly OrgTemplateDefinition[] = [
     file: "breaking-square.jpeg",
     layout: {
       date: { x: 0.537, y: 0.186, w: 0.421, h: 0.052, color: "#000000", format: "Date:DD/MM/YYYY" },
-      box: { x: 0.085, y: 0.285, w: 0.83, h: 0.56 },
+      // Measured on a posted card (12 Nov 2026, the state terminal story): the words' column runs 95–990 px,
+      // centred on the red panel (76–1011 px, centre 543.5), the heading's head bar at 322 px and the block
+      // ending about 30 px above the panel's foot. The desk draws inside this box (cardFit: 3.4% padding each
+      // side, leading hanging over top and bottom), so the box is wider and taller than the panel's inside.
+      box: { x: 0.057, y: 0.295, w: 0.893, h: 0.545 },
       headline: { color: "#FFFFFF" },
       body: { color: "#FFFFFF" },
       fontMinPx: 18,

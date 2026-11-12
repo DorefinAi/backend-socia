@@ -17,7 +17,8 @@ export type CardTemplate = typeof cardTemplates.$inferSelect;
 /** The First India card: date in the yellow tag top-right, headline and body centred in the red box. */
 export const DEFAULT_CARD_LAYOUT: CardLayout = {
   date: { x: 0.54, y: 0.185, w: 0.415, h: 0.06, color: "#000000", format: "Date:DD/MM/YYYY" },
-  box: { x: 0.075, y: 0.27, w: 0.85, h: 0.58 },
+  // As the org's BREAKING NEWS design (apps/api org-card-seed.ts), measured on a posted card
+  box: { x: 0.057, y: 0.295, w: 0.893, h: 0.545 },
   headline: { color: "#FFFFFF" },
   body: { color: "#FFFFFF" },
   fontMinPx: 18,

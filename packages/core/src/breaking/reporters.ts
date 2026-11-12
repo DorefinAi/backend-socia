@@ -244,5 +244,29 @@ export function districtMismatch(m: ReporterMatch, district: string | null): boo
   // and "Sawai Madhopur" are one district. Stripping everything non-ASCII instead would collapse every
   // Devanagari district name to "" and compare them all equal.
   const k = (s: string) => fold(s).replace(/\s+/g, "");
-  return !m.districts.some((d) => k(d) === k(district));
+  // A district carved out in 2023 is still its parent's beat: @jawaharbedam (Bharatpur) filing from Deeg is
+  // not a mismatch
+  const parent = CARVED_FROM.get(k(district));
+  return !m.districts.some((d) => k(d) === k(district) || (parent !== undefined && k(d) === parent));
+}
+
+/**
+ * The districts formed in 2023 and the district each was (mostly) carved from, folded and unspaced. Reporters
+ * of the parent still cover them.
+ */
+const CARVED_FROM: ReadonlyMap<string, string> = new Map(
+  [
+    ["Deeg", "Bharatpur"], ["Didwana-Kuchaman", "Nagaur"], ["DidwanaKuchaman", "Nagaur"], ["Beawar", "Ajmer"], ["Balotra", "Barmer"],
+    ["Phalodi", "Jodhpur"], ["Salumber", "Udaipur"], ["Salumbar", "Udaipur"], ["Kotputli-Behror", "Jaipur"], ["KotputliBehror", "Jaipur"],
+    ["Khairthal-Tijara", "Alwar"], ["KhairthalTijara", "Alwar"],
+  ].map(([c, p]) => [fold(c!).replace(/\s+/g, ""), fold(p!).replace(/\s+/g, "")]),
+);
+
+/**
+ * The one district a reporter's filing can stand for (§2.8 inference), or null: a reporter listed for two or
+ * more districts, or for none (a state bureau such as Navin's ACB beat), says nothing about where a story is.
+ * Measured 98.5% (670/680) against posts that do carry a district — and still only ever a suggestion.
+ */
+export function reporterDistrict(m: ReporterMatch | null | undefined): string | null {
+  return m && m.districts.length === 1 ? m.districts[0]! : null;
 }

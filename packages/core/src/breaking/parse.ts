@@ -281,9 +281,24 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
 
   let district = where?.district ?? null;
   let national = district ? !district.rajasthan : false;
+  // The file code is the FILING desk's district, which is not always the story's: Navin files ACB stories
+  // from every district under the Jaipur code, so "डूंगरपुर में ACB कार्रवाई" came out #Jaipur. A Rajasthan
+  // DISTRICT named in the headline outranks it (HASHTAG_HANDLE_CHANGES_v3 §2.8: the hand-curated Hindi names
+  // of rajasthan-places.json before the reporter's district). District names only — a town can be in
+  // another district's copy in passing, and the file code still wins over a town.
   if (!district && hint) {
-    district = book.district(hint);
-    from = "file_code";
+    const named = book.find(headline).find((m) => m.entry.data.kind === "district" && m.entry.data.districts[0]!.rajasthan);
+    // A town on the place line is the desk's own dateline and keeps the file's district unless it is a known
+    // town of the named one: "तखतगढ़" (Pali) under a "जालोर-पावटा चौराहा" headline stays Pali
+    const townSays = where?.town ? book.lookup(where.town) : null;
+    const townAgrees = !where?.town || !!townSays?.districts.some((x) => x.name === named?.entry.data.districts[0]!.name);
+    if (named && named.entry.data.districts[0]!.name !== hint && townAgrees) {
+      district = named.entry.data.districts[0]!;
+      from = "text";
+    } else {
+      district = book.district(hint);
+      from = "file_code";
+    }
     national = !!district && !district.rajasthan;
   }
   // A town on its own (no district yet): the town's district, if the gazetteer knows the town

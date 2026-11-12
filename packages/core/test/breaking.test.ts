@@ -269,7 +269,7 @@ describe("composeBreaking", () => {
     expect(d.hashtagSuggestions).toContain("#RajasthanPolice");
     expect(text).not.toContain("#RajasthanPolice");
     expect(text).toContain("तलवारे और डंडे लेकर आए बदमाशों ने किया हमला, दादाबाड़ी");
-    expect(d.composeVersion).toBe("b5.0");
+    expect(d.composeVersion).toBe("b6.0");
   });
 
   it("adds the Hindi town tag and cuts the points right after a linking word with ...", () => {

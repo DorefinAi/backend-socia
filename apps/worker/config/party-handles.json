@@ -86,6 +86,37 @@
       "source": "@1stIndiaNews timeline",
       "evidence": 1,
       "note": "Seen once. Left unverified on purpose: one post does not corroborate a handle, and a wrong party tag is a reputational incident."
+    },
+    {
+      "handle": "@NSUIRajasthan",
+      "name": "NSUI Rajasthan",
+      "party": "congress",
+      "scope": "wing",
+      "keywords_hi": [
+        "एनएसयूआई",
+        "एनएसयूआई राजस्थान"
+      ],
+      "keywords_en": [
+        "NSUI"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/NSUIRajasthan",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §3.3/§5.5). X bio: \"Official Twitter Handle of 'National Student's Union of India ,Rajasthan\", 28k followers, no badge (normal for a party wing). scope 'wing': tagged beside the party when the HEADLINE names NSUI (parties.ts pickPartyWing). The desk's '@nsui.' on 12 Nov was a typo for this."
+    },
+    {
+      "handle": "@AICCMedia",
+      "name": "AICC Communications",
+      "party": "congress",
+      "scope": "media",
+      "keywords_hi": [
+        "एआईसीसी"
+      ],
+      "keywords_en": [
+        "AICC"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AICCMedia",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5). X bio: 'Official Twitter Handle of the Communications Department of @incindia', verified. scope 'media': never preferred over @INCRajasthan / @INCIndia; tagged only when the copy names AICC and nothing else of the party."
     }
   ]
 }

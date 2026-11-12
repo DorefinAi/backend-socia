@@ -1565,21 +1565,42 @@
     },
     {
       "handle": "@CeoRajasthan",
-      "kind": "department",
+      "kind": "institution",
       "title": "Chief Electoral Officer, Rajasthan",
       "names_hi": [],
       "names_en": [],
       "keywords_hi": [
         "मुख्य निर्वाचन अधिकारी",
-        "निर्वाचन विभाग"
+        "निर्वाचन विभाग",
+        "निर्वाचक नामावली",
+        "मतदाता सूची",
+        "मतदाता सूचियों",
+        "संक्षिप्त पुनरीक्षण",
+        "गहन पुनरीक्षण",
+        "बीएलओ",
+        "एसआईआर"
       ],
       "keywords_en": [
-        "CEO Rajasthan"
+        "CEO Rajasthan",
+        "BLO",
+        "SIR"
       ],
       "verified": true,
       "source": "https://api.fxtwitter.com/CeoRajasthan",
       "checkedAt": "2026-10-31",
-      "note": "X profile with grey Government badge and matching bio | X profile name 'CEO RAJASTHAN', bio: \"Official handle of Chief Electoral Officer, Rajasthan. For Voter Services log on to http://voters.eci.gov.in or Call on Voter Helpline No. a\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/CeoRajasthan/status/2116409718960984380)"
+      "note": "X profile with grey Government badge and matching bio | X profile name 'CEO RAJASTHAN', bio: \"Official handle of Chief Electoral Officer, Rajasthan. For Voter Services log on to http://voters.eci.gov.in or Call on Voter Helpline No. a\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/CeoRajasthan/status/2116409718960984380) | 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §3.1): electoral-roll keywords added — the desk tagged it on 109 posts on 9 Sep and these rules on none. exclude_*: a panchayat or municipal roll is the State Election Commission's, not the CEO's. kind 'institution' (12 Nov 2026): tagged when the copy names the rolls, not only when the office is the actor — a district's roll publication tags the collector AND the CEO.",
+      "exclude_hi": [
+        "पंचायत",
+        "पंचायती",
+        "सरपंच",
+        "नगर निकाय",
+        "निकाय चुनाव",
+        "राज्य निर्वाचन आयोग",
+        "वार्ड"
+      ],
+      "exclude_en": [
+        "SEC"
+      ]
     },
     {
       "handle": "@riicolimited",
@@ -2305,6 +2326,99 @@
       "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
       "evidence": 3,
       "note": "Taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
+    },
+    {
+      "handle": "@AmitShahOffice",
+      "kind": "department",
+      "title": "Office of Amit Shah (Union Home Minister)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "अमित शाह कार्यालय",
+        "गृह मंत्री कार्यालय",
+        "गृहमंत्री कार्यालय"
+      ],
+      "keywords_en": [
+        "Office of Amit Shah"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AmitShahOffice",
+      "checkedAt": "2026-11-12",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5: used by the desk in published posts). X: 'Office of Amit Shah', grey Government badge. kind 'department': tagged only where the office acts, the person @AmitShah is the subject otherwise. Keywords never include the minister's own name: that is @AmitShah's."
+    },
+    {
+      "handle": "@DelhiPolice",
+      "kind": "police",
+      "title": "Delhi Police",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "दिल्ली पुलिस"
+      ],
+      "keywords_en": [
+        "Delhi Police"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DelhiPolice",
+      "checkedAt": "2026-11-12",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5: used by the desk in published posts). X: 'Delhi Police', grey Government badge."
+    },
+    {
+      "handle": "@crpfindia",
+      "kind": "police",
+      "title": "Central Reserve Police Force",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "सीआरपीएफ",
+        "केंद्रीय रिजर्व पुलिस बल"
+      ],
+      "keywords_en": [
+        "CRPF"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/crpfindia",
+      "checkedAt": "2026-11-12",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5: used by the desk in published posts). X: 'CRPF', grey Government badge."
+    },
+    {
+      "handle": "@AAI_Official",
+      "kind": "company",
+      "title": "Airports Authority of India",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "भारतीय विमानपत्तन प्राधिकरण",
+        "एयरपोर्ट अथॉरिटी",
+        "एयरपोर्ट्स अथॉरिटी",
+        "एएआई"
+      ],
+      "keywords_en": [
+        "Airports Authority of India",
+        "AAI"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/AAI_Official",
+      "checkedAt": "2026-11-12",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5: used by the desk in published posts). X: 'Airports Authority of India', verified (type 'individual', not a Government badge; bio 'Official Account of the Airports Authority of India')."
+    },
+    {
+      "handle": "@RSSorg",
+      "kind": "institution",
+      "title": "Rashtriya Swayamsevak Sangh",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "आरएसएस",
+        "राष्ट्रीय स्वयंसेवक संघ"
+      ],
+      "keywords_en": [
+        "RSS"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/RSSorg",
+      "checkedAt": "2026-11-12",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5: used by the desk in published posts). X: 'RSS', verified (type 'individual'; bio 'Official Twitter Handle Of Rashtriya Swayamsevak Sangh')."
     }
   ],
   "checkedAt": "2026-10-31T10:08:28+00:00"

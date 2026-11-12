@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "_note": "Tags OFFERED to the desk (hashtag suggestions, one click), never applied on their own. Read by packages/core/src/breaking/post-tags.ts. kind 'campaign' needs explicit 'start' and 'end' (YYYY-MM-DD, IST, inclusive): a window is never inferred from which export a post came from. kind 'keyword' is evergreen. 'pattern' is a regular expression over the headline and points.",
+  "entries": [
+    {
+      "tag": "RajasthanPanchayatElection2026",
+      "kind": "campaign",
+      "pattern": "पंचायत चुनाव|पंचायती राज चुनाव|सरपंच|पंच पद|पंचायत समिति सदस्य|जिला परिषद सदस्य",
+      "start": "2026-10-01",
+      "end": "2026-11-30",
+      "note": "58 desk uses in the 30 Oct export, 8 in November"
+    },
+    {
+      "tag": "ACB",
+      "kind": "keyword",
+      "pattern": "(?:^|[^A-Za-z])ACB(?:[^A-Za-z]|$)|एसीबी|भ्रष्टाचार निरोधक ब्यूरो",
+      "note": "§4.1: the trigger fires on 13 posts and the desk used #ACB on 4 (31%). Suggest only. #ACBTrap was used on 0 and is not offered."
+    }
+  ]
+}

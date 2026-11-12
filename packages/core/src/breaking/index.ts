@@ -11,3 +11,4 @@ export * from "./desk-handles";
 export * from "./storyclass";
 export * from "./parties";
 export * from "./reporters";
+export * from "./post-tags";

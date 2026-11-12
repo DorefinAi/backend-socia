@@ -25,7 +25,7 @@ export interface PartyHandleEntry {
   /** What the draft calls it: "BJP Rajasthan". The `party` key below is for the clash rule, not for reading. */
   name?: string;
   party: string;
-  /** "state" | "national" | "youth" — the state handle is preferred for a Rajasthan story */
+  /** "state" | "national" | "wing" (NSUI, youth congress: tagged too when the headline names it, parties.ts pickPartyWing) — the state handle is preferred for a Rajasthan story */
   scope?: string;
   keywords_hi?: string[];
   keywords_en?: string[];
@@ -129,5 +129,14 @@ export function pickParty(text: string, rules: PartyRules, rajasthan: boolean): 
   // pick a side on an attack story, and tagging both burns the slot the leader should have.
   if (new Set(hits.map((h) => h.party)).size > 1) return null;
   const want = rajasthan ? "state" : "national";
-  return hits.find((h) => h.scope === want) ?? hits[0] ?? null;
+  return hits.find((h) => h.scope === want) ?? hits.find((h) => h.scope !== "wing") ?? hits[0] ?? null;
+}
+
+/**
+ * A party wing (scope "wing": NSUI, the youth congress, BJYM, ABVP) that the HEADLINE names literally, or
+ * null. The named organisation outranks a thematically adjacent one, so on "कांग्रेस के छात्र संगठन NSUI ..."
+ * the wing is tagged as well as the party. Only the headline: a wing in passing in the body is not the story.
+ */
+export function pickPartyWing(headline: string, rules: PartyRules): PartyRule | null {
+  return partyHits(headline, rules).find((h) => h.scope === "wing") ?? null;
 }

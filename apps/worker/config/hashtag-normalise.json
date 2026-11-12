@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "_note": "The desk's own typos and casing drift, read by packages/core/src/breaking/post-tags.ts BEFORE any comparison or scoring (HASHTAG_HANDLE_CHANGES_v3 §2.7). Every correction is flagged so the desk sees it. A tag within edit distance 2 of a 'guarded' tag but not equal to it is flagged and never silently corrected — add it to 'variants' once a person has confirmed it.",
+  "variants": {
+    "FINVido": "FINVideo",
+    "FIrstIndiaNews": "FirstIndiaNews",
+    "RajasthanWithFirstInda": "RajasthanWithFirstIndia",
+    "RajasthanWithfirstIndia": "RajasthanWithFirstIndia",
+    "RajasthanpanchayatElection2026": "RajasthanPanchayatElection2026",
+    "Sawaimadhopur": "SawaiMadhopur",
+    "banswara": "Banswara",
+    "BhajanLalSharma": "BhajanlalSharma",
+    "CMbhajanlalSharma": "CMBhajanlalSharma",
+    "Diyakumari": "DiyaKumari",
+    "Drjagdeeshchandra": "DrJagdeeshChandra"
+  },
+  "guarded": ["RajasthanWithFirstIndia", "FirstIndiaNews", "FINVideo"]
+}

@@ -163,7 +163,7 @@ describe("BreakingShareSource (no database)", () => {
     // rural force, and the draft says which one went on the post.
     expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).toMatch(/Kota has 2 police handles/);
     expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).not.toMatch(/reporter list/);
-    expect(draft!.composeVersion.startsWith("b5.")).toBe(true);
+    expect(draft!.composeVersion.startsWith("b6.")).toBe(true);
     // The footer is the only hashtag that goes on a post by itself. This org has no topic rules, so
     // there is nothing to offer either; packages/core covers the case where a rule matches.
     expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia"]);

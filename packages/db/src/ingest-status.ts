@@ -93,7 +93,7 @@ export const DATA_STATUS_KEY = "phase1.data_files";
 
 /** Whether the worker could read its places / handles / subjects / reporters / parties files (written when that changes) */
 export interface DataFileStatus {
-  file: "places" | "handles" | "subjects" | "reporters" | "parties";
+  file: "places" | "handles" | "subjects" | "reporters" | "parties" | "normalise" | "campaigns";
   ok: boolean;
   at: string;
   /** Why not, in plain words (no path) */

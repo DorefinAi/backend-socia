@@ -39,7 +39,7 @@
 
 import { fold } from "../fold";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
-import { EMPTY_PARTY_RULES, namesAnyParty, pickParty, type PartyRules } from "./parties";
+import { EMPTY_PARTY_RULES, namesAnyParty, pickParty, pickPartyWing, type PartyRules } from "./parties";
 import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
 import { classify, type StoryClass } from "./storyclass";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
@@ -358,6 +358,8 @@ function policeHqActs(text: string): boolean {
 
 /** Police and department subjects are tagged only when acting, as the district police are; people and the rest when named */
 const ONLY_ACTING: ReadonlySet<string> = new Set(["police", "department"]);
+/** A police or administrative venue: where a protest or a delegation goes (§3.2) */
+const VENUE = /(?:पुलिस\s*)?कमिश्नरेट|पुलिस\s*आयुक्तालय|थाने|थाना|पुलिस\s*चौकी|एसपी\s*(?:कार्यालय|ऑफिस)|कलेक्ट्रेट|कलेक्टरेट|कलक्ट्रेट|कलेक्टर\s*(?:कार्यालय|ऑफिस)|जिला\s*मुख्यालय|घेराव/u;
 /** Classes where the district force or the collector stands alone: nothing of the desk's joins them */
 const EXCLUSIVE: ReadonlySet<StoryClass> = new Set<StoryClass>(["incident", "administration"]);
 /** Classes the desk puts our own reporter on (54–67% of posts), and never on an incident (14.6%) */
@@ -411,6 +413,12 @@ export interface HandleResult {
    * it is true of about 45% of files today and will stay common until the list fills in.
    */
   unmatchedReporter: string | null;
+  /**
+   * Handles OFFERED to the desk, never tagged on their own (one click to add): the district police on party
+   * copy at a police or administrative venue (§3.2), an institution political copy names only in passing
+   * in its body (§3.3). Only ever handles of the data files.
+   */
+  suggestions: HandlePick[];
 }
 
 export interface PickOptions {
@@ -533,7 +541,11 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     for (const m of found) add([m.entry.data.handle], "subject", inHeadline, m.entry.data.title);
   };
 
-  const done = (handles: HandlePick[]): HandleResult => ({ handles, cls, why, warnings, unmatchedReporter });
+  const suggested: HandlePick[] = [];
+  const done = (handles: HandlePick[]): HandleResult => ({
+    handles, cls, why, warnings, unmatchedReporter,
+    suggestions: dedupe(suggested).filter((s) => !handles.some((h) => h.handle.toLowerCase() === s.handle.toLowerCase())),
+  });
   // Copy from outside Rajasthan tags no state institution. Our own reporter still goes on it — the
   // Delhi-datelined posts in the window carried @vyaskamalkant or @ashvinigokul and nothing else.
   const onlyReporter = (): HandleResult => {
@@ -598,19 +610,39 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     // The CM is a subject when the headline names him; he is also the most-tagged handle in the windows.
     if (CM_SUBJECT.test(head)) add(rules.state.cm, "cm", true);
     namedSubjects(head, true);
+    // A party wing the HEADLINE names outranks everything the body merely mentions: "कांग्रेस के छात्र संगठन
+    // NSUI ..." is NSUI's story, and the body's "राजस्थान यूनिवर्सिटी छात्रसंघ" is a passing reference (§3.3:
+    // the literal organisation over the thematically adjacent one).
+    const wing = pickPartyWing(head, parties);
+    if (wing) picks.push({ handle: wing.handle, reason: "party", inHeadline: true, title: wing.name });
     const named = new Set(picks.map((p) => p.handle.toLowerCase()));
+    // Only when the headline names a party or wing literally: there the body's institutions are adjacent to
+    // the story, not its subject. Elsewhere ("CM का जैसलमेर दौरा ... BSF") the body's institution is tagged as before.
+    const headNamesOrg = namesAnyParty(head, parties);
     if (subjects.count) {
       const acting = actingSubjects(body, subjects);
       for (const m of subjects.gazetteer.find(body).sort((a, b) => a.start - b.start)) {
         if (ONLY_ACTING.has(m.entry.data.kind) && !acting.has(m.entry.id)) continue;
         if (named.has(String(m.entry.data.handle).toLowerCase())) continue;
-        add([m.entry.data.handle], "subject", false, m.entry.data.title);
+        // A leader the body names rides on political copy; an institution named only in the body of a story
+        // whose headline names a party is offered instead — @UniRajOfficial took the first slot of the NSUI
+        // story from one mention of "राजस्थान यूनिवर्सिटी" in point 5.
+        if (m.entry.data.kind === "person" || !headNamesOrg) add([m.entry.data.handle], "subject", false, m.entry.data.title);
+        else suggested.push({ handle: m.entry.data.handle, reason: "subject", title: m.entry.data.title });
       }
     }
     const party = pickParty(all, parties, story.rajasthan);
     if (party) picks.push({ handle: party.handle, reason: "party", inHeadline: false, title: party.name });
-    // NOTE: no police and no collector in this branch, on purpose. Across 1,002 posts no party tag
+    // NOTE: no police and no collector TAGGED in this branch, on purpose. Across 1,002 posts no party tag
     // appeared beside a district police handle or a collector except twice, both desk slips.
+    //
+    // But party copy AT a police or administrative venue (a protest at the commissionerate, a gherao of the
+    // collectorate) is different: of 41 such posts the desk tagged the party on 40 and ALSO the police on 27
+    // (§3.2). Additive, and a suggestion — the desk is itself inconsistent here — never a reclassification.
+    if (story.rajasthan && VENUE.test(all)) {
+      const police = local?.police[0];
+      if (police) suggested.push({ handle: police, reason: "police" });
+    }
   } else if (cls === "government" || cls === "other") {
     // ── government and other: whatever the copy names, else nobody ──────────
     //

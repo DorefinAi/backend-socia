@@ -93,10 +93,15 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   if (!opts.data) throw new Error("Breaking stories need the places and handles files (compose started without them)");
   const { value: book, version: placesVersion } = await opts.data.places.get();
   const { value: rules, version: handlesVersion } = await opts.data.handles.get();
-  const [{ value: subjects, version: subjectsVersion }, { value: roster, version: reportersVersion }, { value: parties, version: partiesVersion }, dict] = await Promise.all([
+  const [
+    { value: subjects, version: subjectsVersion }, { value: roster, version: reportersVersion }, { value: parties, version: partiesVersion },
+    { value: normaliser, version: normaliseVersion }, { value: suggestRules, version: campaignsVersion }, dict,
+  ] = await Promise.all([
     opts.data.subjects.get(),
     opts.data.reporters.get(),
     opts.data.parties.get(),
+    opts.data.normalise.get(),
+    opts.data.campaigns.get(),
     dictionaries.topics(),
   ]);
   const { topics, desk, learnedReporters, version: topicsVersion } = dict;
@@ -123,8 +128,10 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     rules,
     book,
     {
-      version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.r${reportersVersion}.y${partiesVersion}.t${shortVersion(topicsVersion)}`,
-      topics, subjects, desk, reporters, parties,
+      version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.r${reportersVersion}.y${partiesVersion}.n${normaliseVersion}.c${campaignsVersion}.t${shortVersion(topicsVersion)}`,
+      topics, subjects, desk, reporters, parties, normaliser, suggestRules,
+      // The story's own arrival, so a re-saved or replayed file keeps the campaign window it came in
+      at: story.createdAt,
     },
   );
   const needsCheck = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
@@ -136,7 +143,11 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     hashtagSuggestions: out.hashtagSuggestions,
     mentions: out.mentions,
     // The rule-picked handles are in the post already; as suggestions too, they stay valid when the post is edited
-    mentionSuggestions: out.handles.map((h) => ({ handleId: `rule:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact: true })),
+    mentionSuggestions: [
+      ...out.handles.map((h) => ({ handleId: `rule:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact: true })),
+      // Offered and NOT in the post: police beside a party at a police venue, an institution named in passing
+      ...out.handleSuggestions.map((h) => ({ handleId: `suggest:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact: false })),
+    ],
     composeMethod: "rules",
     composeVersion: out.composeVersion,
     // Why these handles: the class every rule hung off, and what the desk should look at but that never
@@ -151,6 +162,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
         ...(out.unmatchedReporter ? [`the file names ${out.unmatchedReporter}, who is not in the reporter list, so no byline was added`] : []),
       ],
       handles: out.handles.map((h) => ({ handle: `@${h.handle}`, reason: h.reason, ...(h.title && { title: h.title }) })),
+      suggested: out.handleSuggestions.map((h) => ({ handle: `@${h.handle}`, reason: h.reason, ...(h.title && { title: h.title }) })),
       reporterToken: slot.reporterToken,
     },
   };

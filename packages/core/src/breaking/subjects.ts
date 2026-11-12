@@ -3,7 +3,8 @@
 // (desk decision: no party handles). A malformed entry is skipped and reported, not fatal, so a research
 // file can be dropped in as it is.
 
-import { Gazetteer } from "../gazetteer";
+import { fold } from "../fold";
+import { Gazetteer, type GazetteerEntry, type GazetteerMatch } from "../gazetteer";
 
 export const SUBJECT_KINDS = ["person", "department", "party", "company", "institution", "police"] as const;
 export type SubjectKind = (typeof SUBJECT_KINDS)[number];
@@ -18,6 +19,12 @@ export interface SubjectHandleEntry {
   names_en?: string[];
   keywords_hi?: string[];
   keywords_en?: string[];
+  /**
+   * The entry does not match a text that also has one of these (whole words, folded). @CeoRajasthan's
+   * "मतदाता सूची" keywords must not fire on a panchayat roll, which is the State Election Commission's.
+   */
+  exclude_hi?: string[];
+  exclude_en?: string[];
   verified: boolean;
   source?: string;
   checkedAt?: string;
@@ -37,6 +44,22 @@ export interface SubjectData {
   title: string;
   /** Which spellings are names (the rest are keywords) */
   names: string[];
+  /** Folded words or phrases that stop the entry matching a text that has them */
+  excludes?: string[];
+}
+
+/** A gazetteer that drops an entry from a text naming one of the entry's exclusions */
+class SubjectGazetteer extends Gazetteer<SubjectData> {
+  constructor(entries: GazetteerEntry<SubjectData>[]) {
+    super(entries);
+  }
+
+  override find(text: string): GazetteerMatch<SubjectData>[] {
+    const found = super.find(text);
+    if (!found.some((m) => m.entry.data.excludes?.length)) return found;
+    const f = ` ${fold(text.normalize("NFC"))} `;
+    return found.filter((m) => !m.entry.data.excludes?.some((x) => f.includes(` ${x} `)));
+  }
 }
 
 /** The verified, taggable subjects, ready to match */
@@ -50,7 +73,7 @@ export interface SubjectRules {
   handles?: ReadonlySet<string>;
 }
 
-export const EMPTY_SUBJECT_RULES: SubjectRules = { gazetteer: new Gazetteer<SubjectData>([]), count: 0 };
+export const EMPTY_SUBJECT_RULES: SubjectRules = { gazetteer: new SubjectGazetteer([]), count: 0 };
 
 const HANDLE = /^@?\w{1,15}$/;
 const KINDS = new Set<string>(SUBJECT_KINDS);
@@ -81,6 +104,7 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
     const keywords = [...strings(e.keywords_hi), ...strings(e.keywords_en)];
     if (!names.length && !keywords.length) return problem(`${where} (${e.handle}): no names or keywords to match`);
     const handle = e.handle.trim().replace(/^@/, "");
+    const excludes = [...strings(e.exclude_hi), ...strings(e.exclude_en)].map((x) => fold(x)).filter(Boolean);
     const [first, ...rest] = [...names, ...keywords];
     entries.push({
       id: `${handle.toLowerCase()}#${i}`,
@@ -88,8 +112,8 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
       aliases: rest,
       // Names outrank keywords on the same words
       priority: names.length ? 1 : 0,
-      data: { handle, kind: e.kind as SubjectData["kind"], title: typeof e.title === "string" ? e.title : handle, names },
+      data: { handle, kind: e.kind as SubjectData["kind"], title: typeof e.title === "string" ? e.title : handle, names, ...(excludes.length > 0 && { excludes }) },
     });
   });
-  return { gazetteer: new Gazetteer(entries), count: entries.length, handles };
+  return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles };
 }

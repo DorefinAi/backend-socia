@@ -4,8 +4,9 @@
 // copy and logs why, so a typo never stops the desk. Whether each file is readable goes to /ingest/status.
 
 import {
-  EMPTY_HANDLE_RULES, EMPTY_PARTY_RULES, EMPTY_REPORTER_RULES, EMPTY_SUBJECT_RULES, PlaceBook, parseHandleRules, parsePartyHandles, parsePlacesData,
-  parseReporterHandles, parseSubjectHandles, type HandleRules, type PartyRules, type ReporterRules, type SubjectRules,
+  EMPTY_HANDLE_RULES, EMPTY_NORMALISER, EMPTY_PARTY_RULES, EMPTY_REPORTER_RULES, EMPTY_SUBJECT_RULES, EMPTY_SUGGEST_RULES, PlaceBook,
+  parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules,
+  type HandleRules, type PartyRules, type ReporterRules, type SubjectRules, type SuggestRules, type TagNormaliser,
 } from "@socia/core";
 import type { DataFileStatus } from "@socia/db";
 import { readFile, stat } from "node:fs/promises";
@@ -19,6 +20,8 @@ export const DISTRICT_HANDLES_FILE = fileURLToPath(new URL("../config/district-h
 export const SUBJECT_HANDLES_FILE = fileURLToPath(new URL("../config/subject-handles.json", import.meta.url));
 export const REPORTER_HANDLES_FILE = fileURLToPath(new URL("../config/reporter-handles.json", import.meta.url));
 export const PARTY_HANDLES_FILE = fileURLToPath(new URL("../config/party-handles.json", import.meta.url));
+export const HASHTAG_NORMALISE_FILE = fileURLToPath(new URL("../config/hashtag-normalise.json", import.meta.url));
+export const CAMPAIGNS_FILE = fileURLToPath(new URL("../config/campaigns.json", import.meta.url));
 
 /** A data file the pipeline needs is not readable: retry later, do not fail the story */
 export class DataUnavailable extends Error {
@@ -93,6 +96,10 @@ export interface PhaseOneData {
   reporters: JsonDataFile<ReporterRules>;
   /** State and national party handles, tagged on campaign and party-activity copy */
   parties: JsonDataFile<PartyRules>;
+  /** The desk's hashtag typos and their canonical spelling */
+  normalise: JsonDataFile<TagNormaliser>;
+  /** Campaign and keyword tags offered to the desk */
+  campaigns: JsonDataFile<SuggestRules>;
 }
 
 export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process.env): PhaseOneData {
@@ -106,5 +113,9 @@ export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process
     reporters: new JsonDataFile("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j, problem) => parseReporterHandles(j, problem), log, EMPTY_REPORTER_RULES, onStatus),
     // No party file: political posts go out with the leader and the reporter, no party handle
     parties: new JsonDataFile("parties", env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j, problem) => parsePartyHandles(j, problem), log, EMPTY_PARTY_RULES, onStatus),
+    // No normalise file: typos stay as the desk typed them (still flagged near the brand tags)
+    normalise: new JsonDataFile("normalise", env.HASHTAG_NORMALISE_FILE ?? HASHTAG_NORMALISE_FILE, (j, problem) => parseHashtagNormalise(j, problem), log, EMPTY_NORMALISER, onStatus),
+    // No campaigns file: no campaign or keyword tags offered
+    campaigns: new JsonDataFile("campaigns", env.CAMPAIGNS_FILE ?? CAMPAIGNS_FILE, (j, problem) => parseSuggestRules(j, problem), log, EMPTY_SUGGEST_RULES, onStatus),
   };
 }

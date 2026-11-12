@@ -127,11 +127,22 @@
       "name": "Navin Sharma",
       "names_hi": [],
       "names_en": ["navin", "navin_sharma"],
-      "districts": ["Jaipur"],
+      "districts": [],
+      "beats": ["acb", "bureau"],
       "verified": true,
       "source": "@1stIndiaNews timeline, 6 posts",
       "evidence": 6,
-      "note": "Token confirmed on 68 real breaking file names."
+      "note": "Token confirmed on 68 real breaking file names. STATE BUREAU, not district-bound (HASHTAG_HANDLE_CHANGES_v3 §5.5): files ACB stories from every district under the Jaipur code (12 Nov: 'डूंगरपुर में ACB कार्रवाई' as JPR), so no district is listed and his filing never infers one. 12 Nov 2026: api.fxtwitter.com returns 404 for this handle — the desk should confirm it still exists."
+    },
+    {
+      "handle": "@DineshKasana15",
+      "name": "Dinesh Kasana",
+      "names_hi": [],
+      "names_en": ["dinesh_kasana"],
+      "districts": [],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/DineshKasana15",
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5). X bio: 'Special Correspondent @1stIndiaNews'. Token DINESH KASANA on 102 breaking files (32 with the Jaipur code, 69 with none); special correspondent, so no district is listed."
     },
     {
       "handle": "@dineshdangi84",

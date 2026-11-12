@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "_note": "Places as the desk writes them in HASHTAGS (Latin), read by packages/core/src/breaking/post-tags.ts to decide the brand tag (#RajasthanWithFirstIndia / #FirstIndiaNews) from any slot of a post. 'rajasthan' holds the current districts (the tags of rajasthan-places.json) plus the abolished or older names the desk still types. A Latin leading tag on NEITHER list is raised as unknown_district and is NOT treated as outside Rajasthan: that would silently flip the brand. Add the tag to the right list instead. Edited without a code change; the worker reads it again within a minute.",
+  "rajasthan": [
+    "Ajmer", "Alwar", "Balotra", "Banswara", "Baran", "Barmer", "Beawar", "Bharatpur", "Bhilwara", "Bikaner", "Bundi",
+    "Chittorgarh", "Churu", "Dausa", "Deeg", "Dholpur", "DidwanaKuchaman", "Dungarpur", "Hanumangarh", "Jaipur", "Jaisalmer",
+    "Jalore", "Jhalawar", "Jhunjhunu", "Jodhpur", "Karauli", "KhairthalTijara", "Kota", "KotputliBehror", "Nagaur", "Pali",
+    "Phalodi", "Pratapgarh", "Rajsamand", "Salumber", "SawaiMadhopur", "Sikar", "Sirohi", "SriGanganagar", "Tonk", "Udaipur",
+    "Didwana", "Kuchaman", "Khairthal", "Kotputli", "Salumbar", "Ganganagar", "Chittaurgarh", "Jalor", "Jhunjhunun",
+    "Anupgarh", "Dudu", "Kekri", "Shahpura", "Neemrana", "Sanchore", "Gangapur", "GangapurCity", "NeemKaThana", "JaipurRural", "JodhpurRural",
+    "Kishangarh", "Nathdwara", "Pushkar", "MountAbu", "Ranthambore", "Bhiwadi", "Sriganganagar"
+  ],
+  "outside": [
+    "India", "Delhi", "NewDelhi", "Mumbai", "Kolkata", "Chennai", "Bengaluru", "Bangalore", "Hyderabad", "Lucknow", "Patna", "Bhopal",
+    "Indore", "Ahmedabad", "Gandhinagar", "Chandigarh", "Noida", "Gurugram", "Agra", "Prayagraj", "Varanasi", "Ayodhya", "Mathura",
+    "Srinagar", "Jammu", "Dehradun", "Shimla", "Ranchi", "Bihar", "UttarPradesh", "MadhyaPradesh", "Gujarat", "Maharashtra", "Punjab",
+    "Haryana", "WestBengal", "Karnataka", "Kerala", "TamilNadu", "Telangana", "AndhraPradesh", "Odisha", "Assam", "Jharkhand",
+    "Chhattisgarh", "Uttarakhand", "HimachalPradesh", "JammuKashmir", "Goa", "Manipur",
+    "Pakistan", "China", "Nepal", "Bangladesh", "Bhutan", "SriLanka", "Afghanistan", "Iran", "Israel", "Russia", "Ukraine",
+    "America", "USA", "US", "NewYork", "Washington", "UK", "London", "France", "Paris", "Italy", "Germany", "Japan", "Canada",
+    "Australia", "Dubai", "UAE", "Nariño", "Colombia"
+  ],
+  "rajasthanSignals": [
+    "Rajasthan", "RajasthanNews", "RajasthanHighCourt", "RajasthanPolice", "RajasthanPanchayatElection2026", "RajasthanPanchayatElection",
+    "RajasthanGovernment", "RajasthanWeather", "RajasthanAssembly", "RajasthanBJP", "RajasthanCongress", "RajasthanElection"
+  ]
+}

@@ -38,69 +38,19 @@ import { composeBreaking } from "../src/breaking/compose";
 import { EMPTY_HANDLE_RULES } from "../src/breaking/handles";
 import { hashtagGazetteer, type HashtagGazetteer } from "../src/hashtags";
 import { PlaceBook, parsePlacesData } from "../src/breaking/places";
+import { normaliseTag as normaliseShared, parseHashtagNormalise, postFormat, segmentPost, type Segmented } from "../src/breaking/post-tags";
 
 export interface CorpusPost {
   text: string;
 }
 
-const HT = /#([\wऀ-ॿ]+)/gu;
+// Slots, format and normalisation are the shared ones (src/breaking/post-tags.ts), so the harness and the
+// composer cannot drift apart: URLs stripped first (§2.1), the danda attached to the word before it counts as
+// a video separator (§2.2), accented Latin tags (§2.6), and the desk's typos normalised before scoring (§2.7).
 const DEVANAGARI = /[ऀ-ॿ]/;
-const LEAD = /^\s*#([\wऀ-ॿ]+)\s*:?\s*/u;
-const TAG_ONLY_LINE = /^(?:[#@][\wऀ-ॿ]+[\s,]*)+$/u;
-
-/** The desk's own typos and casing drift, so a comparison is not lost to one of them */
-const NORMALISE: Record<string, string> = {
-  FINVido: "FINVideo", FIrstIndiaNews: "FirstIndiaNews", RajasthanWithFirstInda: "RajasthanWithFirstIndia",
-  RajasthanWithfirstIndia: "RajasthanWithFirstIndia", RajasthanpanchayatElection2026: "RajasthanPanchayatElection2026",
-  Sawaimadhopur: "SawaiMadhopur", banswara: "Banswara", BhajanLalSharma: "BhajanlalSharma",
-  CMbhajanlalSharma: "CMBhajanlalSharma", Diyakumari: "DiyaKumari", Drjagdeeshchandra: "DrJagdeeshChandra",
-};
-export const normaliseTag = (h: string) => NORMALISE[h] ?? h;
-
-export interface Segmented {
-  /** Hashtags before the headline: the district, then the town */
-  lead: string[];
-  /** Hashtags on the tag-only lines after the body */
-  trail: string[];
-  /** Hashtags anywhere else */
-  inline: string[];
-  /** Line 1 with the leading run taken off: the headline as the composer would receive it */
-  headline: string;
-  /** The body lines that are not a tag line: the points */
-  points: string[];
-}
-
-/** Splits a published post back into the parts the composer works with. */
-export function segmentPost(text: string): Segmented {
-  const lines = text.split("\n");
-  let headline = lines[0] ?? "";
-  const lead: string[] = [];
-  for (;;) {
-    const m = LEAD.exec(headline);
-    if (!m) break;
-    lead.push(m[1]!);
-    headline = headline.slice(m[0].length);
-  }
-  const trail: string[] = [];
-  const points: string[] = [];
-  for (const line of lines.slice(1)) {
-    const s = line.trim();
-    if (!s) continue;
-    if (TAG_ONLY_LINE.test(s)) trail.push(...[...s.matchAll(HT)].map((m) => m[1]!));
-    else points.push(s);
-  }
-  const taken = new Set([...lead, ...trail]);
-  const inline = [...text.matchAll(HT)].map((m) => m[1]!).filter((h) => !taken.has(h));
-  return { lead, trail, inline, headline, points };
-}
-
-/** A post's format. Only "A" is one this pipeline composes. */
-export function postFormat(text: string): "A" | "B" | "C" {
-  if (LEAD.test(text.split("\n")[0] ?? "")) return "A";
-  const h = text.split("\n")[0] ?? "";
-  if (/^\s*(Breaking News|Rajasthan News Live)\s*:/.test(h)) return "C";
-  return /\s[|।]\s/.test(h) || /^[A-Za-z0-9][A-Za-z0-9 .'&-]{3,60}:\s/.test(h) ? "B" : "C";
-}
+const NORMALISER = parseHashtagNormalise(JSON.parse(readFileSync(new URL("../../../apps/worker/config/hashtag-normalise.json", import.meta.url), "utf8")));
+export const normaliseTag = (h: string) => normaliseShared(h, NORMALISER).tag;
+export { postFormat, segmentPost, type Segmented };
 
 /**
  * Tags the desk reaches for again and again, which we have no rule for. They are counted as ground truth

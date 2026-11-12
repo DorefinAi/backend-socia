@@ -16,7 +16,8 @@ import { pickCategoryTags } from "./categories";
 import { pickHandlesExplained, type HandlePick, type HandleRules } from "./handles";
 import { EMPTY_DESK_HANDLE_RULES, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_PARTY_RULES, type PartyRules } from "./parties";
-import { EMPTY_REPORTER_RULES, type ReporterRules } from "./reporters";
+import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, type ReporterRules } from "./reporters";
+import { EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, normaliseTag, stripLinks, suggestTags, type SuggestRules, type TagNormaliser } from "./post-tags";
 import type { StoryClass } from "./storyclass";
 import type { PlaceBook } from "./places";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
@@ -34,8 +35,10 @@ export const BREAKING_TARGET = 265;
  * b2: category hashtags, the cut after a linking word, subject handles, police/collector only when acting.
  * b4: story-class routing, 3 slots, party and reporter handles, the judicial class, no government fallback.
  * b5: the footer is the only hashtag applied on its own; topic rules are offered to the desk instead.
+ * b6: URLs out of every line read; desk tag typos normalised; an inferred district, campaign and #ACB tags
+ *     offered, never applied; handle suggestions (HASHTAG_HANDLE_CHANGES_v3).
  */
-export const BREAKING_FORMAT = "b5";
+export const BREAKING_FORMAT = "b6";
 
 export interface BreakingComposeInput {
   headline: string;
@@ -69,6 +72,12 @@ export interface BreakingComposeOptions {
   reporters?: ReporterRules;
   /** party-handles.json */
   parties?: PartyRules;
+  /** hashtag-normalise.json: the desk's typos in its own tag run, corrected and flagged */
+  normaliser?: TagNormaliser;
+  /** campaigns.json: date-windowed campaign tags and keyword tags (#ACB), OFFERED only */
+  suggestRules?: SuggestRules;
+  /** When the story came in, for the campaign windows; none: campaign tags are not offered */
+  at?: Date;
   limit?: number;
   target?: number;
 }
@@ -84,6 +93,8 @@ export interface BreakingDraft {
   hashtagSuggestions: string[];
   mentions: string[];
   handles: HandlePick[];
+  /** Handles offered to the desk and not in the post (handles.ts `suggestions`) */
+  handleSuggestions: HandlePick[];
   /** The class the handles were chosen by, for the draft's audit line */
   cls: StoryClass;
   /** Why that class, in words the desk can agree or disagree with */
@@ -207,7 +218,22 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
     reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = X_LIMIT, target = BREAKING_TARGET,
+    normaliser = EMPTY_NORMALISER, suggestRules = EMPTY_SUGGEST_RULES, at,
   } = opts;
+  // URLs never reach a rule or the post (§2.1): every line this reads is cleaned first
+  const flags: string[] = [];
+  const clean = (t: string) =>
+    stripLinks(t).replace(HASHTAG, (whole, tag: string) => {
+      const n = normaliseTag(tag, normaliser);
+      if (n.flag && !flags.includes(n.flag)) flags.push(n.flag);
+      return n.tag === tag ? whole : `#${n.tag}`;
+    }).replace(/[ 	]{2,}/g, " ").trim();
+  story = {
+    ...story,
+    headline: clean(story.headline),
+    points: story.points.map(clean).filter(Boolean),
+    ...(story.rawHeadline !== undefined && { rawHeadline: clean(story.rawHeadline) }),
+  };
   const place = book.district(story.district);
   const rajasthan = place ? place.rajasthan : story.rajasthan;
   // Which district the handle rules are working in. The post's hashtag comes from `place` — the copy —
@@ -229,7 +255,17 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // trailing run's precision from 92.5% to 55.8%. Only 2 of 19 active rules beat a coin flip. A wrong tag
   // costs the desk a deletion on a live post; a missing one costs a click.
   const hashtags = [footer];
-  const hashtagSuggestions = pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer]);
+  const offered = pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer]);
+  // No district at all (§2.8): infer one and OFFER it — a Rajasthan district the headline names (the curated
+  // Hindi names), else the filing reporter's one district. Never into line 1: inference is right 98.5% of the
+  // time and the 1.5% is a wrong place on a live post (Navin files every district's ACB story as Jaipur).
+  if (!place) {
+    const named = book.find(story.headline).find((m) => m.entry.data.kind === "district" && m.entry.data.districts[0]!.rajasthan);
+    const inferred = named ? named.entry.data.districts[0]! : book.district(reporterDistrict(pickReporter(story.reporterToken, reporters).match));
+    if (inferred) offered.unshift(`#${inferred.tag}`);
+  }
+  if (at) offered.push(...suggestTags([story.headline, ...story.points].join("\n"), suggestRules, at).map((t) => `#${t}`));
+  const hashtagSuggestions = [...new Set(offered)].filter((t) => t.toLowerCase() !== footer.toLowerCase());
   const mentions = handles.map((h) => `@${h.handle}`);
 
   const tags = [place ? `#${place.tag}` : "", story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : ""].filter(Boolean);
@@ -249,7 +285,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   const body = headlineCut ? "" : joinPoints(story.points, Math.min(room, room - limit + target) - xLen(line1) - 2);
   const bodyText = body ? `${line1}\n\n${body}` : line1;
   return {
-    bodyText, hashtags, hashtagSuggestions, mentions, handles, cls: picked.cls, why: picked.why, warnings: picked.warnings,
+    bodyText, hashtags, hashtagSuggestions, mentions, handles, handleSuggestions: picked.suggestions, cls: picked.cls, why: picked.why,
+    warnings: [...picked.warnings, ...flags.map((f) => `hashtag typo: ${f}`)],
     unmatchedReporter: picked.unmatchedReporter, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}`,
   };
 }

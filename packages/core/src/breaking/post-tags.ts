@@ -27,6 +27,8 @@ export const stripLinks = (text: string): string => text.replace(URL, "");
  */
 const TAG_CHAR = String.raw`[\wऀ-ॣ०-ॿÀ-ɏ]`;
 export const HASHTAG = new RegExp(`#(${TAG_CHAR}+)`, "gu");
+/** A whole tag a config file may name: only hashtag characters, so a typo never puts a space or a colon in a post */
+const WHOLE_TAG = new RegExp(`^${TAG_CHAR}+$`, "u");
 const LEAD = new RegExp(String.raw`^\s*#(${TAG_CHAR}+)\s*:?\s*`, "u");
 const TAG_ONLY_LINE = new RegExp(String.raw`^(?:[#@]${TAG_CHAR}+[\s,.]*)+$`, "u");
 const DEVANAGARI = /[ऀ-ॿ]/u;
@@ -69,7 +71,7 @@ export function parseHashtagNormalise(json: unknown, problem: (message: string) 
   const variants = new Map<string, string>();
   for (const [from, to] of Object.entries(root.variants)) {
     if (from.startsWith("_")) continue;
-    if (typeof to !== "string" || !bareTag(to) || !bareTag(from)) {
+    if (typeof to !== "string" || !WHOLE_TAG.test(bareTag(to)) || !WHOLE_TAG.test(bareTag(from))) {
       problem(`variants.${from}: must map to a tag`);
       continue;
     }
@@ -320,7 +322,7 @@ export function parseSuggestRules(json: unknown, problem: (message: string) => v
   const rules: SuggestRule[] = [];
   (root.entries as Partial<SuggestRuleEntry>[]).forEach((e, i) => {
     const where = `entries[${i}]`;
-    if (!e || typeof e.tag !== "string" || !bareTag(e.tag)) return problem(`${where}: no tag`);
+    if (!e || typeof e.tag !== "string" || !WHOLE_TAG.test(bareTag(e.tag))) return problem(`${where}: no tag, or not a valid hashtag`);
     if (typeof e.pattern !== "string" || !e.pattern) return problem(`${where} (${e.tag}): no pattern`);
     let pattern: RegExp;
     try {
@@ -329,9 +331,12 @@ export function parseSuggestRules(json: unknown, problem: (message: string) => v
       return problem(`${where} (${e.tag}): pattern does not compile: ${(err as Error).message}`);
     }
     const kind = e.kind ?? "campaign";
+    // A misspelt kind must not turn a dated campaign into a tag offered every day
+    if (kind !== "campaign" && kind !== "keyword") return problem(`${where} (${e.tag}): kind must be "campaign" or "keyword"`);
     if (kind === "campaign" && !(typeof e.start === "string" && DATE.test(e.start) && typeof e.end === "string" && DATE.test(e.end))) {
       return problem(`${where} (${e.tag}): a campaign needs "start" and "end" as YYYY-MM-DD`);
     }
+    if (kind === "campaign" && e.start! > e.end!) return problem(`${where} (${e.tag}): "start" is after "end", so it would never be offered`);
     rules.push({ tag: bareTag(e.tag), pattern, start: kind === "campaign" ? e.start! : null, end: kind === "campaign" ? e.end! : null });
   });
   return { rules };

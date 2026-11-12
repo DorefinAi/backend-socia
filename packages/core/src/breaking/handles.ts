@@ -42,7 +42,7 @@ import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./
 import { EMPTY_PARTY_RULES, namesAnyParty, pickParty, pickPartyWing, type PartyRules } from "./parties";
 import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
 import { classify, type StoryClass } from "./storyclass";
-import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
+import { EMPTY_SUBJECT_RULES, subjectExcluded, type SubjectRules } from "./subjects";
 
 /** One entry of district-handles.json */
 export interface DistrictHandleEntry {
@@ -359,7 +359,7 @@ function policeHqActs(text: string): boolean {
 /** Police and department subjects are tagged only when acting, as the district police are; people and the rest when named */
 const ONLY_ACTING: ReadonlySet<string> = new Set(["police", "department"]);
 /** A police or administrative venue: where a protest or a delegation goes (§3.2) */
-const VENUE = /(?:पुलिस\s*)?कमिश्नरेट|पुलिस\s*आयुक्तालय|थाने|थाना|पुलिस\s*चौकी|एसपी\s*(?:कार्यालय|ऑफिस)|कलेक्ट्रेट|कलेक्टरेट|कलक्ट्रेट|कलेक्टर\s*(?:कार्यालय|ऑफिस)|जिला\s*मुख्यालय|घेराव/u;
+const VENUE = /(?<![\p{L}\p{M}])(?:(?:पुलिस\s*)?कमिश्नरेट|पुलिस\s*आयुक्तालय|थाने|थाना|पुलिस\s*चौकी|एसपी\s*(?:कार्यालय|ऑफिस)|कलेक्ट्रेट|कलेक्टरेट|कलक्ट्रेट|कलेक्टर\s*(?:कार्यालय|ऑफिस)|जिला\s*मुख्यालय|घेराव)(?![\p{L}\p{M}])/u;
 /** Classes where the district force or the collector stands alone: nothing of the desk's joins them */
 const EXCLUSIVE: ReadonlySet<StoryClass> = new Set<StoryClass>(["incident", "administration"]);
 /** Classes the desk puts our own reporter on (54–67% of posts), and never on an incident (14.6%) */
@@ -491,7 +491,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   // Devanagari gives proper nouns no orthographic cue, so a headline that is nothing but "अशोक गहलोत"
   // has no political signal without this hint. Measured: political recall 92.5% with it, 84.4% without.
   const namedPolitical =
-    (subjects.count > 0 && subjects.gazetteer.find(head).some((m) => m.entry.data.kind === "person")) || namesAnyParty(head, parties);
+    (subjects.count > 0 && subjects.gazetteer.find(head).some((m) => m.entry.data.kind === "person" && !subjectExcluded(m, all))) || namesAnyParty(head, parties);
   const { cls, why } = classify({ headline: head, points: story.points, leaderPost: story.leaderPost, namedPolitical });
 
   // The reporter, resolved now and appended last. An unresolved name is reported, never guessed at.
@@ -536,7 +536,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     const acting = actingSubjects(text, subjects);
     const found = subjects.gazetteer
       .find(text)
-      .filter((m) => !ONLY_ACTING.has(m.entry.data.kind) || acting.has(m.entry.id))
+      .filter((m) => (!ONLY_ACTING.has(m.entry.data.kind) || acting.has(m.entry.id)) && !subjectExcluded(m, all))
       .sort((a, b) => a.start - b.start);
     for (const m of found) add([m.entry.data.handle], "subject", inHeadline, m.entry.data.title);
   };
@@ -613,7 +613,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     // A party wing the HEADLINE names outranks everything the body merely mentions: "कांग्रेस के छात्र संगठन
     // NSUI ..." is NSUI's story, and the body's "राजस्थान यूनिवर्सिटी छात्रसंघ" is a passing reference (§3.3:
     // the literal organisation over the thematically adjacent one).
-    const wing = pickPartyWing(head, parties);
+    const wing = pickPartyWing(head, parties, story.rajasthan);
     if (wing) picks.push({ handle: wing.handle, reason: "party", inHeadline: true, title: wing.name });
     const named = new Set(picks.map((p) => p.handle.toLowerCase()));
     // Only when the headline names a party or wing literally: there the body's institutions are adjacent to
@@ -623,7 +623,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
       const acting = actingSubjects(body, subjects);
       for (const m of subjects.gazetteer.find(body).sort((a, b) => a.start - b.start)) {
         if (ONLY_ACTING.has(m.entry.data.kind) && !acting.has(m.entry.id)) continue;
-        if (named.has(String(m.entry.data.handle).toLowerCase())) continue;
+        if (named.has(String(m.entry.data.handle).toLowerCase()) || subjectExcluded(m, all)) continue;
         // A leader the body names rides on political copy; an institution named only in the body of a story
         // whose headline names a party is offered instead — @UniRajOfficial took the first slot of the NSUI
         // story from one mention of "राजस्थान यूनिवर्सिटी" in point 5.

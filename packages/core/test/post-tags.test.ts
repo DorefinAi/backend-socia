@@ -207,3 +207,75 @@ describe("handles", () => {
     }
   });
 });
+
+describe("review fixes (12 Nov): the headline's district only when it is the story's place", () => {
+  // A Jaipur-coded file, so anything but Jaipur is the headline overriding the file code
+  const at = (headline: string) => parseBreaking(`${ACB_FILE.replace(/\.txt$/, "")}\r\n\r\n${headline}\r\nपहला बिंदु\r\n`, ACB_FILE, book);
+  it.each([
+    ["ओबीसी कोटा बढ़ाने की मांग तेज"],
+    ["स्कूलों में दूसरी पाली का समय बदला"],
+    ["अजमेर-जयपुर हाईवे पर बड़ा हादसा"],
+    ["उदयपुर से लौट रहे जयपुर के परिवार की कार पलटी"],
+    ["दिल्ली के बीकानेर हाउस में बैठक"],
+    ["मुख्यमंत्री भजनलाल शर्मा हुए खैरथल-तिजारा के लिए रवाना"],
+  ])("keeps the file's district: %s", (headline) => {
+    expect(at(headline)).toMatchObject({ district: "Jaipur", districtFrom: "file_code" });
+  });
+  it.each([
+    ["डूंगरपुर में ACB कार्रवाई", "Dungarpur"],
+    ["डीग-कुम्हेर विधायक डॉ. शैलेश सिंह आज पहुंचेंगे डीग", "Deeg"],
+    ["सीकर जिले के खाटूश्यामजी में भीड़", "Sikar"],
+  ])("takes the headline's district: %s", (headline, district) => {
+    expect(at(headline)).toMatchObject({ district, districtFrom: "text" });
+  });
+});
+
+describe("review fixes (12 Nov): party wings and exclusions", () => {
+  const pick = (headline: string, points: string[], rajasthan = true) =>
+    pickHandlesExplained({ headline, points, district: rajasthan ? "Jaipur" : null, rajasthan, leaderPost: false }, rules, { subjects, reporters, parties });
+  const tagged = (r: ReturnType<typeof pick>) => r.handles.map((h) => h.handle);
+
+  it("no wing on an attack story naming two parties", () => {
+    const r = pick("भाजपा ने NSUI पर साधा निशाना, कहा छात्रों को भड़का रही कांग्रेस", []);
+    expect(tagged(r)).not.toContain("NSUIRajasthan");
+  });
+  it("no wing outside Rajasthan", () => {
+    expect(tagged(pick("NSUI ने दिल्ली में किया प्रदर्शन", [], false))).not.toContain("NSUIRajasthan");
+  });
+  it("no wing from a passing mention in the points", () => {
+    const r = pick("युवा नेताओं का प्रदर्शन", ["NSUI कार्यकर्ताओं ने किया विरोध"]);
+    expect(tagged(r)).not.toContain("NSUIRajasthan");
+  });
+  it("keeps the wing on its own story when only a point names the other party", () => {
+    expect(tagged(pick("NSUI ने फीस वृद्धि के खिलाफ किया प्रदर्शन", ["भाजपा सरकार पर लगाए आरोप"]))).toContain("NSUIRajasthan");
+  });
+  it("still tags the wing its own headline names", () => {
+    expect(tagged(pick("9 माह से कांग्रेस के छात्र संगठन NSUI का नहीं कोई धणी धोरी", []))).toContain("NSUIRajasthan");
+  });
+  it("no police suggestion from a town or word that only contains a venue word", () => {
+    const r = pick("कांग्रेस कार्यकर्ताओं ने थानागाजी में की सभा", ["थानेदार के तबादले की मांग"]);
+    expect(r.suggestions.some((h) => h.reason === "police")).toBe(false);
+  });
+  it("an exclusion word in the points still drops the CEO named in the headline", () => {
+    const r = pick("मतदाता सूची में गड़बड़ी के आरोप", ["ग्राम पंचायत चुनाव को लेकर राज्य निर्वाचन आयोग से शिकायत"]);
+    expect(tagged(r)).not.toContain("CeoRajasthan");
+  });
+});
+
+describe("review fixes (12 Nov): config checks", () => {
+  it("skips a misspelt kind, a reversed window and a tag that is not a hashtag", () => {
+    const problems: string[] = [];
+    const r = parseSuggestRules({ entries: [
+      { tag: "A", kind: "campain", pattern: "x", start: "2026-01-01", end: "2026-01-31" },
+      { tag: "B", kind: "campaign", pattern: "x", start: "2026-02-01", end: "2026-01-01" },
+      { tag: "C D", kind: "keyword", pattern: "x" },
+      { tag: "E", kind: "keyword", pattern: "x" },
+    ] }, (m) => problems.push(m));
+    expect(r.rules.map((x) => x.tag)).toEqual(["E"]);
+    expect(problems).toHaveLength(3);
+  });
+  it("never maps a typo to something that is not a hashtag", () => {
+    const n = parseHashtagNormalise({ variants: { Foo: "Foo Bar", Bar: "X:", Baz: "BazQux" } });
+    expect([...n.variants.keys()]).toEqual(["Baz"]);
+  });
+});

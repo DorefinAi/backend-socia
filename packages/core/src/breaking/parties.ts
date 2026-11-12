@@ -128,15 +128,23 @@ export function pickParty(text: string, rules: PartyRules, rajasthan: boolean): 
   // Both parties named (a clash story, "कांग्रेस ने भाजपा पर साधा निशाना") — tag neither. The desk does not
   // pick a side on an attack story, and tagging both burns the slot the leader should have.
   if (new Set(hits.map((h) => h.party)).size > 1) return null;
+  // A wing is tagged only through pickPartyWing (its headline, its own story): never from a passing mention
+  const parties = hits.filter((h) => h.scope !== "wing");
   const want = rajasthan ? "state" : "national";
-  return hits.find((h) => h.scope === want) ?? hits.find((h) => h.scope !== "wing") ?? hits[0] ?? null;
+  return parties.find((h) => h.scope === want) ?? parties[0] ?? null;
 }
 
 /**
  * A party wing (scope "wing": NSUI, the youth congress, BJYM, ABVP) that the HEADLINE names literally, or
  * null. The named organisation outranks a thematically adjacent one, so on "कांग्रेस के छात्र संगठन NSUI ..."
  * the wing is tagged as well as the party. Only the headline: a wing in passing in the body is not the story.
+ * Never when the headline names two parties ("भाजपा ने NSUI पर साधा निशाना": the desk takes no side on an
+ * attack). The other party in a point ("भाजपा सरकार पर आरोप") does not undo the wing's own story. Never
+ * outside Rajasthan (the wing handles are the state units).
  */
-export function pickPartyWing(headline: string, rules: PartyRules): PartyRule | null {
-  return partyHits(headline, rules).find((h) => h.scope === "wing") ?? null;
+export function pickPartyWing(headline: string, rules: PartyRules, rajasthan: boolean): PartyRule | null {
+  if (!rajasthan) return null;
+  const hits = partyHits(headline, rules);
+  if (new Set(hits.map((h) => h.party)).size > 1) return null;
+  return hits.find((h) => h.scope === "wing") ?? null;
 }

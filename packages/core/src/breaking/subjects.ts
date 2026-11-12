@@ -50,16 +50,20 @@ export interface SubjectData {
 
 /** A gazetteer that drops an entry from a text naming one of the entry's exclusions */
 class SubjectGazetteer extends Gazetteer<SubjectData> {
-  constructor(entries: GazetteerEntry<SubjectData>[]) {
-    super(entries);
-  }
-
   override find(text: string): GazetteerMatch<SubjectData>[] {
-    const found = super.find(text);
-    if (!found.some((m) => m.entry.data.excludes?.length)) return found;
-    const f = ` ${fold(text.normalize("NFC"))} `;
-    return found.filter((m) => !m.entry.data.excludes?.some((x) => f.includes(` ${x} `)));
+    return super.find(text).filter((m) => !subjectExcluded(m, text));
   }
+}
+
+/**
+ * Whether `context` names one of the match's exclusions. Pass the WHOLE post: the headline and the points are
+ * matched separately, and "मतदाता सूची" in the headline must still be dropped when "पंचायत" is only in a point.
+ */
+export function subjectExcluded(m: GazetteerMatch<SubjectData>, context: string): boolean {
+  const excludes = m.entry.data.excludes;
+  if (!excludes?.length) return false;
+  const f = ` ${fold(context.normalize("NFC"))} `;
+  return excludes.some((x) => f.includes(` ${x} `));
 }
 
 /** The verified, taggable subjects, ready to match */

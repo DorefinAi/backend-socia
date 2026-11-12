@@ -3,6 +3,7 @@
 // headline; then one point per line. Desk instructions ("नोट-: ... फुलस्क्रीन करावें") are taken out and
 // flagged. Rules only: anything odd is flagged for a human, never guessed by a model.
 
+import { fold } from "../fold";
 import { fileTags, type FileTags } from "./filename";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
 
@@ -86,6 +87,43 @@ interface Located {
 
 const clean = (line: string) => line.replace(INVISIBLE, "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
 const words = (s: string) => s.split(" ").filter(Boolean).length;
+
+/** District names that are also everyday words: "ओबीसी कोटा" (quota), "दूसरी पाली" (shift), "बूंदी" (the sweet) */
+const COMMON_WORD_DISTRICTS: ReadonlySet<string> = new Set(["Kota", "Pali", "Bundi"]);
+/** What follows a district named as the story's own place: "डूंगरपुर में", "डीग के", "जिले" (or the headline ends) */
+const PLACE_AFTER: ReadonlySet<string> = new Set(["में", "के", "की", "का", "जिले", "जिला", "स्थित", "शहर"].map(fold));
+const FOR = new Set(["लिए", "लिये"].map(fold));
+
+/**
+ * The Rajasthan district a headline names as where the story IS, to override the file code's district, or
+ * null. The file code is the filing desk's district (Navin files every district's ACB story as Jaipur), but
+ * a district word in a headline is often not the story's place, and this one goes INTO the post (line 1's
+ * hashtag, the district police and collector). So only when all of these hold:
+ *  - exactly one district is named: two are a route, a trip or a comparison ("अजमेर-जयपुर हाईवे",
+ *    "उदयपुर से लौट रहे जयपुर के परिवार"), and naming the file's own district keeps it;
+ *  - the name is not also an everyday word (COMMON_WORD_DISTRICTS);
+ *  - it reads as a place: followed by में / के / की / का / जिले ... or ending the headline, and not
+ *    "के लिए" (the destination: "खैरथल-तिजारा के लिए रवाना") nor a building ("बीकानेर हाउस में").
+ */
+function headlineDistrict(book: PlaceBook, headline: string, hint: string): DistrictInfo | null {
+  const found = book.find(headline).filter((m) => m.entry.data.kind === "district" && m.entry.data.districts[0]?.rajasthan);
+  const named = [...new Map(found.map((m) => [m.entry.data.districts[0]!.name, m.entry.data.districts[0]!])).values()];
+  if (named.length !== 1) return null;
+  const d = named[0]!;
+  if (d.name === hint || d.name === book.district(hint)?.name || COMMON_WORD_DISTRICTS.has(d.tag)) return null;
+  // Every place the headline uses one of the district's names, not only the first: "डीग-कुम्हेर विधायक ... पहुंचेंगे डीग"
+  const words = fold(headline).split(" ").filter(Boolean);
+  const aliases = [...new Set(found.map((m) => m.matched))].map((a) => a.split(" ").filter(Boolean));
+  for (const alias of aliases) {
+    for (let i = 0; i + alias.length <= words.length; i++) {
+      if (!alias.every((w, k) => words[i + k] === w)) continue;
+      const next = words[i + alias.length];
+      if (next === undefined) return d;
+      if (PLACE_AFTER.has(next) && !FOR.has(words[i + alias.length + 1] ?? "")) return d;
+    }
+  }
+  return null;
+}
 
 /** The district that `place` belongs to; for an ambiguous town, the one the file code names, if any */
 function districtOf(place: Place, hint: string | null): DistrictInfo {
@@ -287,13 +325,13 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   // of rajasthan-places.json before the reporter's district). District names only — a town can be in
   // another district's copy in passing, and the file code still wins over a town.
   if (!district && hint) {
-    const named = book.find(headline).find((m) => m.entry.data.kind === "district" && m.entry.data.districts[0]!.rajasthan);
+    const named = headlineDistrict(book, headline, hint);
     // A town on the place line is the desk's own dateline and keeps the file's district unless it is a known
     // town of the named one: "तखतगढ़" (Pali) under a "जालोर-पावटा चौराहा" headline stays Pali
     const townSays = where?.town ? book.lookup(where.town) : null;
-    const townAgrees = !where?.town || !!townSays?.districts.some((x) => x.name === named?.entry.data.districts[0]!.name);
-    if (named && named.entry.data.districts[0]!.name !== hint && townAgrees) {
-      district = named.entry.data.districts[0]!;
+    const townAgrees = !where?.town || !!townSays?.districts.some((x) => x.name === named?.name);
+    if (named && townAgrees) {
+      district = named;
       from = "text";
     } else {
       district = book.district(hint);

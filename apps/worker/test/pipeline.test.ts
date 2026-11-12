@@ -91,8 +91,10 @@ describe("sameText", () => {
     [draft] = await h.db.select().from(postDrafts);
     expect(draft!.status).toBe("ready");
     expect(draft!.cardFontPx).toBeGreaterThanOrEqual(28);
-    const png = await store.get(draft!.cardKey!);
-    expect(png.subarray(1, 4).toString()).toBe("PNG");
+    // Cards go out as JPEG: the file's own magic bytes, and the key says so (it sets the served content type)
+    expect(draft!.cardKey).toMatch(/\.jpg$/);
+    const card = await store.get(draft!.cardKey!);
+    expect([...card.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
 
     // an operator approves; skip the 10 s undo window
     const [priya] = await h.db.insert(users).values({ orgId, name: "Priya", email: "p@test", passwordHash: "x", role: "operator" }).returning();

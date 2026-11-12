@@ -11,6 +11,7 @@ import {
 import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { and, count, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
+import { jpegSize, pngSize } from "../image-size";
 import type { AppDeps } from "../app";
 import { ReporterHandles } from "../handle-keywords";
 import { NOT_A_CHECK, breakingFields, cardUrl, draftView, storyLabels } from "../views";
@@ -39,15 +40,7 @@ const CLAIM = ["draft.edit", "draft.card", "post.publish", "post.mark_posted", "
 export const CARD_MAX_BYTES = 5 * 1024 * 1024;
 const CARD_MIN_PX = 300;
 const CARD_MAX_PX = 4096;
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-/** Width and height from the IHDR chunk, which must come straight after the signature. Null if not a PNG. */
-export function pngSize(buf: Buffer): { width: number; height: number } | null | "no_header" {
-  if (buf.length < 8 || !buf.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
-  if (buf.length < 24 || buf.toString("latin1", 12, 16) !== "IHDR") return "no_header";
-  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
-}
-
+const CARD_CONTENT_TYPE = { jpg: "image/jpeg", png: "image/png" } as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** "<ISO time>|<draft id>" (what nextCursor gives) or a bare ISO time; anything else is a 400 */
@@ -480,26 +473,31 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
   );
 
   // ─── Custom card ───────────────────────────────────────────────────────────
-  // The X desk edits the card in the browser and sends the PNG as the raw body. The parser for
-  // image/png lives only in this child scope, so no other route accepts an image body.
+  // The X desk edits the card in the browser and sends it as the raw body: JPEG (the format cards go out
+  // in) or PNG (what older desk builds send). The type is read from the bytes, and the file is stored
+  // under a key with the matching extension and content type, so a card is always served as what it is.
+  // The image parsers live only in this child scope, so no other route accepts an image body.
   await app.register(async (scope) => {
     const cards = scope.withTypeProvider<TypeBoxTypeProvider>();
-    cards.addContentTypeParser("image/png", { parseAs: "buffer", bodyLimit: CARD_MAX_BYTES }, (_req, body, done) => done(null, body));
+    cards.addContentTypeParser(["image/jpeg", "image/png"], { parseAs: "buffer", bodyLimit: CARD_MAX_BYTES }, (_req, body, done) => done(null, body));
 
     cards.put("/drafts/:id/card", { bodyLimit: CARD_MAX_BYTES, schema: { params: Id, querystring: VersionQuery } }, async (req) => {
       const { user } = guard(req);
       requirePermission(user, "draft.card", "x");
       const body = req.body as unknown;
-      if (!Buffer.isBuffer(body)) throw new HttpError(415, "unsupported_type", "Send the card as a PNG image (content-type: image/png).");
+      if (!Buffer.isBuffer(body)) throw new HttpError(415, "unsupported_type", "Send the card as a JPEG or PNG image (content-type: image/jpeg or image/png).");
       if (body.length > CARD_MAX_BYTES) throw new HttpError(413, "too_large", "The card is over 5 MB, the most X accepts.");
-      const size = pngSize(body);
-      if (size === null) throw new HttpError(415, "unsupported_type", "This file is not a PNG image.");
-      if (size === "no_header") throw new HttpError(400, "invalid", "This PNG has no image header.");
+      const png = pngSize(body);
+      const jpeg = png === null ? jpegSize(body) : null;
+      const size = png ?? jpeg;
+      if (size === null) throw new HttpError(415, "unsupported_type", "This file is not a JPEG or PNG image.");
+      if (size === "no_header") throw new HttpError(400, "invalid", `This ${png ? "PNG" : "JPEG"} has no readable image header.`);
       const { width, height } = size;
       if ([width, height].some((n) => n < CARD_MIN_PX || n > CARD_MAX_PX)) {
         throw new HttpError(400, "invalid", `The card must be ${CARD_MIN_PX} to ${CARD_MAX_PX} pixels on each side; this one is ${width}x${height}.`);
       }
-      await setCustomCard(db, actor(user), req.params.id, req.query.version, { bytes: body.length, width, height }, (key) => storage.put(key, body, "image/png"));
+      const format = png ? "png" : "jpg";
+      await setCustomCard(db, actor(user), req.params.id, req.query.version, { bytes: body.length, width, height }, (key) => storage.put(key, body, CARD_CONTENT_TYPE[format]), format);
       return view(user, req.params.id);
     });
 

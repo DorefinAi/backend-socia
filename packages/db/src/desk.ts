@@ -365,11 +365,13 @@ export interface CustomCard {
  */
 export async function setCustomCard(
   db: Db, actor: Actor, draftId: string, version: number, card: CustomCard, store: (key: string) => Promise<void>,
+  /** The file's own format: the key's extension, which is what the file is served as */
+  format: "jpg" | "png" = "png",
 ): Promise<Draft> {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
     requireEditable(draft, actor, version);
-    const key = `cards/${draftId}/custom-${randomUUID()}.png`;
+    const key = `cards/${draftId}/custom-${randomUUID()}.${format}`;
     await store(key);
     const [updated] = await tx
       .update(postDrafts)

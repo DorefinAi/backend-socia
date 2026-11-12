@@ -16,7 +16,8 @@ export interface XPostSummary {
 
 export interface XClient {
   readonly mode: "api" | "fake";
-  uploadImage(png: Uint8Array): Promise<string>;
+  /** A card as stored: JPEG (cards since the switch) or PNG (older ones); the type is read from the bytes */
+  uploadImage(image: Uint8Array): Promise<string>;
   createPost(text: string, mediaIds: string[]): Promise<{ id: string }>;
   getPost(id: string): Promise<XPostSummary | null>;
   deletePost(id: string): Promise<void>;
@@ -167,9 +168,10 @@ export class XApiClient implements XClient {
     return (text ? JSON.parse(text) : {}) as T;
   }
 
-  async uploadImage(png: Uint8Array): Promise<string> {
+  async uploadImage(image: Uint8Array): Promise<string> {
     const form = new FormData();
-    form.set("media", new Blob([new Uint8Array(png)], { type: "image/png" }), "card.png");
+    const jpeg = image[0] === 0xff && image[1] === 0xd8 && image[2] === 0xff;
+    form.set("media", new Blob([new Uint8Array(image)], { type: jpeg ? "image/jpeg" : "image/png" }), jpeg ? "card.jpg" : "card.png");
     form.set("media_category", "tweet_image");
     const res = await this.call<{ data?: { id: string }; media_id_string?: string }>("POST", "/2/media/upload", { form });
     const id = res.data?.id ?? res.media_id_string;

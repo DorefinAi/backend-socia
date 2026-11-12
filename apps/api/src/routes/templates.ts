@@ -11,7 +11,10 @@ import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "
 import { COOKIE, HttpError, guard, loadSession, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
 import { SlidingLimiter } from "../limiter";
-import { CARD_MAX_BYTES, pngSize } from "./desk";
+import { jpegSize, pngSize } from "../image-size";
+import { CARD_MAX_BYTES } from "./desk";
+
+export { jpegSize };
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 
@@ -54,67 +57,6 @@ export function checkLayout(layout: { date: Rect | null; box: Rect; fontMinPx: n
     if (r && (r.w <= 0 || r.h <= 0)) throw new HttpError(400, "invalid", `The ${name} area has no width or height.`);
     if (r && (r.x + r.w > 1.0001 || r.y + r.h > 1.0001)) throw new HttpError(400, "invalid", `The ${name} area runs off the image.`);
   }
-}
-
-/** EXIF orientation (tag 0x0112) from an APP1 "Exif" segment; 1 when absent or unreadable. */
-function exifOrientation(buf: Buffer, start: number, end: number): number {
-  if (end - start < 14 || buf.toString("latin1", start, start + 6) !== "Exif\0\0") return 1;
-  const tiff = start + 6;
-  const order = buf.toString("latin1", tiff, tiff + 2);
-  if (order !== "II" && order !== "MM") return 1;
-  const le = order === "II";
-  const u16 = (at: number) => (at + 2 <= end ? (le ? buf.readUInt16LE(at) : buf.readUInt16BE(at)) : -1);
-  const u32 = (at: number) => (at + 4 <= end ? (le ? buf.readUInt32LE(at) : buf.readUInt32BE(at)) : -1);
-  const ifd = u32(tiff + 4);
-  if (ifd < 0) return 1;
-  const count = u16(tiff + ifd);
-  for (let n = 0; n < count; n++) {
-    const entry = tiff + ifd + 2 + n * 12;
-    if (entry + 12 > end) break;
-    if (u16(entry) === 0x0112) {
-      const value = u16(entry + 8);
-      return value >= 1 && value <= 8 ? value : 1;
-    }
-  }
-  return 1;
-}
-
-/**
- * Width and height as displayed: from the first SOF marker, swapped when EXIF orientation is 5–8
- * (rotated 90°). Null if not a JPEG; "no_header" if it has no readable frame header.
- */
-export function jpegSize(buf: Buffer): { width: number; height: number } | null | "no_header" {
-  if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
-  let orientation = 1;
-  let i = 2;
-  while (i + 4 <= buf.length) {
-    if (buf[i] !== 0xff) return "no_header";
-    const marker = buf[i + 1]!;
-    // Fill bytes, and markers with no length (TEM, RSTn)
-    if (marker === 0xff) {
-      i += 1;
-      continue;
-    }
-    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
-      i += 2;
-      continue;
-    }
-    // End of image or start of scan before any frame header
-    if (marker === 0xd9 || marker === 0xda) return "no_header";
-    const length = buf.readUInt16BE(i + 2);
-    const end = i + 2 + length;
-    if (length < 2 || end > buf.length) return "no_header";
-    if (marker === 0xe1 && orientation === 1) orientation = exifOrientation(buf, i + 4, end);
-    // SOF0..SOF15, except DHT (C4), JPG (C8) and DAC (CC)
-    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-      if (length < 7) return "no_header";
-      const height = buf.readUInt16BE(i + 5);
-      const width = buf.readUInt16BE(i + 7);
-      return orientation >= 5 ? { width: height, height: width } : { width, height };
-    }
-    i = end;
-  }
-  return "no_header";
 }
 
 /** The image's type from its first bytes (not from the header the client sent) and its size. */

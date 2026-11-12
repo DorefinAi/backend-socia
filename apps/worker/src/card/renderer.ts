@@ -1,10 +1,13 @@
 // Headless Chromium with a warm pool of pages: launching a browser per card costs about 1 s.
 // Each card: set the HTML, wait for the fonts, binary-search the largest headline size that fits
-// its box, screenshot. The same text always gives the same size.
+// its box, screenshot as JPEG (the format cards go out in). The same text always gives the same size.
 
 import { LARGEST_FITTING_SOURCE } from "@socia/core";
 import { chromium, type Browser, type Page } from "playwright";
 import { CARD_SIZE, FONT_MAX_PX, FONT_MIN_PX, cardHtml, type CardInput } from "./template";
+
+/** JPEG quality for the card: no visible artefacts on flat colour and Devanagari edges, a fraction of the PNG's size */
+export const CARD_JPEG_QUALITY = 92;
 
 /** Recycle a page after this many renders, to cap memory drift. */
 const RECYCLE_AFTER = 200;
@@ -63,7 +66,7 @@ export class CardRenderer {
     else this.idle.push(next);
   }
 
-  async render(input: CardInput): Promise<{ png: Buffer; fontPx: number }> {
+  async render(input: CardInput): Promise<{ jpeg: Buffer; fontPx: number }> {
     if (!this.browser) throw new Error("CardRenderer.start() was not called");
     const pooled = await this.acquire();
     try {
@@ -73,8 +76,8 @@ export class CardRenderer {
       // Measure only after the real font is in: measuring the fallback gives every card the wrong size
       await page.evaluate("document.fonts.ready.then(() => true)");
       const fontPx = Number(await page.evaluate(FIT_SCRIPT));
-      const png = await page.locator("#card").screenshot({ type: "png" });
-      return { png, fontPx };
+      const jpeg = await page.locator("#card").screenshot({ type: "jpeg", quality: CARD_JPEG_QUALITY });
+      return { jpeg, fontPx };
     } finally {
       await this.release(pooled);
     }

@@ -17,9 +17,10 @@ export async function renderNext(db: Db, storage: Storage, renderer: CardRendere
   if (!claim) return false;
 
   try {
-    const { png, fontPx } = await renderer.render({ headline: claim.cardHeadline });
-    const key = `cards/${claim.id}/r${claim.cardRev}.png`;
-    await storage.put(key, png, "image/png");
+    const { jpeg, fontPx } = await renderer.render({ headline: claim.cardHeadline });
+    // JPEG since cards went out as JPEG; cards rendered before keep their .png key and are served as PNG
+    const key = `cards/${claim.id}/r${claim.cardRev}.jpg`;
+    await storage.put(key, jpeg, "image/jpeg");
 
     await db.transaction(async (tx) => {
       const [row] = await tx

@@ -1,4 +1,4 @@
-// The X desk's own card and hand-posted posts: upload an edited PNG, go back to the rendered card,
+// The X desk's own card and hand-posted posts: upload an edited JPEG or PNG, go back to the rendered card,
 // approve while the rendered card redraws, and record a post made by hand on X. Needs TEST_DATABASE_URL.
 
 import { mkdtemp } from "node:fs/promises";
@@ -27,6 +27,17 @@ function png(width: number, height: number, pad = 0): Buffer {
   const crc = Buffer.alloc(4);
   crc.writeUInt32BE(crc32(Buffer.concat([type, ihdr])));
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), len, type, ihdr, crc, Buffer.alloc(pad)]);
+}
+
+/** A JPEG's start of image, JFIF header and frame header: all the API reads. */
+function jpeg(width: number, height: number, pad = 0): Buffer {
+  const app0 = Buffer.from([0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00]);
+  const sof = Buffer.alloc(19);
+  sof.set([0xff, 0xc0, 0x00, 0x11, 0x08]);
+  sof.writeUInt16BE(height, 5);
+  sof.writeUInt16BE(width, 7);
+  sof[9] = 3;
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof, Buffer.alloc(pad)]);
 }
 
 (URL ? describe : describe.skip)("custom card and mark-posted", () => {
@@ -107,8 +118,13 @@ function png(width: number, height: number, pad = 0): Buffer {
     const v = claimed.body.version as number;
 
     // refusals first; none of them changes the draft
-    expect(await upload(op, draftA, v, Buffer.from([0xff, 0xd8, 0xff, 0xe0]), "image/jpeg")).toMatchObject({ status: 415, body: { error: "unsupported_type" } });
-    expect(await upload(op, draftA, v, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(40)]))).toMatchObject({ status: 415, body: { error: "unsupported_type" } });
+    expect(await upload(op, draftA, v, Buffer.from("not an image, just text"), "image/jpeg")).toMatchObject({ status: 415, body: { error: "unsupported_type" } });
+    expect(await upload(op, draftA, v, Buffer.from("not an image, just text"))).toMatchObject({ status: 415, body: { error: "unsupported_type" } });
+    expect(await upload(op, draftA, v, jpeg(1200, 675), "image/gif")).toMatchObject({ status: 415 });
+    // a JPEG start with no frame header, whichever type the client claims
+    expect(await upload(op, draftA, v, Buffer.from([0xff, 0xd8, 0xff, 0xe0]), "image/jpeg")).toMatchObject({ status: 400, body: { error: "invalid" } });
+    expect(await upload(op, draftA, v, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(40)]))).toMatchObject({ status: 400, body: { error: "invalid" } });
+    expect(await upload(op, draftA, v, jpeg(200, 675), "image/jpeg")).toMatchObject({ status: 400, body: { error: "invalid" } });
     expect(await upload(op, draftA, v, png(1200, 675, 5 * 1024 * 1024))).toMatchObject({ status: 413, body: { error: "too_large" } });
     expect(await upload(op, draftA, v, png(200, 675))).toMatchObject({ status: 400, body: { error: "invalid" } });
     expect(await upload(op, draftA, v, png(1200, 5000))).toMatchObject({ status: 400, body: { error: "invalid" } });
@@ -141,6 +157,33 @@ function png(width: number, height: number, pad = 0): Buffer {
     expect(reset.body.version).toBe(before.version + 1);
     expect(reset.body.card).toMatchObject({ custom: false, url: "http://localhost/dev-files/cards/auto.png", autoUrl: "http://localhost/dev-files/cards/auto.png" });
     expect(await auditFor(draftA, "draft.card_reset")).toHaveLength(1);
+  });
+
+  it("stores a JPEG card as .jpg and serves it as image/jpeg, next to an older PNG card", async () => {
+    let d = (await call(op, "GET", `/drafts/${draftA}`)).body;
+    const file = jpeg(1080, 1080, 64);
+    const up = await upload(op, draftA, d.version, file, "image/jpeg");
+    expect(up.status).toBe(200);
+    expect(up.body.card).toMatchObject({ custom: true, ready: true });
+    expect(up.body.card.url).toMatch(new RegExp(`/cards/${draftA}/custom-[0-9a-f-]{36}\\.jpg$`));
+    const [row] = await h.db.select().from(postDrafts).where(eq(postDrafts.id, draftA));
+    const stored = await store.get(row!.customCardKey!);
+    expect([...stored.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+    expect(stored.equals(file)).toBe(true);
+
+    const get = (key: string) => app.inject({ method: "GET", url: `/dev-files/${key}`, headers: { cookie: op.cookie } });
+    const served = await get(row!.customCardKey!);
+    expect(served.statusCode).toBe(200);
+    expect(served.headers["content-type"]).toBe("image/jpeg");
+    expect([...served.rawPayload.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+    // A card stored before the switch keeps its .png key and is still served, as what it is
+    const old = await get("cards/auto.png");
+    expect(old.statusCode).toBe(200);
+    expect(old.headers["content-type"]).toBe("image/png");
+
+    // Back to the rendered card for the tests below
+    d = up.body;
+    expect((await call(op, "DELETE", `/drafts/${draftA}/card?version=${d.version}`)).status).toBe(200);
   });
 
   it("approves with a custom card while the rendered card redraws, and keeps it through edit and undo", async () => {

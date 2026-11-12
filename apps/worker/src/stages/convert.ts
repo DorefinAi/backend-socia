@@ -37,6 +37,9 @@ export function breakingColumns(b: BreakingStory, sticky: string[] = []) {
     headline: b.headline,
     body: b.points.join("\n"),
     district: b.district,
+    // Stated (place line, prefix, tag; the file code unless the reporter is a bureau) or inferred (text): only a
+    // stated one reaches the post
+    districtFrom: b.districtFrom,
     town: b.town,
     fileTags: b.tags,
     needsCheck,
@@ -82,7 +85,7 @@ export async function convertNext(db: Db, storage: Storage, log: Logger, data?: 
           updatedAt: sql`now()`,
         })
         .where(eq(stories.id, story.id));
-      log.info({ storyId: story.id, district: b.district, town: b.town, checks: b.needsCheck }, failed ? "breaking file could not be parsed" : "breaking file converted");
+      log.info({ storyId: story.id, district: b.district, districtFrom: b.districtFrom, town: b.town, checks: b.needsCheck }, failed ? "breaking file could not be parsed" : "breaking file converted");
       return;
     }
 

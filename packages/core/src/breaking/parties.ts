@@ -25,7 +25,11 @@ export interface PartyHandleEntry {
   /** What the draft calls it: "BJP Rajasthan". The `party` key below is for the clash rule, not for reading. */
   name?: string;
   party: string;
-  /** "state" | "national" | "wing" (NSUI, youth congress: tagged too when the headline names it, parties.ts pickPartyWing) — the state handle is preferred for a Rajasthan story */
+  /**
+   * "state" | "national" | "wing" | "media" ... — the state handle is preferred for a Rajasthan story. A "wing"
+   * (NSUI, the youth congress) is never tagged on its own: it is OFFERED when the copy names it literally
+   * (pickPartyHandles). No wing-specific rule: @NSUIRajasthan is once in 2,476 posts (b6 fix brief P4).
+   */
   scope?: string;
   keywords_hi?: string[];
   keywords_en?: string[];
@@ -128,23 +132,106 @@ export function pickParty(text: string, rules: PartyRules, rajasthan: boolean): 
   // Both parties named (a clash story, "कांग्रेस ने भाजपा पर साधा निशाना") — tag neither. The desk does not
   // pick a side on an attack story, and tagging both burns the slot the leader should have.
   if (new Set(hits.map((h) => h.party)).size > 1) return null;
-  // A wing is tagged only through pickPartyWing (its headline, its own story): never from a passing mention
+  return preferred(hits, rajasthan);
+}
+
+/** The party's own handle among the hits (never a wing), the state one first on a Rajasthan story */
+function preferred(hits: readonly PartyRule[], rajasthan: boolean): PartyRule | null {
   const parties = hits.filter((h) => h.scope !== "wing");
   const want = rajasthan ? "state" : "national";
   return parties.find((h) => h.scope === want) ?? parties[0] ?? null;
 }
 
+// ─── attack targets (b6 fix brief P4) ────────────────────────────────────────
+//
+// UNVALIDATED. This rule rests on 6 corpus posts that pair an attack verb with a named party, and the desk is
+// inconsistent across them: one tags the attacker only, one tags both, one tags neither, one tags the
+// opposite party. It is a cheap guard against the obvious error (tagging the party a story attacks), not a
+// measured desk behaviour. Do not build on it, and do not treat it as established, without more evidence.
+
+/** "पर" / "को" / "खिलाफ": the party is the object */
+const AT = new Set(["पर", "को", "खिलाफ"].map(fold));
+const AGAINST = fold("खिलाफ");
+const NE = fold("ने");
+/** What is done to it: "पर साधा निशाना", "पर हमला", "पर पलटवार", "पर लगाए आरोप", "के खिलाफ ..." */
+const ATTACK = new Set(
+  ["निशाना", "हमला", "हमले", "हमलावर", "पलटवार", "तंज", "आरोप", "आरोपों", "प्रहार", "वार", "कटाक्ष", "बरसे", "बरसी", "बरसा", "घेरा", "घेरे", "सवाल"].map(fold),
+);
+
 /**
- * A party wing (scope "wing": NSUI, the youth congress, BJYM, ABVP) that the HEADLINE names literally, or
- * null. The named organisation outranks a thematically adjacent one, so on "कांग्रेस के छात्र संगठन NSUI ..."
- * the wing is tagged as well as the party. Only the headline: a wing in passing in the body is not the story.
- * Never when the headline names two parties ("भाजपा ने NSUI पर साधा निशाना": the desk takes no side on an
- * attack). The other party in a point ("भाजपा सरकार पर आरोप") does not undo the wing's own story. Never
- * outside Rajasthan (the wing handles are the state units).
+ * The parties the HEADLINE names only as the target of an attack ("भाजपा ने NSUI पर साधा निशाना": congress,
+ * through its wing). Every mention has to be a target: "कांग्रेस ने ... कांग्रेस पर" is not.
  */
-export function pickPartyWing(headline: string, rules: PartyRules, rajasthan: boolean): PartyRule | null {
-  if (!rajasthan) return null;
-  const hits = partyHits(headline, rules);
-  if (new Set(hits.map((h) => h.party)).size > 1) return null;
-  return hits.find((h) => h.scope === "wing") ?? null;
+export function attackTargets(headline: string, rules: PartyRules): Set<string> {
+  const t = fold(headline.normalize("NFC")).split(" ").filter(Boolean);
+  const seen = new Map<string, boolean>();
+  const anyParty = new Set(rules.rules.flatMap((r) => r.tokens));
+  for (const r of partyHits(headline, rules)) {
+    const at = t.flatMap((w, i) => (r.tokens.includes(w) ? [i] : []));
+    for (const i of at) {
+      // The object marker within 3 words of the name ("भाजपा सरकार पर", "कांग्रेस के खिलाफ"), with no agent
+      // marker or other party in between ("भाजपा ने NSUI पर": the पर is NSUI's), then the attack within 4
+      // words of it ("पर लगाए गंभीर आरोप"); "खिलाफ" is an attack by itself
+      let j = -1;
+      for (let k = i + 1; k < Math.min(t.length, i + 4); k++) {
+        if (t[k] === NE || anyParty.has(t[k]!)) break;
+        if (AT.has(t[k]!)) {
+          j = k;
+          break;
+        }
+      }
+      const target = j >= 0 && (t[j] === AGAINST || t.slice(j + 1, j + 5).some((w) => ATTACK.has(w)));
+      seen.set(r.party, (seen.get(r.party) ?? true) && target);
+    }
+  }
+  return new Set([...seen].filter(([, target]) => target).map(([party]) => party));
+}
+
+export interface PartyHandles {
+  /** Tagged on the post: the party its HEADLINE names (not as an attack target), one party only in the copy */
+  emit: PartyRule | null;
+  /** Offered, never tagged: a party named only in the points, a wing named literally, the headline's party on a clash story, an attacked party */
+  suggest: PartyRule[];
+}
+
+/**
+ * The party handles for political copy, split into what goes on the post and what is offered (b6 fix brief
+ * P3, P4). Measured on 2,476 posts: Congress in the headline was tagged 59% of the time and only in the points
+ * 44%; BJP 48% and 39%. Points-only tagging is normal desk behaviour, so a points-only match is OFFERED, not
+ * blocked; headline presence raises it to the post.
+ *   - a party the headline names only as an attack's target is offered, never tagged (UNVALIDATED);
+ *   - two parties in the copy: none tagged (the desk takes no side), the headline's non-target one offered;
+ *   - a wing (NSUI, youth congress) is offered when the copy names it literally, in Rajasthan; never tagged.
+ */
+export function pickPartyHandles(headline: string, body: string, rules: PartyRules, rajasthan: boolean): PartyHandles {
+  const suggest: PartyRule[] = [];
+  if (!rules.count) return { emit: null, suggest };
+  const targets = attackTargets(headline, rules);
+  const head = partyHits(headline, rules).filter((h) => !targets.has(h.party));
+  const all = partyHits(`${headline}\n${body}`, rules).filter((h) => !targets.has(h.party));
+  const parties = new Set(partyHits(`${headline}\n${body}`, rules).map((h) => h.party));
+  let emit: PartyRule | null = null;
+  if (parties.size === 1) {
+    const own = preferred(head, rajasthan) && preferred(all, rajasthan);
+    if (own) emit = own;
+    else {
+      const offered = preferred(all, rajasthan);
+      if (offered) suggest.push(offered);
+    }
+  } else {
+    for (const party of new Set(head.map((h) => h.party))) {
+      const offered = preferred(all.filter((h) => h.party === party), rajasthan);
+      if (offered) suggest.push(offered);
+    }
+  }
+  if (rajasthan) for (const w of all.filter((h) => h.scope === "wing")) suggest.push(w);
+  // The target of an attack is OFFERED, never tagged: "भाजपा प्रत्याशी पर हमला" is the BJP's story too, and the
+  // desk tags it either way (UNVALIDATED, see above). Its wing is not offered on that ground.
+  const hitByParty = partyHits(`${headline}
+${body}`, rules);
+  for (const party of targets) {
+    const offered = preferred(hitByParty.filter((h) => h.party === party), rajasthan);
+    if (offered) suggest.push(offered);
+  }
+  return { emit, suggest: suggest.filter((s, i) => s.handle !== emit?.handle && suggest.findIndex((x) => x.handle === s.handle) === i) };
 }

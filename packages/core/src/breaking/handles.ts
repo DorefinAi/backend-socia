@@ -39,10 +39,11 @@
 
 import { fold } from "../fold";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
-import { EMPTY_PARTY_RULES, namesAnyParty, pickParty, pickPartyWing, type PartyRules } from "./parties";
+import { EMPTY_PARTY_RULES, namesAnyParty, pickPartyHandles, type PartyRules } from "./parties";
 import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
 import { classify, type StoryClass } from "./storyclass";
-import { EMPTY_SUBJECT_RULES, subjectExcluded, type SubjectRules } from "./subjects";
+import type { GazetteerMatch } from "../gazetteer";
+import { EMPTY_SUBJECT_RULES, subjectEmits, subjectExcluded, type SubjectData, type SubjectRules } from "./subjects";
 
 /** One entry of district-handles.json */
 export interface DistrictHandleEntry {
@@ -368,16 +369,21 @@ const WANTS_REPORTER: ReadonlySet<StoryClass> = new Set<StoryClass>(["political"
 export interface HandlePickInput {
   headline: string;
   points: string[];
-  /** stories.district: the district the copy states. It also sets the post's visible hashtag. */
+  /**
+   * The STATED district (explicit: the copy, or the file code of a reporter tied to one district;
+   * composeBreaking passes nothing else). The only district a police, collector or administration handle is
+   * ever picked by; it also sets the post's visible hashtag.
+   */
   district: string | null;
   rajasthan: boolean;
   leaderPost: boolean;
   /** The file's headline line before its place prefix was taken off ("#BJP #Kota: ..."), when known */
   rawHeadline?: string;
   /**
-   * The district the file name's code states (slotFromTags().district). A FALLBACK, not an override:
-   * measured over 6,878 of this desk's files it fills a gap the copy left 18 times and disagrees with
-   * the copy 195 times, and the copy is what the post's hashtag shows.
+   * The district the file name's code states (slotFromTags().district). Compared with `district` for a
+   * warning only: when it should stand for the story, composeBreaking has already put it in `district` (and
+   * left it out for a bureau reporter such as Navin). Measured over 6,878 of this desk's files it fills a gap
+   * the copy left 18 times and disagrees with the copy 195 times.
    */
   fileDistrict?: string | null;
   /** The reporter token from the file name (slotFromTags().reporterToken). Never read from the post text. */
@@ -433,6 +439,8 @@ export interface PickOptions {
    * more than the risk of a wider tag.
    */
   max?: number;
+  /** When the story came in: a suggest_only subject's emit_window is read against it */
+  at?: Date;
 }
 
 /** One entry per handle, first occurrence wins */
@@ -467,7 +475,7 @@ function ruleHandles(rules: HandleRules): Set<string> {
  */
 export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules, opts: PickOptions = {}): HandleResult {
   const {
-    subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES, reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, max = 3,
+    subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES, reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, max = 3, at,
   } = opts;
   const warnings: string[] = [];
 
@@ -477,9 +485,10 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   const body = story.points.join("\n").normalize("NFC");
   const all = `${head}\n${body}`;
 
-  // The copy's district decides, because it is also what the post's hashtag shows. The file name's code
-  // fills a gap and cross-checks it.
-  const district = story.district || story.fileDistrict || null;
+  // The stated district decides, and only it. The file code is not a fallback here: the composer decides whether
+  // it stands (not for a bureau reporter: Navin's ACB stories from every district come in as JPR, and a wrong
+  // @JaipurPolice tags an uninvolved force on a public post — b6 fix brief P0).
+  const district = story.district || null;
   if (story.fileDistrict && story.district && districtKey(story.fileDistrict) !== districtKey(story.district)) {
     warnings.push(`the file name says ${story.fileDistrict}, the copy says ${story.district}; the copy decides (it sets the hashtag)`);
   }
@@ -531,6 +540,13 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
       warnings.push(`${district} has ${local.police.length} police handles (@${local.police.join(", @")}); @${local.police[0]} was used — check the town`);
     }
   };
+  const suggested: HandlePick[] = [];
+  /** A subject to the post, or to the suggestions when its entry is suggest_only (seasonal: @CeoRajasthan) */
+  const addSubject = (m: GazetteerMatch<SubjectData>, inHeadline: boolean) => {
+    const d = m.entry.data;
+    if (subjectEmits(d, at)) add([d.handle], "subject", inHeadline, d.title);
+    else suggested.push({ handle: d.handle, reason: "subject", title: d.title });
+  };
   const namedSubjects = (text: string, inHeadline: boolean) => {
     if (!subjects.count) return;
     const acting = actingSubjects(text, subjects);
@@ -538,10 +554,8 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
       .find(text)
       .filter((m) => (!ONLY_ACTING.has(m.entry.data.kind) || acting.has(m.entry.id)) && !subjectExcluded(m, all))
       .sort((a, b) => a.start - b.start);
-    for (const m of found) add([m.entry.data.handle], "subject", inHeadline, m.entry.data.title);
+    for (const m of found) addSubject(m, inHeadline);
   };
-
-  const suggested: HandlePick[] = [];
   const done = (handles: HandlePick[]): HandleResult => ({
     handles, cls, why, warnings, unmatchedReporter,
     suggestions: dedupe(suggested).filter((s) => !handles.some((h) => h.handle.toLowerCase() === s.handle.toLowerCase())),
@@ -556,6 +570,17 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
 
   // ── a leader's own post: nobody at all, not even the desk's own handle ────
   if (cls === "leader_post") return done([]);
+
+  // A seasonal institution (suggest_only, @CeoRajasthan) named anywhere in Rajasthan copy is offered whatever the
+  // class — the collector alone on a roll-publication story is still right for the post, and the desk can add
+  // the CEO with a click (b6 fix brief P2). Its exclusions are read against the whole post.
+  if (subjects.count && story.rajasthan) {
+    for (const m of subjects.gazetteer.find(all)) {
+      if (m.entry.data.suggestOnly && !subjectEmits(m.entry.data, at) && !ONLY_ACTING.has(m.entry.data.kind) && !subjectExcluded(m, all)) {
+        suggested.push({ handle: m.entry.data.handle, reason: "subject", title: m.entry.data.title });
+      }
+    }
+  }
 
   // Handles the desk added with keywords, computed here because they ride on every class except the two
   // where the district force stands alone. Never a handle of the files (verified or not) nor a lookalike
@@ -610,11 +635,6 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     // The CM is a subject when the headline names him; he is also the most-tagged handle in the windows.
     if (CM_SUBJECT.test(head)) add(rules.state.cm, "cm", true);
     namedSubjects(head, true);
-    // A party wing the HEADLINE names outranks everything the body merely mentions: "कांग्रेस के छात्र संगठन
-    // NSUI ..." is NSUI's story, and the body's "राजस्थान यूनिवर्सिटी छात्रसंघ" is a passing reference (§3.3:
-    // the literal organisation over the thematically adjacent one).
-    const wing = pickPartyWing(head, parties, story.rajasthan);
-    if (wing) picks.push({ handle: wing.handle, reason: "party", inHeadline: true, title: wing.name });
     const named = new Set(picks.map((p) => p.handle.toLowerCase()));
     // Only when the headline names a party or wing literally: there the body's institutions are adjacent to
     // the story, not its subject. Elsewhere ("CM का जैसलमेर दौरा ... BSF") the body's institution is tagged as before.
@@ -627,12 +647,15 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
         // A leader the body names rides on political copy; an institution named only in the body of a story
         // whose headline names a party is offered instead — @UniRajOfficial took the first slot of the NSUI
         // story from one mention of "राजस्थान यूनिवर्सिटी" in point 5.
-        if (m.entry.data.kind === "person" || !headNamesOrg) add([m.entry.data.handle], "subject", false, m.entry.data.title);
+        if (m.entry.data.kind === "person" || !headNamesOrg) addSubject(m, false);
         else suggested.push({ handle: m.entry.data.handle, reason: "subject", title: m.entry.data.title });
       }
     }
-    const party = pickParty(all, parties, story.rajasthan);
-    if (party) picks.push({ handle: party.handle, reason: "party", inHeadline: false, title: party.name });
+    // The party its HEADLINE names goes on the post; one named only in the points, a wing named literally and the
+    // headline's party on a clash story are offered; the target of an attack is neither (b6 fix brief P3, P4)
+    const party = pickPartyHandles(head, body, parties, story.rajasthan);
+    if (party.emit) picks.push({ handle: party.emit.handle, reason: "party", inHeadline: false, title: party.emit.name });
+    for (const p of party.suggest) suggested.push({ handle: p.handle, reason: "party", title: p.name });
     // NOTE: no police and no collector TAGGED in this branch, on purpose. Across 1,002 posts no party tag
     // appeared beside a district police handle or a collector except twice, both desk slips.
     //

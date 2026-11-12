@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "_note": "The desk's own typos and casing drift, read by packages/core/src/breaking/post-tags.ts BEFORE any comparison or scoring (HASHTAG_HANDLE_CHANGES_v3 §2.7). Every correction is flagged so the desk sees it. A tag within edit distance 2 of a 'guarded' tag but not equal to it is flagged and never silently corrected — add it to 'variants' once a person has confirmed it.",
+  "_note": "The desk's own typos and casing drift, read by packages/core/src/breaking/post-tags.ts BEFORE any comparison or scoring (HASHTAG_HANDLE_CHANGES_v3 §2.7). Every correction is flagged so the desk sees it. Any problem in this file rejects it whole (never a silent skip). A tag within edit distance 2 of a 'guarded' tag but not equal to it is flagged and never silently corrected — add it to 'variants' once a person has confirmed it.",
   "variants": {
     "FINVido": "FINVideo",
     "FIrstIndiaNews": "FirstIndiaNews",
@@ -14,5 +14,7 @@
     "Diyakumari": "DiyaKumari",
     "Drjagdeeshchandra": "DrJagdeeshChandra"
   },
-  "guarded": ["RajasthanWithFirstIndia", "FirstIndiaNews", "FINVideo"]
+  "guarded": ["RajasthanWithFirstIndia", "FirstIndiaNews", "FINVideo"],
+  "_known": "The confirmed canonical spellings a variant may map to (the guarded tags count too). A variant whose target is not here REJECTS THE WHOLE FILE: the worker keeps its last good copy and /ingest/status says why. Add a target here only once a person has checked its spelling against the desk's own posts.",
+  "known": ["RajasthanPanchayatElection2026", "SawaiMadhopur", "Banswara", "BhajanlalSharma", "CMBhajanlalSharma", "DiyaKumari", "DrJagdeeshChandra"]
 }

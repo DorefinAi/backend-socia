@@ -32,7 +32,22 @@ export const SERIOUS_CHECKS: readonly NeedsCheck[] = ["empty", "no_headline", "n
 /** More lines than this is not a breaking item (the 109-line file) */
 export const MAX_BREAKING_LINES = 25;
 
-export type DistrictFrom = "place_line" | "headline_prefix" | "file_code" | "text";
+/**
+ * Where a story's district came from. The desk NAMED it (explicit) or we worked it out (inferred), and only an
+ * explicit district may reach the post: line 1's hashtag, the district police and the collector (b6 fix brief
+ * P0). An inferred one is offered to the desk as a suggestion and nothing else.
+ *   place_line       the dateline line ("जोधपुर से खबर", "रावतभाटा") — explicit
+ *   headline_prefix  the desk's own place prefix ("#Kota:", "मेड़तासिटी :") — explicit
+ *   tag              the one Rajasthan district hashtag the desk wrote in the headline ("#BJP #Kota: ...") — explicit
+ *   file_code        the file name's bureau code: the FILING desk. Stated (explicit) unless the reporter is a
+ *                    bureau filing for no single district (Navin files every district's ACB story as JPR):
+ *                    composeBreaking's storyDistrict decides, since only it knows the reporters
+ *   text             a place the headline or the first points mention — inferred
+ */
+export type DistrictFrom = "place_line" | "headline_prefix" | "tag" | "file_code" | "text";
+/** Explicit whoever filed it. file_code is explicit too, but only for a reporter tied to one district (storyDistrict). */
+export const EXPLICIT_DISTRICT_SOURCES: ReadonlySet<DistrictFrom> = new Set<DistrictFrom>(["place_line", "headline_prefix", "tag"]);
+export const isExplicitDistrict = (from: DistrictFrom | null | undefined): boolean => !!from && EXPLICIT_DISTRICT_SOURCES.has(from);
 
 export interface BreakingStory {
   headline: string;
@@ -88,41 +103,85 @@ interface Located {
 const clean = (line: string) => line.replace(INVISIBLE, "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
 const words = (s: string) => s.split(" ").filter(Boolean).length;
 
-/** District names that are also everyday words: "ओबीसी कोटा" (quota), "दूसरी पाली" (shift), "बूंदी" (the sweet) */
-const COMMON_WORD_DISTRICTS: ReadonlySet<string> = new Set(["Kota", "Pali", "Bundi"]);
+/**
+ * District names a headline uses as something else, or where the word is wrong far more often than a
+ * district usually is. Measured on 2,476 posts (how often a headline with the word really is that district):
+ * अजमेर 36% (mostly highway names), सीकर 50%, दौसा 57%, डूंगरपुर 60%; and the everyday words कोटा
+ * ("ओबीसी कोटा", quota: 87%), पाली ("दूसरी पाली", a shift: 86%), बूंदी (the sweet). These are inferred only
+ * when the word is followed by a strong locative (STRONG_PLACE_AFTER), never by के/का/की or at the end.
+ */
+export const AMBIGUOUS_DISTRICTS: ReadonlySet<string> = new Set(["Kota", "Pali", "Bundi", "Ajmer", "Sikar", "Dausa", "Dungarpur"]);
 /** What follows a district named as the story's own place: "डूंगरपुर में", "डीग के", "जिले" (or the headline ends) */
 const PLACE_AFTER: ReadonlySet<string> = new Set(["में", "के", "की", "का", "जिले", "जिला", "स्थित", "शहर"].map(fold));
+/** The only followers that make an AMBIGUOUS_DISTRICTS word a place: "डूंगरपुर में", "सीकर जिले के" */
+const STRONG_PLACE_AFTER: ReadonlySet<string> = new Set(["में", "जिले", "जिला", "स्थित", "शहर"].map(fold));
 const FOR = new Set(["लिए", "लिये"].map(fold));
+/**
+ * A route or a building carries a district's name without being in it: "अजमेर-जयपुर हाईवे", "जोधपुर रोड",
+ * "बीकानेर हाउस" (Delhi), "राजस्थान भवन". The words before the route or building word (joined by hyphens)
+ * are taken out of the text before any district is looked for. 9 route headlines in the corpus.
+ */
+// "अजमेर-जयपुर", "अजमेर - जयपुर" and the space-separated pair "अजमेर जयपुर" before the route word
+const NAME_RUN = String.raw`(?<![\p{L}\p{M}])[\p{L}\p{M}]+(?:\s*[-–—]\s*[\p{L}\p{M}]+)*(?:\s+[\p{L}\p{M}]+)?`;
+const ROUTE_OR_BUILDING = new RegExp(
+  String.raw`${NAME_RUN}\s+(?:नेशनल\s+|राष्ट्रीय\s+|मेगा\s+)?(?:हाईवे|हाइवे|राजमार्ग|मार्ग|रोड|एक्सप्रेसवे|एक्सप्रेस\s*वे|हाउस|भवन)(?![\p{L}\p{M}])`,
+  "gu",
+);
+export const withoutRoutesAndBuildings = (text: string): string => text.normalize("NFC").replace(ROUTE_OR_BUILDING, " ");
 
 /**
- * The Rajasthan district a headline names as where the story IS, to override the file code's district, or
- * null. The file code is the filing desk's district (Navin files every district's ACB story as Jaipur), but
- * a district word in a headline is often not the story's place, and this one goes INTO the post (line 1's
- * hashtag, the district police and collector). So only when all of these hold:
- *  - exactly one district is named: two are a route, a trip or a comparison ("अजमेर-जयपुर हाईवे",
- *    "उदयपुर से लौट रहे जयपुर के परिवार"), and naming the file's own district keeps it;
- *  - the name is not also an everyday word (COMMON_WORD_DISTRICTS);
+ * The one Rajasthan district a headline names as where the story IS, or null. INFERRED, and so only ever a
+ * suggestion (b6 fix brief P0): the caller must never put it in line 1 or pick a handle with it. Only when:
+ *  - routes and buildings are taken out first ("अजमेर-जयपुर हाईवे", "बीकानेर हाउस");
+ *  - exactly one district is named: two are a route, a trip or a comparison;
  *  - it reads as a place: followed by में / के / की / का / जिले ... or ending the headline, and not
- *    "के लिए" (the destination: "खैरथल-तिजारा के लिए रवाना") nor a building ("बीकानेर हाउस में").
+ *    "के लिए" (a destination: "खैरथल-तिजारा के लिए रवाना"); an AMBIGUOUS_DISTRICTS word only before a
+ *    strong locative ("डूंगरपुर में", "सीकर जिले").
  */
-function headlineDistrict(book: PlaceBook, headline: string, hint: string): DistrictInfo | null {
-  const found = book.find(headline).filter((m) => m.entry.data.kind === "district" && m.entry.data.districts[0]?.rajasthan);
+export function inferHeadlineDistrict(book: PlaceBook, headline: string): DistrictInfo | null {
+  const text = withoutRoutesAndBuildings(headline);
+  const found = book.find(text).filter((m) => m.entry.data.kind === "district" && m.entry.data.districts[0]?.rajasthan);
   const named = [...new Map(found.map((m) => [m.entry.data.districts[0]!.name, m.entry.data.districts[0]!])).values()];
   if (named.length !== 1) return null;
   const d = named[0]!;
-  if (d.name === hint || d.name === book.district(hint)?.name || COMMON_WORD_DISTRICTS.has(d.tag)) return null;
+  const ambiguous = AMBIGUOUS_DISTRICTS.has(d.tag) || AMBIGUOUS_DISTRICTS.has(d.name);
   // Every place the headline uses one of the district's names, not only the first: "डीग-कुम्हेर विधायक ... पहुंचेंगे डीग"
-  const words = fold(headline).split(" ").filter(Boolean);
+  const words = fold(text).split(" ").filter(Boolean);
   const aliases = [...new Set(found.map((m) => m.matched))].map((a) => a.split(" ").filter(Boolean));
   for (const alias of aliases) {
     for (let i = 0; i + alias.length <= words.length; i++) {
       if (!alias.every((w, k) => words[i + k] === w)) continue;
       const next = words[i + alias.length];
-      if (next === undefined) return d;
-      if (PLACE_AFTER.has(next) && !FOR.has(words[i + alias.length + 1] ?? "")) return d;
+      if (next === undefined) {
+        if (!ambiguous) return d;
+        continue;
+      }
+      if ((ambiguous ? STRONG_PLACE_AFTER : PLACE_AFTER).has(next) && !FOR.has(words[i + alias.length + 1] ?? "")) return d;
     }
   }
   return null;
+}
+
+/**
+ * The Rajasthan districts the desk TAGGED in a headline ("#BJP #Kota: ...", "#JhalawarNews"), in order, each once.
+ * Only Rajasthan districts: "#Pakistan" or "#Delhi" is a topic tag in a Rajasthan desk's copy, not where the story
+ * is, and taking it would flip the footer to #FirstIndiaNews. Only the headline: a tag in a point is commentary.
+ */
+export function headlineDistrictTags(book: PlaceBook, headline: string): DistrictInfo[] {
+  const out = new Map<string, DistrictInfo>();
+  for (const m of headline.matchAll(/#([\p{L}\p{M}\p{N}_]+)/gu)) {
+    const raw = m[1]!;
+    const p = book.hashtag(raw) ?? (/^.+News$/u.test(raw) ? book.hashtag(raw.slice(0, -4)) : null);
+    const d = p && p.kind === "district" ? p.districts[0] : null;
+    if (d?.rajasthan) out.set(d.name, d);
+  }
+  return [...out.values()];
+}
+
+/** A district tag in the headline is explicit only when it is the one district tagged: two are a conflict, offered */
+function taggedDistrict(book: PlaceBook, headline: string): DistrictInfo | null {
+  const tags = headlineDistrictTags(book, headline);
+  return tags.length === 1 ? tags[0]! : null;
 }
 
 /** The district that `place` belongs to; for an ambiguous town, the one the file code names, if any */
@@ -226,7 +285,7 @@ function hashtagPrefix(book: PlaceBook, headline: string, hint: string | null): 
 
 /** First place named in the text: Rajasthan wins over a national place in the same text */
 function placeInText(book: PlaceBook, text: string, hint: string | null): { district: DistrictInfo; national: boolean } | null {
-  const found = book.find(text);
+  const found = book.find(withoutRoutesAndBuildings(text));
   const raj = found.find((m) => m.entry.data.kind !== "national");
   if (raj) return { district: districtOf(raj.entry.data, hint), national: false };
   const nat = found[0];
@@ -319,27 +378,17 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
 
   let district = where?.district ?? null;
   let national = district ? !district.rajasthan : false;
-  // The file code is the FILING desk's district, which is not always the story's: Navin files ACB stories
-  // from every district under the Jaipur code, so "डूंगरपुर में ACB कार्रवाई" came out #Jaipur. A Rajasthan
-  // DISTRICT named in the headline outranks it (HASHTAG_HANDLE_CHANGES_v3 §2.8: the hand-curated Hindi names
-  // of rajasthan-places.json before the reporter's district). District names only — a town can be in
-  // another district's copy in passing, and the file code still wins over a town.
-  if (!district && hint) {
-    const named = headlineDistrict(book, headline, hint);
-    // A town on the place line is the desk's own dateline and keeps the file's district unless it is a known
-    // town of the named one: "तखतगढ़" (Pali) under a "जालोर-पावटा चौराहा" headline stays Pali
-    const townSays = where?.town ? book.lookup(where.town) : null;
-    const townAgrees = !where?.town || !!townSays?.districts.some((x) => x.name === named?.name);
-    if (named && townAgrees) {
-      district = named;
-      from = "text";
-    } else {
-      district = book.district(hint);
-      from = "file_code";
+  // One Rajasthan district the desk tagged in its headline is the desk's own word: explicit, like the place line
+  if (!district) {
+    const tagged = taggedDistrict(book, rawHeadline);
+    if (tagged) {
+      district = tagged;
+      from = "tag";
+      national = !tagged.rajasthan;
     }
-    national = !!district && !district.rajasthan;
   }
-  // A town on its own (no district yet): the town's district, if the gazetteer knows the town
+  // A town on the place line on its own (no district yet): the town's district, if the gazetteer knows the
+  // town. The desk wrote the town, so this is explicit, and it outranks the file code
   if (!district && where?.town) {
     const t = book.lookup(where.town);
     if (t) {
@@ -347,6 +396,15 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
       from = "place_line";
     }
   }
+  // The file code: the FILING desk's district. Stated, as before b6 (it is what put #Jhalawar and @JhalawarPolice
+  // on "झालावाड़ में सड़क हादसे में दो घायल"), except for a bureau reporter, which the composer checks (it
+  // knows the reporters): Navin files every district's ACB story under JPR.
+  if (!district && hint) {
+    district = book.district(hint);
+    from = "file_code";
+    national = !!district && !district.rajasthan;
+  }
+  // Everything below is INFERRED (b6 fix brief P0): stored for the queue and its filters, only ever offered
   if (!district) {
     const inText = placeInText(book, headline, hint) ?? placeInText(book, points.slice(0, 2).join(" । "), hint);
     if (inText && !inText.national) {

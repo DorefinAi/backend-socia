@@ -6,10 +6,10 @@
 
 import { createHash } from "node:crypto";
 import {
-  LEADER_POST, asFileTags, composeBreaking, deskHandleRules, hashtagGazetteer, mergeReporterTokens, slotFromTags,
+  LEADER_POST, asFileTags, composeBreaking, recoverDistrictFrom, deskHandleRules, hashtagGazetteer, mergeReporterTokens, slotFromTags,
   type Composer, type DeskHandleRules, type HashtagGazetteer, type LearnedReporterToken, type ReporterRules,
 } from "@socia/core";
-import { REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
+import { REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, ingestedFiles, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { nextStoryIsolated } from "./isolate";
 import type { PhaseOneData } from "../data-files";
@@ -89,6 +89,13 @@ export interface ComposeOptions {
 /** Draft states that already went (or are going) out: a re-saved file never rewrites them */
 const SENT = ["published", "recalled", "queued", "publishing"];
 
+/** A pre-0023 row's district provenance, recovered by parsing its stored file again; null when that is not possible */
+async function legacyDistrictFrom(tx: Tx, story: typeof stories.$inferSelect, book: Parameters<typeof recoverDistrictFrom>[3]) {
+  if (!story.fileId || !story.sourceText || !story.district) return null;
+  const [file] = await tx.select({ fileName: ingestedFiles.fileName }).from(ingestedFiles).where(eq(ingestedFiles.id, story.fileId));
+  return recoverDistrictFrom(story.sourceText, file?.fileName, story.district, book);
+}
+
 async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, dictionaries: Dictionaries, log: Logger, opts: ComposeOptions) {
   if (!opts.data) throw new Error("Breaking stories need the places and handles files (compose started without them)");
   const { value: book, version: placesVersion } = await opts.data.places.get();
@@ -117,6 +124,9 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       headline,
       points: (story.body ?? "").split("\n").filter(Boolean),
       district: story.district,
+      // Only a stated district goes in line 1 or picks a handle (core storyDistrict). A row from before 0023 has
+      // none: its stored file is parsed again for it; failing that storyDistrict's legacy rule applies
+      districtFrom: story.districtFrom ?? (await legacyDistrictFrom(tx, story, book)),
       town: story.town,
       // No place: Rajasthan, unless the file came from the national desk
       rajasthan: place ? place.rajasthan : !tags?.other.includes("NWS"),
@@ -209,7 +219,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   if (out.unmatchedReporter) {
     log.info({ storyId: story.id, draftId: draft?.id, reporterToken: out.unmatchedReporter }, "breaking handles: no byline, this reporter is not in the list");
   }
-  log.info({ storyId: story.id, draftId: draft?.id, district: story.district, cls: out.cls, hashtags: out.hashtags, handles: out.mentions }, "breaking draft composed");
+  log.info({ storyId: story.id, draftId: draft?.id, district: story.district, districtFrom: story.districtFrom, cls: out.cls, hashtags: out.hashtags, handles: out.mentions }, "breaking draft composed");
 }
 
 export async function composeNext(db: Db, dictionaries: Dictionaries, log: Logger, opts: ComposeOptions = {}): Promise<boolean> {

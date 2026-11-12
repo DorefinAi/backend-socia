@@ -22,6 +22,58 @@ const log = pino({ level: "silent" });
 const FIXTURES = new URL("../../../packages/core/test/fixtures/breaking/", import.meta.url);
 const fixture = (name: string) => new URL(name, FIXTURES);
 
+describe("data files fail loudly (b6 fix brief P5, no database)", () => {
+  it("rejects a campaigns file with a misspelt kind WHOLE, keeps the last good copy and says why in the status", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const path = join(dir, "campaigns.json");
+    const good = { entries: [{ tag: "ACB", kind: "keyword", pattern: "ACB" }] };
+    await writeFile(path, JSON.stringify(good));
+    const statuses: { ok: boolean; message?: string }[] = [];
+    const data = phaseOneData(log, (s) => void statuses.push(s), { CAMPAIGNS_FILE: path });
+    expect((await data.campaigns.get()).value.rules.map((r) => r.tag)).toEqual(["ACB"]);
+
+    // A typo in one entry: nothing of the new file is used, not even its good entry
+    await writeFile(path, JSON.stringify({ entries: [{ tag: "New", kind: "keyword", pattern: "x" }, { tag: "Typo", kind: "campain", pattern: "y", start: "2026-11-01", end: "2026-11-30" }] }));
+    await utimes(path, new Date(), new Date(Date.now() + 5_000));
+    (data.campaigns as unknown as { checkedAt: number }).checkedAt = 0;
+    expect((await data.campaigns.get()).value.rules.map((r) => r.tag)).toEqual(["ACB"]);
+    const last = statuses.at(-1)!;
+    expect(last.ok).toBe(false);
+    expect(last.message).toMatch(/campaigns file was rejected \(1 problem: .*kind must be "campaign" or "keyword", not "campain"/);
+    expect(last.message).toMatch(/using the last good copy/);
+
+    // The same rejected version is not parsed or reported again every minute
+    const reported = statuses.length;
+    (data.campaigns as unknown as { checkedAt: number }).checkedAt = 0;
+    expect((await data.campaigns.get()).value.rules.map((r) => r.tag)).toEqual(["ACB"]);
+    expect(statuses).toHaveLength(reported);
+    // A fixed file loads again and says so
+    await writeFile(path, JSON.stringify({ entries: [{ tag: "New", kind: "keyword", pattern: "x" }] }));
+    await utimes(path, new Date(), new Date(Date.now() + 10_000));
+    (data.campaigns as unknown as { checkedAt: number }).checkedAt = 0;
+    expect((await data.campaigns.get()).value.rules.map((r) => r.tag)).toEqual(["New"]);
+    expect(statuses.at(-1)).toMatchObject({ ok: true });
+  });
+
+  it("takes the places file's district tags as known-good normalisation targets", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const path = join(dir, "hashtag-normalise.json");
+    await writeFile(path, JSON.stringify({ variants: { jodhpur: "Jodhpur", Sawaimadhopur: "SawaiMadhopur" } }));
+    const data = phaseOneData(log, undefined, { HASHTAG_NORMALISE_FILE: path });
+    expect((await data.normalise.get()).value.variants.get("jodhpur")).toBe("Jodhpur");
+  });
+
+  it("rejects a normalisation target nobody confirmed, even at first start (falls back to none)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const path = join(dir, "hashtag-normalise.json");
+    await writeFile(path, JSON.stringify({ variants: { Jaipr: "Jaipurr" } }));
+    const statuses: { ok: boolean; message?: string }[] = [];
+    const data = phaseOneData(log, (s) => void statuses.push(s), { HASHTAG_NORMALISE_FILE: path });
+    expect((await data.normalise.get()).value.variants.size).toBe(0);
+    expect(statuses.at(-1)).toMatchObject({ ok: false, message: expect.stringMatching(/#Jaipurr is not a known-good tag.*using none/) });
+  });
+});
+
 describe("BreakingShareSource (no database)", () => {
   it("lists today's and yesterday's BREAKING files only", async () => {
     const root = await mkdtemp(join(tmpdir(), "socia-share-"));
@@ -146,28 +198,29 @@ describe("BreakingShareSource (no database)", () => {
 
     const all = await h.db.select().from(stories);
     const kota = all.find((s) => s.district === "Kota")!;
-    expect(kota).toMatchObject({ layout: "breaking", mediaState: "none", status: "composed", parseMethod: "breaking", needsCheck: [] });
+    // No place line and no place prefix: "कोटा में ..." is the headline's, so the district is INFERRED (b6 fix
+    // brief P0) — stored for the queue, with its provenance, and only offered on the draft
+    expect(kota).toMatchObject({ layout: "breaking", mediaState: "none", status: "composed", parseMethod: "breaking", needsCheck: [], districtFrom: "text" });
     expect(kota.fileTags).toMatchObject({ big: true, full: true, desk: "VKS", reporter: "REPORTER" });
     expect(all.find((s) => s.id !== kota.id)).toMatchObject({ status: "failed", needsCheck: ["empty"] });
 
     const [draft] = await h.db.select().from(postDrafts);
-    expect(draft).toMatchObject({ status: "ready", cardRev: 0, hashtags: ["#RajasthanWithFirstIndia"], mentions: ["@KotaPolice"] });
-    expect(draft!.bodyText.startsWith("#Kota: कोटा में हिस्ट्रीशीटर")).toBe(true);
+    // Before b7 this went out "#Kota: ..." with @KotaPolice; an inferred district now picks no police force
+    expect(draft).toMatchObject({ status: "ready", cardRev: 0, hashtags: ["#RajasthanWithFirstIndia"], mentions: [] });
+    expect(draft!.bodyText.startsWith("कोटा में हिस्ट्रीशीटर")).toBe(true);
     // Why those handles, stored with the draft for the desk: the class the rules hung off, the reason,
     // and the reporter name the file carried. "REPORTER" is the fixture's placeholder for a real name,
     // so it resolves to no byline and is reported rather than guessed at.
-    expect(draft!.handlePick).toMatchObject({ cls: "incident", handles: [{ handle: "@KotaPolice", reason: "police" }], reporterToken: "REPORTER" });
+    expect(draft!.handlePick).toMatchObject({ cls: "incident", handles: [], reporterToken: "REPORTER" });
     expect((draft!.handlePick as { why: string }).why).toMatch(/crime, fire or accident/);
     // A crime story carries no byline anyway, so the unknown name is not raised as something to look at
-    // — but it is still stored, which is what lets an editor's own edit teach it. Kota has a city and a
-    // rural force, and the draft says which one went on the post.
-    expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).toMatch(/Kota has 2 police handles/);
+    // — but it is still stored, which is what lets an editor's own edit teach it.
     expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).not.toMatch(/reporter list/);
-    expect(draft!.composeVersion.startsWith("b6.")).toBe(true);
-    // The footer is the only hashtag that goes on a post by itself. This org has no topic rules, so
-    // there is nothing to offer either; packages/core covers the case where a rule matches.
+    expect(draft!.composeVersion.startsWith("b7.")).toBe(true);
+    // The footer is the only hashtag that goes on a post by itself; the inferred district is offered first.
+    // This org has no topic rules, so nothing else is offered; packages/core covers the case where one matches.
     expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
-    expect(draft!.hashtagSuggestions).toEqual([]);
+    expect(draft!.hashtagSuggestions).toEqual(["#Kota"]);
 
     // A restart skips the first-start files and the ingested ones without reading them again
     expect(await settle(ingestFor())).toBe(0);

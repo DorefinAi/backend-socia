@@ -1,7 +1,7 @@
 // Tables: spec v1.1 §6.8 plus the Phase 1 additions in the backend architecture doc §10.
 // org_id is on every table from day one: Socia is meant to run for more than one media house.
 
-import type { FileTags, HandlePick, StoryClass } from "@socia/core";
+import type { DistrictFrom, FileTags, HandlePick, StoryClass } from "@socia/core";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid,
@@ -275,6 +275,13 @@ export const stories = pgTable(
     external: jsonb("external").$type<StoryExternal>(),
     /** District or city, for hashtags (Samvadia gives it; files do not) */
     district: text("district"),
+    /**
+     * Where a breaking file's district came from (core DistrictFrom): place_line, headline_prefix and tag are
+     * the desk's own words and may reach the post; file_code is stated unless the reporter files for no single
+     * district (core storyDistrict); text was inferred and is only offered (b6 fix brief P0). Null for other
+     * stories and for rows stored before migration 0023 (the compose stage recovers it from the stored file).
+     */
+    districtFrom: text("district_from").$type<DistrictFrom>(),
     slug: text("slug").notNull(),
     status: text("status").$type<StoryStatus>().notNull().default("ingested"),
     /** The file as decoded, before Kruti Dev conversion, shown beside a low-confidence conversion */

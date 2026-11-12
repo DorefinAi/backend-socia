@@ -9,6 +9,7 @@
 // bodyText is lines 1–2 (editable), hashtags the footer tag and 0–2 category tags, mentions the handles;
 // assemblePostText() puts them together exactly as the desk copies it. Always within X's 280 (weighted).
 
+import { fold } from "../fold";
 import { X_LIMIT, assemblePostText, cutOnWords } from "../compose";
 import type { HashtagGazetteer } from "../hashtags";
 import { xLen } from "../xtext";
@@ -16,10 +17,14 @@ import { pickCategoryTags } from "./categories";
 import { pickHandlesExplained, type HandlePick, type HandleRules } from "./handles";
 import { EMPTY_DESK_HANDLE_RULES, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_PARTY_RULES, type PartyRules } from "./parties";
-import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, type ReporterRules } from "./reporters";
-import { EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, normaliseTag, stripLinks, suggestTags, type SuggestRules, type TagNormaliser } from "./post-tags";
+import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, type ReporterMatch, type ReporterRules } from "./reporters";
+import { headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, type DistrictFrom } from "./parse";
+import {
+  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, normaliseTag, stripLinks, suggestTags,
+  type Sourced, type SuggestRules, type TagNormaliser,
+} from "./post-tags";
 import type { StoryClass } from "./storyclass";
-import type { PlaceBook } from "./places";
+import type { DistrictInfo, PlaceBook } from "./places";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
 
 /** A headline that starts with the desk's own hashtags and a colon ("#BJP:", "#Congress #Kota:") */
@@ -37,14 +42,28 @@ export const BREAKING_TARGET = 265;
  * b5: the footer is the only hashtag applied on its own; topic rules are offered to the desk instead.
  * b6: URLs out of every line read; desk tag typos normalised; an inferred district, campaign and #ACB tags
  *     offered, never applied; handle suggestions (HASHTAG_HANDLE_CHANGES_v3).
+ * b7: provenance (b6 fix brief): only an explicit district (the copy, or the file code of a reporter tied to
+ *     one district) goes in line 1 or picks a police, collector or administration handle; a district the
+ *     headline text or the reporter suggests is offered. A party named only in the
+ *     points, a party wing and a seasonal institution (@CeoRajasthan) are offered, not tagged.
  */
-export const BREAKING_FORMAT = "b6";
+export const BREAKING_FORMAT = "b7";
 
 export interface BreakingComposeInput {
   headline: string;
   points: string[];
   /** stories.district: English district or national place, or null */
   district: string | null;
+  /**
+   * Where `district` came from (parseBreaking; stories.district_from). place_line, headline_prefix and tag are
+   * the desk's own words; file_code counts as stated unless trustsFileCode refuses the reporter; text is only
+   * offered.
+   * OMITTED (undefined): the caller states the district itself (a replayed post's leading tag, a test), and it
+   * is taken as explicit. NULL: unknown (a row stored before migration 0023). The worker recovers it by parsing
+   * the stored file again (recoverDistrictFrom); when it cannot, storyDistrict states the district only when it
+   * equals a trusted file code and offers it otherwise.
+   */
+  districtFrom?: DistrictFrom | null;
   /** Hindi town from the place line */
   town: string | null;
   rajasthan: boolean;
@@ -53,7 +72,10 @@ export interface BreakingComposeInput {
   rawHeadline?: string;
   /** slotFromTags().reporterToken — the reporter list's key. Never read from the post text. */
   reporterToken?: string | null;
-  /** slotFromTags().district — used only when the copy names no district; the copy sets the hashtag */
+  /**
+   * slotFromTags().district — the FILING desk's code. Stated (explicit) when the copy names no district, unless
+   * the reporter is a bureau filing for no single district; compared with the copy for a warning.
+   */
   fileDistrict?: string | null;
   /** slotFromTags().unknownCode — surfaced as a warning so a missing district code gets found */
   unknownBureauCode?: string | null;
@@ -214,6 +236,63 @@ export function joinPoints(points: string[], budget: number): string {
   return cutAt(k) ?? (k > 0 ? cutAt(k - 1) : null) ?? "";
 }
 
+/**
+ * A reporter whose ROSTER district says nothing about where a story is: listed for no district (a state bureau:
+ * Navin's ACB beat) or for several. Their roster entry is never offered as the story's district. Whether their
+ * FILE CODE stands is trustsFileCode's question (b6 fix brief P5).
+ */
+const isBureauReporter = (m: ReporterMatch | null): boolean => !!m && m.districts.length !== 1;
+const districtKey = (s: string) => fold(s).replace(/\s+/g, "");
+/**
+ * Whether the file name's district code can be taken as the story's district for this reporter. A reporter listed
+ * for no district files statewide (Navin's ACB bureau: the code is where he sits, not where the story is). A
+ * reporter listed for several (Jaipur and Delhi) is trusted when the code is one of them: @aishwaryam99's JPR
+ * file is a Jaipur story. A single-district reporter, or none matched, keeps the code as before b6.
+ */
+const trustsFileCode = (m: ReporterMatch | null, code: DistrictInfo): boolean =>
+  !m || m.districts.length === 1 || m.districts.some((d) => districtKey(d) === districtKey(code.name) || districtKey(d) === districtKey(code.tag));
+
+/**
+ * The story's district with its provenance. Precedence (user decision, 12 Nov): the desk's own copy (place line,
+ * place prefix, a district tag) > the file name's code > (offered only) the headline's district > the
+ * reporter's one district.
+ *   - explicit: the copy, or the caller stating it (districtFrom omitted);
+ *   - explicit: the file code, as before b6 — UNLESS the reporter files for no single district (a state bureau:
+ *     Navin's ACB beat files every district's story under JPR). Then the code says where he sits, not where
+ *     the story is, and is used for nothing, not even a suggestion;
+ *   - inferred: the headline's district (inferHeadlineDistrict's guards), parse's `text` district (a place the
+ *     headline or first points mention — on 9 Nov it gave Ajmer for an Uttarakhand story), the reporter's.
+ */
+export function storyDistrict(story: BreakingComposeInput, book: PlaceBook, reporter: ReporterMatch | null): Sourced<DistrictInfo> | null {
+  const own = book.district(story.district);
+  if (own && (story.districtFrom === undefined || isExplicitDistrict(story.districtFrom))) return explicit(own, story.districtFrom ?? "caller");
+  // A row stored before migration 0023 whose file could not be parsed again: the district is stated only when it
+  // is the file code (what the file name says, as before b6); any other value is offered, never tagged
+  if (own && story.districtFrom === null) {
+    const code = book.district(story.fileDistrict);
+    if (code && code.name === own.name && trustsFileCode(reporter, code)) return explicit(own, "legacy_file_code");
+    if (!code || code.name !== own.name) return inferred(own, "legacy");
+  }
+  const fileCode = book.district(story.districtFrom === "file_code" ? story.district : story.fileDistrict);
+  if (fileCode && trustsFileCode(reporter, fileCode)) return explicit(fileCode, "file_code");
+  const headline = inferHeadlineDistrict(book, story.headline);
+  if (headline) return inferred(headline, "headline");
+  if (own && story.districtFrom === "text") return inferred(own, "text");
+  const filed = isBureauReporter(reporter) ? null : book.district(reporterDistrict(reporter));
+  return filed ? inferred(filed, "reporter") : null;
+}
+
+/**
+ * The provenance of a stored district whose row predates migration 0023 (district_from NULL): the stored file is
+ * parsed again, and its answer is used when it names the same district. Null when the file is missing or the
+ * parse disagrees (storyDistrict's legacy rule then applies).
+ */
+export function recoverDistrictFrom(sourceText: string | null | undefined, fileName: string | null | undefined, district: string | null, book: PlaceBook): DistrictFrom | null {
+  if (!sourceText || !fileName || !district) return null;
+  const p = parseBreaking(sourceText, fileName, book);
+  return p.district === district ? p.districtFrom : null;
+}
+
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
@@ -234,19 +313,26 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     points: story.points.map(clean).filter(Boolean),
     ...(story.rawHeadline !== undefined && { rawHeadline: clean(story.rawHeadline) }),
   };
-  const place = book.district(story.district);
+  // The district with its provenance (b6 fix brief P0). Only an explicit one sets line 1's hashtag and is the
+  // district the handle rules see; everything inferred is offered in hashtagSuggestions and nothing else.
+  const reporterPick = pickReporter(story.reporterToken, reporters);
+  const reporter = reporterPick.match;
+  const district = storyDistrict(story, book, reporter);
+  // The file code stood for a reporter the list does not know: say so, since the code is then trusted blind
+  const codeWarnings =
+    district?.provenance === "explicit" && district.from === "file_code" && reporterPick.unmatchedToken
+      ? [`the file names ${reporterPick.unmatchedToken}, who is not in the reporter list; the file code's district (${district.value.name}) was used — check it`]
+      : [];
+  const place = emittable(district);
   const rajasthan = place ? place.rajasthan : story.rajasthan;
-  // Which district the handle rules are working in. The post's hashtag comes from `place` — the copy —
-  // and is left alone; this is only for the "another district's officer is not ours" test, which has to
-  // know the district the rules actually chose. Without it, a story whose district came from the file
-  // name alone treats its OWN district as somebody else's and tags no police at all.
-  const handlePlace = place ?? (story.fileDistrict ? book.district(story.fileDistrict) : null);
   // A word naming another district: "बूंदी SP ने" in a Jaipur story does not tag Jaipur's police
   const elsewhere = (word: string) => {
     const p = book.lookup(word);
-    return p?.kind === "district" && !p.districts.some((d) => d.name === handlePlace?.name);
+    return p?.kind === "district" && !p.districts.some((d) => d.name === place?.name);
   };
-  const picked = pickHandlesExplained({ ...story, rajasthan, elsewhere }, rules, { subjects, desk, reporters, parties, max: 3 });
+  // The picker sees the explicit district only, so an inferred one cannot choose a police force, a collector
+  // or an administration handle however a later rule uses `district`
+  const picked = pickHandlesExplained({ ...story, district: place?.name ?? null, rajasthan, elsewhere }, rules, { subjects, desk, reporters, parties, max: 3, at });
   const handles = picked.handles;
   const footer = rajasthan ? RAJASTHAN_FOOTER : NATIONAL_FOOTER;
   // The footer is the only tag that goes on by itself. The topic rules are OFFERED, not applied: measured
@@ -256,14 +342,10 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // costs the desk a deletion on a live post; a missing one costs a click.
   const hashtags = [footer];
   const offered = pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer]);
-  // No district at all (§2.8): infer one and OFFER it — a Rajasthan district the headline names (the curated
-  // Hindi names), else the filing reporter's one district. Never into line 1: inference is right 98.5% of the
-  // time and the 1.5% is a wrong place on a live post (Navin files every district's ACB story as Jaipur).
-  if (!place) {
-    const named = book.find(story.headline).find((m) => m.entry.data.kind === "district" && m.entry.data.districts[0]!.rajasthan);
-    const inferred = named ? named.entry.data.districts[0]! : book.district(reporterDistrict(pickReporter(story.reporterToken, reporters).match));
-    if (inferred) offered.unshift(`#${inferred.tag}`);
-  }
+  // An inferred district (§2.8) is offered first among the suggestions and goes nowhere else
+  if (district?.provenance === "inferred") offered.unshift(`#${district.value.tag}`);
+  // District tags in the headline that were not taken as stated (two different districts: a conflict) are offered
+  if (!place) for (const d of headlineDistrictTags(book, story.rawHeadline ?? story.headline)) offered.push(`#${d.tag}`);
   if (at) offered.push(...suggestTags([story.headline, ...story.points].join("\n"), suggestRules, at).map((t) => `#${t}`));
   const hashtagSuggestions = [...new Set(offered)].filter((t) => t.toLowerCase() !== footer.toLowerCase());
   const mentions = handles.map((h) => `@${h.handle}`);
@@ -286,7 +368,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   const bodyText = body ? `${line1}\n\n${body}` : line1;
   return {
     bodyText, hashtags, hashtagSuggestions, mentions, handles, handleSuggestions: picked.suggestions, cls: picked.cls, why: picked.why,
-    warnings: [...picked.warnings, ...flags.map((f) => `hashtag typo: ${f}`)],
+    warnings: [...picked.warnings, ...codeWarnings, ...flags.map((f) => `hashtag typo: ${f}`)],
     unmatchedReporter: picked.unmatchedReporter, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}`,
   };
 }

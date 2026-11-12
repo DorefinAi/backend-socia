@@ -48,7 +48,8 @@ export interface CorpusPost {
 // composer cannot drift apart: URLs stripped first (§2.1), the danda attached to the word before it counts as
 // a video separator (§2.2), accented Latin tags (§2.6), and the desk's typos normalised before scoring (§2.7).
 const DEVANAGARI = /[ऀ-ॿ]/;
-const NORMALISER = parseHashtagNormalise(JSON.parse(readFileSync(new URL("../../../apps/worker/config/hashtag-normalise.json", import.meta.url), "utf8")));
+const PLACE_TAGS = new PlaceBook(parsePlacesData(JSON.parse(readFileSync(new URL("../../../apps/worker/config/rajasthan-places.json", import.meta.url), "utf8")))).districts.map((d) => d.tag);
+const NORMALISER = parseHashtagNormalise(JSON.parse(readFileSync(new URL("../../../apps/worker/config/hashtag-normalise.json", import.meta.url), "utf8")), undefined, PLACE_TAGS);
 export const normaliseTag = (h: string) => normaliseShared(h, NORMALISER).tag;
 export { postFormat, segmentPost, type Segmented };
 

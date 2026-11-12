@@ -32,8 +32,11 @@ const reporters = parseReporterHandles(cfg("reporter-handles.json"));
 const parties = parsePartyHandles(cfg("party-handles.json"));
 // Read only when this code has them, so the same script also replays the logic from before they existed
 const c = core as Record<string, unknown>;
-const maybe = (fn: string, file: string) => (typeof c[fn] === "function" ? (c[fn] as (j: unknown) => unknown)(cfg(file)) : undefined);
-const extra = { normaliser: maybe("parseHashtagNormalise", "hashtag-normalise.json"), suggestRules: maybe("parseSuggestRules", "campaigns.json") };
+const maybe = (fn: string, file: string, ...more: unknown[]) =>
+  typeof c[fn] === "function" ? (c[fn] as (j: unknown, ...rest: unknown[]) => unknown)(cfg(file), undefined, ...more) : undefined;
+// The places file's district tags are known-good normalisation targets, as in the worker
+const districtTags = book.districts.map((d) => d.tag);
+const extra = { normaliser: maybe("parseHashtagNormalise", "hashtag-normalise.json", districtTags), suggestRules: maybe("parseSuggestRules", "campaigns.json") };
 
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await db.connect();
@@ -51,7 +54,7 @@ const result = rows.map((r) => {
   const slot = slotFromTags(p.tags);
   const d = composeBreaking(
     {
-      headline: p.headline, points: p.points, district: p.district, town: p.town, rajasthan: p.rajasthan, leaderPost: LEADER_POST.test(p.headline),
+      headline: p.headline, points: p.points, district: p.district, districtFrom: p.districtFrom, town: p.town, rajasthan: p.rajasthan, leaderPost: LEADER_POST.test(p.headline),
       rawHeadline: p.rawHeadline, reporterToken: slot.reporterToken, fileDistrict: slot.district, unknownBureauCode: slot.unknownCode,
     },
     rules, book, { subjects, reporters, parties, ...extra, at: r.created_at } as Parameters<typeof composeBreaking>[3],

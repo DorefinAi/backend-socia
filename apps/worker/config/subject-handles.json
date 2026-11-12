@@ -1578,17 +1578,22 @@
         "संक्षिप्त पुनरीक्षण",
         "गहन पुनरीक्षण",
         "बीएलओ",
-        "एसआईआर"
+        "एसआईआर",
+        "वोटर लिस्ट",
+        "वोटर लिस्टों",
+        "निर्वाचन"
       ],
       "keywords_en": [
         "CEO Rajasthan",
         "BLO",
-        "SIR"
+        "SIR",
+        "voter list"
       ],
+      "suggest_only": true,
       "verified": true,
       "source": "https://api.fxtwitter.com/CeoRajasthan",
       "checkedAt": "2026-10-31",
-      "note": "X profile with grey Government badge and matching bio | X profile name 'CEO RAJASTHAN', bio: \"Official handle of Chief Electoral Officer, Rajasthan. For Voter Services log on to http://voters.eci.gov.in or Call on Voter Helpline No. a\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/CeoRajasthan/status/2116409718960984380) | 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §3.1): electoral-roll keywords added — the desk tagged it on 109 posts on 9 Sep and these rules on none. exclude_*: a panchayat or municipal roll is the State Election Commission's, not the CEO's. kind 'institution' (12 Nov 2026): tagged when the copy names the rolls, not only when the office is the actor — a district's roll publication tags the collector AND the CEO.",
+      "note": "X profile with grey Government badge and matching bio | X profile name 'CEO RAJASTHAN', bio: \"Official handle of Chief Electoral Officer, Rajasthan. For Voter Services log on to http://voters.eci.gov.in or Call on Voter Helpline No. a\", badge: grey Government badge | also tagged by @DIPRRajasthan (https://x.com/CeoRajasthan/status/2116409718960984380) | 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §3.1): electoral-roll keywords added — the desk tagged it on 109 posts on 9 Sep and these rules on none. exclude_*: a panchayat or municipal roll is the State Election Commission's, not the CEO's. kind 'institution' (12 Nov 2026): tagged when the copy names the rolls, not only when the office is the actor — a district's roll publication tags the collector AND the CEO. | 12 Nov 2026 (b6 fix brief P2): SEASONAL and OFFERED ONLY (suggest_only). Measured on 2,476 posts: tagged on 109 posts of 9 Sep (municipal election day) and essentially never on the other five capture days; panchayat/sarpanch in the headline 1 of 194, in the points only 1 of 77; electoral-roll words (निर्वाचन, मतदाता सूची, वोटर लिस्ट, SIR) in the points 9 of 38 (24%). Scoped to electoral-roll and election-commission words, not elections in general; the exclusions are checked against the whole post. To tag it routinely during an SIR or a roll revision add emit_window {start, end} (IST days, inclusive).",
       "exclude_hi": [
         "पंचायत",
         "पंचायती",

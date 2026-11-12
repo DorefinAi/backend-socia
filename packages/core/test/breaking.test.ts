@@ -260,16 +260,19 @@ describe("parseBreaking", () => {
 });
 
 describe("composeBreaking", () => {
-  it("writes the house layout: the footer tag alone, and the district police because the story is an incident", () => {
+  it("writes the house layout: the footer tag alone; a district only the headline names is offered, and picks no police (b6 P0)", () => {
     const { text, d } = post("btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt");
-    expect(text.startsWith("#Kota: कोटा में हिस्ट्रीशीटर")).toBe(true);
-    // The footer is the only tag applied on its own; "दादाबाड़ी थाना पुलिस कर रही बदमाशों की तलाश" → @KotaPolice
-    expect(text.endsWith("\n\n#RajasthanWithFirstIndia @KotaPolice")).toBe(true);
+    // No place line, no place prefix: "कोटा में ..." is inferred, so it is offered and goes neither in line 1
+    // nor to @KotaPolice. Before b7 this file went out "#Kota: ..." with @KotaPolice.
+    expect(text.startsWith("कोटा में हिस्ट्रीशीटर")).toBe(true);
+    expect(d.hashtagSuggestions[0]).toBe("#Kota");
+    expect(text.endsWith("\n\n#RajasthanWithFirstIndia")).toBe(true);
+    expect(d.mentions).toEqual([]);
     // "वारदात" still matches #RajasthanPolice — it is offered to the desk, not put on the post
     expect(d.hashtagSuggestions).toContain("#RajasthanPolice");
     expect(text).not.toContain("#RajasthanPolice");
     expect(text).toContain("तलवारे और डंडे लेकर आए बदमाशों ने किया हमला, दादाबाड़ी");
-    expect(d.composeVersion).toBe("b6.0");
+    expect(d.composeVersion).toBe("b7.0");
   });
 
   it("adds the Hindi town tag and cuts the points right after a linking word with ...", () => {

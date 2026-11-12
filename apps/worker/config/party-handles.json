@@ -101,7 +101,7 @@
       ],
       "verified": true,
       "source": "https://api.fxtwitter.com/NSUIRajasthan",
-      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §3.3/§5.5). X bio: \"Official Twitter Handle of 'National Student's Union of India ,Rajasthan\", 28k followers, no badge (normal for a party wing). scope 'wing': tagged beside the party when the HEADLINE names NSUI (parties.ts pickPartyWing). The desk's '@nsui.' on 12 Nov was a typo for this."
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §3.3/§5.5). X bio: \"Official Twitter Handle of 'National Student's Union of India ,Rajasthan\", 28k followers, no badge (normal for a party wing). scope 'wing': OFFERED, never tagged on its own, when the copy names NSUI literally (parties.ts pickPartyHandles); never when the headline names it only as an attack's target. b6 fix brief P4: seen once in 2,476 posts, so no NSUI-specific rule. The desk's '@nsui.' on 12 Nov was a typo for this."
     },
     {
       "handle": "@AICCMedia",

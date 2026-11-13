@@ -117,6 +117,48 @@
       "verified": true,
       "source": "https://api.fxtwitter.com/AICCMedia",
       "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5). X bio: 'Official Twitter Handle of the Communications Department of @incindia', verified. scope 'media': never preferred over @INCRajasthan / @INCIndia; tagged only when the copy names AICC and nothing else of the party."
+    },
+    {
+      "handle": "@officialkharra",
+      "name": "Jhabar Singh Kharra (BJP MLA, Shri Madhopur)",
+      "party": "bjp",
+      "scope": "mla",
+      "keywords_hi": [
+        "झाबर सिंह खर्रा",
+        "झाबरसिंह खर्रा"
+      ],
+      "keywords_en": [
+        "Jhabar Singh Kharra"
+      ],
+      "verified": true,
+      "source": "https://api.fxtwitter.com/officialkharra",
+      "checkedAt": "2026-11-13",
+      "evidence": 2,
+      "xUserId": "1575160026343559168",
+      "note": "Added 13 Nov 2026. X profile name 'Jhabar Singh Kharra', bio: \"Official Account of Jhabar Singh Kharra, Minister of State (Independent charge), MLA, Shri Madhopur (39)\", no badge, 4.2k followers. Corroborated: the desk itself tagged @officialkharra on 2 of the 30 Oct posts (his vote in the panchayat poll), and @RajGovOfficial tags it (subject-handles.json). Avoid @jhabarkharrabjp / @JhabarKharraBJP: its bio says 'फैन पेज' (fan page), though the desk used it once on 30 Oct. scope 'mla': like the media scope, never preferred over @BJP4Rajasthan; tagged when the headline names him and nothing else of the party. The person entry in subject-handles.json is kept (still HELD there, so it does not tag); if the desk verifies it too, the handle is still picked once (handles.ts dedupes by handle)."
+    },
+    {
+      "handle": "@BMacharyaBJP",
+      "name": "Balmukund Acharya (BJP MLA, Hawa Mahal)",
+      "party": "bjp",
+      "scope": "mla",
+      "keywords_hi": [
+        "बालमुकुंद आचार्य",
+        "बाल मुकुंद आचार्य",
+        "बालमुकुन्द आचार्य",
+        "बालमुकुंदाचार्य"
+      ],
+      "keywords_en": [
+        "Balmukund Acharya",
+        "Bal Mukund Acharya",
+        "Balmukundacharya"
+      ],
+      "verified": false,
+      "source": "https://api.fxtwitter.com/BMacharyaBJP",
+      "checkedAt": "2026-11-13",
+      "evidence": 0,
+      "xUserId": "1722112604162715648",
+      "note": "HELD for desk check (no badge, and nothing corroborates it beyond its own bio). Set verified to true after checking. | X profile name 'Swami Balmukundacharya', bio: \"स्वामी श्री बालमुकुंदाचार्य हाथोज धाम / विधायक - हवामहल विधानसभा / भारतीय जनता पार्टी\", no badge, 9.4k followers, joined Nov 2023 (after the 2023 election), location Jaipur. Not tagged by the desk in the 30 Oct export, and no official account's tag of it was checked. scope 'mla': as @officialkharra."
     }
   ]
 }

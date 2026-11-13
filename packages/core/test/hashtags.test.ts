@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CATEGORY_SEED_RULES, EMPTY_HANDLE_RULES, PlaceBook, composeBreaking, hashtagGazetteer, parseBreaking, parseHandleRules, parsePlacesData } from "../src";
+import { CATEGORY_SEED_RULES, EMPTY_HANDLE_RULES, PlaceBook, composeBreaking, hashtagGazetteer, parseBreaking, parseHandleRules, parsePlacesData, xLen } from "../src";
 import { BASELINE, postFormat, replayHashtags, segmentPost } from "./hashtag-replay";
 
 const json = (rel: string) => JSON.parse(readFileSync(new URL(rel, import.meta.url), "utf8"));
@@ -46,15 +46,20 @@ describe("what goes on the post", () => {
     expect(d.hashtagSuggestions).toEqual([]);
   });
 
-  it("gives the shorter tag line back to the copy", () => {
-    // One tag instead of three leaves room for more of the story, which is the point of the change
+  it("keeps line 2 at the desk's length whatever the tag line, and shortens it only for X's limit (b8)", () => {
+    // Before b8 a shorter tag line gave its room to the copy; the desk's line 2 is ~120 whatever else is on the post
     const long = Array.from({ length: 6 }, (_, i) => `सड़क हादसे में ${i} लोग घायल, भारी बारिश के बाद ट्रेन रद्द`).join("\n");
     const d = compose(`जयपुर\nपुलिस ने हत्या के आरोपी को किया गिरफ्तार\n${long}`);
     const withThree = composeBreaking(
       { ...parseBreaking(`जयपुर\nपुलिस ने हत्या के आरोपी को किया गिरफ्तार\n${long}`, "x_breaking.txt", book), town: null },
       rules, book, { topics, limit: 280 - 30 },
     );
-    expect(d.bodyText.length).toBeGreaterThan(withThree.bodyText.length);
+    const line2 = (t: string) => t.split("\n\n")[1]!;
+    expect(line2(d.bodyText)).toBe(line2(withThree.bodyText));
+    expect(xLen(line2(d.bodyText))).toBeLessThanOrEqual(130);
+    const tight = composeBreaking(parseBreaking(`जयपुर\nपुलिस ने हत्या के आरोपी को किया गिरफ्तार\n${long}`, "x_breaking.txt", book), rules, book, { topics, limit: 170 });
+    expect(xLen(line2(tight.bodyText))).toBeLessThan(xLen(line2(d.bodyText)));
+    expect(xLen(tight.bodyText)).toBeLessThanOrEqual(170);
   });
 });
 

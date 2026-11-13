@@ -10,7 +10,7 @@
 // assemblePostText() puts them together exactly as the desk copies it. Always within X's 280 (weighted).
 
 import { fold } from "../fold";
-import { X_LIMIT, assemblePostText, cutOnWords } from "../compose";
+import { assemblePostText, cutOnGraphemes, cutOnWords } from "../compose";
 import type { HashtagGazetteer } from "../hashtags";
 import { xLen } from "../xtext";
 import { pickCategoryTags } from "./categories";
@@ -34,10 +34,8 @@ import { PROPOSAL_SOURCES, districtSource, handleProposal, tagProposal, type Pro
 const DESK_TAG_RUN = /^(?:#\S+\s*){1,3}[:：]/u;
 export const RAJASTHAN_FOOTER = "#RajasthanWithFirstIndia";
 export const NATIONAL_FOOTER = "#FirstIndiaNews";
-/** The desk cuts with three dots */
+/** A cut headline ends with three dots (line 2 ends with "..." or "....": breakingDots) */
 export const BREAKING_CUT = "...";
-/** The desk's posts run 190–265 (median 218): points stop here even when X would allow more */
-export const BREAKING_TARGET = 265;
 /**
  * Bumped when the layout changes, so drafts of each format can be told apart.
  * b2: category hashtags, the cut after a linking word, subject handles, police/collector only when acting.
@@ -49,8 +47,11 @@ export const BREAKING_TARGET = 265;
  *     one district) goes in line 1 or picks a police, collector or administration handle; a district the
  *     headline text or the reporter suggests is offered. A party named only in the
  *     points, a party wing and a seasonal institution (@CeoRajasthan) are offered, not tagged.
+ * b8: line 2 the desk's length (100–130 with its dots, crispPoints) whatever the headline, cut to withhold the
+ *     payoff, then "..." or "...."; the post is not squeezed to 280 (the desk posts by hand and the account posts
+ *     long), only kept under BREAKING_POST_MAX; a line 2 under BREAKING_BODY_FLOOR is dropped.
  */
-export const BREAKING_FORMAT = "b7";
+export const BREAKING_FORMAT = "b8";
 
 export interface BreakingComposeInput {
   headline: string;
@@ -116,8 +117,10 @@ export interface BreakingComposeOptions {
    * HEADLINE_LABEL_WORDS; matched per word, without case or nukta.
    */
   headlineLabels?: readonly string[];
+  /** The longest whole post (default BREAKING_POST_MAX: the post is not squeezed to X's 280) */
   limit?: number;
-  target?: number;
+  /** Line 2's longest length (default BREAKING_BODY_MAX) */
+  bodyMax?: number;
 }
 
 export interface BreakingDraft {
@@ -199,69 +202,122 @@ interface Word {
 const wordsOf = (text: string): Word[] =>
   [...wordSegmenter.segment(text)].filter((s) => s.isWordLike).map((s) => ({ text: s.segment, start: s.index, end: s.index + s.segment.length }));
 
-const isContent = (w: Word | undefined) => !!w && !LINKING_WORDS.has(w.text) && !AUXILIARIES.has(w.text);
+const isContent = (w: Word | undefined): w is Word => !!w && !LINKING_WORDS.has(w.text) && !AUXILIARIES.has(w.text);
 
 /**
- * Where a point can be cut after a linking word: the end offsets, latest first, each with how many content
- * words it hides. Never before a number range ("10 से 15"), never when the next word is not content (an
- * auxiliary: "की गई"; another link: "के बाद"), never with no content word before it in the point.
+ * Line 2's length as the desk writes it (1,454 posts, 8–13 Nov 2026): 104–125 X characters, median 115, whatever
+ * the headline's length. The cut is looked for between MIN and MAX and lands nearest TARGET; all three count the
+ * closing dots.
  */
-export function linkingCuts(point: string): { end: number; hidden: number }[] {
-  const words = wordsOf(point);
-  const out: { end: number; hidden: number }[] = [];
-  let seenContent = false;
-  words.forEach((w, i) => {
-    const next = words[i + 1];
-    if (LINKING_WORDS.has(w.text) && seenContent && isContent(next)) {
-      const prev = words[i - 1];
-      if (!(prev && NUMBER.test(prev.text) && NUMBER.test(next!.text))) {
-        out.push({ end: w.end, hidden: words.slice(i + 1).filter(isContent).length });
-      }
-    }
-    if (isContent(w)) seenContent = true;
-  });
-  return out.reverse();
+export const BREAKING_BODY_MIN = 100;
+export const BREAKING_BODY_TARGET = 120;
+export const BREAKING_BODY_MAX = 130;
+/** A line 2 shorter than this is a stub ("आमजन....") and the post goes without it */
+export const BREAKING_BODY_FLOOR = 40;
+/**
+ * The longest whole breaking post: a sanity limit only. The desk posts by hand and @1stIndiaNews posts past 280
+ * (156 of 1,987 standard posts, 9 Sep – 13 Nov, up to 807), so line 2 is never squeezed to fit 280.
+ */
+export const BREAKING_POST_MAX = 1000;
+
+/** Describing words the payoff follows: "डंपर और कार के बीच हुई जोरदार...." */
+const HANGING_WORDS: ReadonlySet<string> = new Set(
+  [
+    "जोरदार", "भीषण", "बड़ी", "बड़ा", "बड़े", "गंभीर", "दर्दनाक", "तेज", "अहम", "नई", "नया", "नए", "भारी", "खास", "विशेष",
+    "अचानक", "पूरी", "पूरा", "पूरे", "अनूठी", "अनूठा", "शानदार", "सनसनीखेज", "जानलेवा", "खूनी",
+  ].map((w) => w.normalize("NFC")),
+);
+/** Words that finish a statement: a cut after them gives the outcome away ("…किया गिरफ्तार", "…जारी") */
+const FINISHING_WORDS: ReadonlySet<string> = new Set(
+  [
+    "किया", "किए", "की", "दी", "दिया", "दिए", "मिला", "मिली", "मिले", "गिरफ्तार", "जारी", "बरामद", "जब्त", "दर्ज", "शुरू", "पूरी",
+    "मौजूद", "रवाना", "पहुंचे", "पहुंची", "पहुंचा", "निलंबित", "घायल",
+  ].map((w) => w.normalize("NFC")),
+);
+
+/** The desk ends on "...." in 56% of posts and "..." in 41%: one or the other, fixed per story by its headline */
+export function breakingDots(seed: string): string {
+  let h = 2166136261;
+  for (const ch of seed.normalize("NFC")) h = Math.imul(h ^ (ch.codePointAt(0) ?? 0), 16777619) >>> 0;
+  return h % 100 < 56 ? "...." : "...";
 }
 
 /**
- * The points as the post's line 2: every point when they all fit; otherwise the longest run of whole points
- * (", "-joined) and the next point cut right after a linking word so its outcome is withheld, then "...". The
- * latest such cut that fits wins, preferring one that hides at least 2 content words. With no linking-word cut
- * that fits, the next point is cut on a word instead; when not one word of it fits, the last whole point is cut
- * instead. The result never ends on a completed point.
+ * The headline as line 1 carries it, without its leading hashtags: NFC, spaces collapsed, "#Jaipur #डग: " (or
+ * "#Jaipur ") taken off the front. Line 2's dots are seeded with it here and in the editor's Fit (frontend
+ * crispLine.ts), so both choose the same 3 or 4 dots.
  */
-export function joinPoints(points: string[], budget: number): string {
-  const parts = points.map(trimPoint).filter(Boolean);
-  if (!parts.length || budget <= 0) return "";
-  const all = parts.join(", ");
-  if (xLen(all) <= budget) return all;
-  const room = budget - xLen(BREAKING_CUT);
+export function plainHeadline(line1: string): string {
+  return line1.normalize("NFC").replace(/\s+/g, " ").trim().replace(/^(?:#\S+\s*)+[:：]?\s*/u, "").trim();
+}
 
-  // Whole points while they fit (with room for the dots after the next one's cut)
-  let k = 0;
-  let head = "";
-  while (k < parts.length) {
-    const next = head ? `${head}, ${parts[k]}` : parts[k]!;
-    if (xLen(next) > room) break;
-    head = next;
-    k++;
+/**
+ * The points as line 2, the desk's way: all of them when they fit in `max`; otherwise a cut between MIN and `max`
+ * X characters (dots included) that withholds the payoff, then `dots`. A line 2 under BREAKING_BODY_FLOOR is "".
+ */
+export function crispPoints(points: string[], dots: string, max = BREAKING_BODY_MAX): string {
+  const parts = points.map(trimPoint).filter(Boolean);
+  if (!parts.length || max <= 0) return "";
+  const all = parts.join(", ");
+  const line = xLen(all) <= max ? all : cutPoints(parts, all, dots, max);
+  return xLen(line) < BREAKING_BODY_FLOOR ? "" : line;
+}
+
+/**
+ * The cut. Every word end whose line (dots included) lands between MIN and `max` is a candidate, scored once:
+ * best right after a linking word or a describing word with content still to come in that point ("…दिलबाग सिंह
+ * पर....", "…के बीच हुई जोरदार...."), or on the person or thing just before its action; worse after a word that
+ * finishes the statement, after a number, or at the end of a point (nothing held back). Ties go nearest TARGET.
+ * The scan stops at the first word end past `max` (prefixes only grow). With no candidate: the longest run of
+ * whole words, and when that is under the floor (one huge word), whole letters.
+ */
+function cutPoints(parts: string[], all: string, dots: string, max: number): string {
+  const dotLen = xLen(dots);
+  const lo = Math.min(BREAKING_BODY_MIN, Math.max(1, max - 30));
+  const target = Math.min(BREAKING_BODY_TARGET, max);
+  const words = wordsOf(all);
+  // Each word's point, and how many words and content words of that point come after it
+  const point: number[] = [];
+  let p = 0;
+  let pointEnd = parts[0]!.length;
+  for (const w of words) {
+    while (w.start >= pointEnd && p < parts.length - 1) pointEnd += 2 + parts[++p]!.length;
+    point.push(p);
   }
-  // Point i cut after whole points 0..i-1: after a linking word, else on a word; null when not one word fits
-  const cutAt = (i: number): string | null => {
-    const lead = parts.slice(0, i).map((p) => `${p}, `).join("");
-    const point = parts[i]!;
-    const left = room - xLen(lead);
-    const cuts = linkingCuts(point)
-      .map((c) => ({ ...c, text: point.slice(0, c.end).replace(DANGLING, "") }))
-      .filter((c) => c.text && xLen(c.text) <= left);
-    const best = cuts.find((c) => c.hidden >= 2) ?? cuts.find((c) => c.hidden >= 1);
-    if (best) return lead + best.text + BREAKING_CUT;
-    // At least one word of the point is held back
-    const partial = cutOnWords(point, Math.min(left, xLen(point) - 1)).replace(DANGLING, "");
-    return partial ? lead + partial + BREAKING_CUT : null;
-  };
-  // The next point; when not one word of it fits, the last whole point becomes the cut one
-  return cutAt(k) ?? (k > 0 ? cutAt(k - 1) : null) ?? "";
+  const rest = new Array<number>(words.length).fill(0);
+  const hidden = new Array<number>(words.length).fill(0);
+  for (let i = words.length - 2; i >= 0; i--) {
+    if (point[i + 1] !== point[i]) continue;
+    rest[i] = rest[i + 1]! + 1;
+    hidden[i] = hidden[i + 1]! + (isContent(words[i + 1]) ? 1 : 0);
+  }
+  let best: { text: string; score: number } | null = null;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    const text = all.slice(0, w.end).replace(DANGLING, "");
+    const len = xLen(text) + dotLen;
+    if (len > max) break;
+    if (!text || len < lo) continue;
+    const next = words[i + 1];
+    let score = 0;
+    // The order matters: "की" is both a linking and a finishing word, "पूरी" both describing and finishing; the
+    // first rule that matches decides
+    if (!rest[i]) score -= 4; // a whole point: nothing held back
+    else if (LINKING_WORDS.has(w.text) && isContent(next) && !(NUMBER.test(words[i - 1]?.text ?? "") && NUMBER.test(next.text))) score += 3;
+    else if (HANGING_WORDS.has(w.text) && isContent(next)) score += 3;
+    else if (FINISHING_WORDS.has(w.text) || AUXILIARIES.has(w.text)) score -= 2;
+    else if (NUMBER.test(w.text)) score -= 2;
+    else if (isContent(w) && next && (FINISHING_WORDS.has(next.text) || AUXILIARIES.has(next.text))) score += 2; // just before its action
+    else if (LINKING_WORDS.has(w.text)) score -= 1; // a link followed by another link or a number
+    if (rest[i] && hidden[i]! >= 2) score += 1;
+    score -= Math.abs(len - target) / 10;
+    if (!best || score > best.score) best = { text, score };
+  }
+  if (best) return best.text + dots;
+  const onWords = cutOnWords(all, max - dotLen).replace(DANGLING, "");
+  if (onWords && xLen(onWords) + dotLen >= BREAKING_BODY_FLOOR) return onWords + dots;
+  const onLetters = cutOnGraphemes(all, max - dotLen).replace(DANGLING, "");
+  return onLetters ? onLetters + dots : "";
 }
 
 /**
@@ -382,7 +438,7 @@ export const bookLeadTagDistrict = (book: PlaceBook) => (tag: string): string | 
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
-    reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = X_LIMIT, target = BREAKING_TARGET,
+    reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = BREAKING_POST_MAX, bodyMax = BREAKING_BODY_MAX,
     normaliser = EMPTY_NORMALISER, suggestRules = EMPTY_SUGGEST_RULES, at, beats = EMPTY_BEAT_RULES, reporterPrior: reporterPriorOn = true,
     headlineLabels = HEADLINE_LABEL_WORDS,
   } = opts;
@@ -529,7 +585,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     const cut = cutOnWords(headline, room - xLen(prefix) - xLen(BREAKING_CUT));
     line1 = cut ? `${prefix}${cut}${BREAKING_CUT}` : (cutOnWords(line1, room - xLen(BREAKING_CUT)) + BREAKING_CUT);
   }
-  const body = headlineCut ? "" : joinPoints(story.points, Math.min(room, room - limit + target) - xLen(line1) - 2);
+  // Line 2 the desk's length whatever the headline (100–130), shorter only when the post's limit leaves less room
+  const body = headlineCut ? "" : crispPoints(story.points, breakingDots(plainHeadline(line1)), Math.min(bodyMax, room - xLen(line1) - 2));
   const bodyText = body ? `${line1}\n\n${body}` : line1;
   // The decision log's view of all of the above (brief §2.3): line 1's tags only when this composer put them there
   const proposals: Proposal[] = [];

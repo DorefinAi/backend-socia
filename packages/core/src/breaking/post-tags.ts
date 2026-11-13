@@ -529,6 +529,13 @@ export interface PostTagContext {
    * given here by a caller that has the places file (parse.ts deskPlacePrefix and isHeadlineLabel). None: not checked.
    */
   deskPlacePrefix?: (headline: string) => boolean;
+  /**
+   * The district a Hindi leading tag names through the town→district table ("#किशनगढ़:" → "Ajmer"), or null for a
+   * place the table does not know ("#आकोला:"): compose.ts bookLeadTagDistrict. A TAG the desk wrote, so it decides
+   * the brand as composeBreaking's stated district does (N3); it is not emitted. A town only in the headline's TEXT
+   * never reaches this (FL5). None: a Hindi leading tag decides nothing, as before.
+   */
+  leadTagDistrict?: (tag: string) => string | null;
 }
 
 export interface PostTags {
@@ -595,7 +602,10 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
     if (leadNorm[1] && isDevanagari(leadNorm[1])) lead.push(leadNorm[1]);
   } else if (policy === "emit") lead.push(policyTag!);
   // The desk rule's tag means "filed from that desk", not where the story is: it never decides the brand
-  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : null, trail: trailNorm, video, headline: line1 }, ctx.places);
+  // A Hindi leading tag the town→district table knows ("#किशनगढ़:") decides as its district would (N3)
+  const lead0 = format === "A" ? leadNorm[0]! : null;
+  const brandLead = lead0 && isDevanagari(lead0) ? (ctx.leadTagDistrict?.(lead0) ?? lead0) : lead0;
+  const brand = resolveBrand({ lead: brandLead, trail: trailNorm, video, headline: line1 }, ctx.places);
   if (brand.unknownDistrict) flags.push(`unknown_district:${brand.unknownDistrict}`);
 
   const trail: string[] = [];

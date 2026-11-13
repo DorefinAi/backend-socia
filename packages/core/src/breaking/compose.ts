@@ -368,6 +368,17 @@ const placeKind = (p: Place | null): PlaceKind | null =>
 /** The live composer's lookup for videoLabelBrand: a Latin label word through the places file ("Sikar", "Delhi") */
 export const bookPlaceKind = (book: PlaceBook): PlaceKindLookup => (tag) => placeKind(tagPlace(book, tag));
 
+/**
+ * The district a Hindi leading tag names ("#किशनगढ़:" → Ajmer, "#श्रीमाधोपुर:" → Sikar, "#जोधपुर:" → Jodhpur), as its
+ * English tag, or null for a place the places file does not know ("#आकोला:"). A TAG the desk wrote, so not a guess:
+ * the live composer takes it as the stated district (parseBreaking), and the replay reference (composePostTags'
+ * leadTagDistrict) gives the post the same brand from it (N3).
+ */
+export const bookLeadTagDistrict = (book: PlaceBook) => (tag: string): string | null => {
+  const p = tagPlace(book, tag);
+  return p && p.kind !== "national" ? (p.districts[0]?.tag ?? null) : null;
+};
+
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,

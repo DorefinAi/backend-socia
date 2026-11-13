@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  BRAND_NATIONAL, BRAND_RAJASTHAN, PlaceBook, bookPlaceKind, composeBreaking, composePostTags, parseBreaking, parseDistricts,
+  BRAND_NATIONAL, BRAND_RAJASTHAN, PlaceBook, bookLeadTagDistrict, bookPlaceKind, composeBreaking, composePostTags, parseBreaking, parseDistricts,
   parseHandleRules, parsePlacesData, resolveBrand, slotFromTags, videoLabelBrand,
 } from "../src";
 
@@ -71,7 +71,7 @@ function live(lines: string[], name = fileFor()) {
   const slot = slotFromTags(p.tags);
   return composeBreaking({ ...p, reporterToken: slot.reporterToken, fileDistrict: slot.district, unknownBureauCode: slot.unknownCode }, rules, book);
 }
-const replayCtx = { places };
+const replayCtx = { places, leadTagDistrict: bookLeadTagDistrict(book) };
 const replayBrand = (text: string) => composePostTags(text, replayCtx).trail.filter((t) => t === BRAND_RAJASTHAN || t === BRAND_NATIONAL);
 
 describe("R1: the live composer takes a video post's brand from its channel label", () => {
@@ -115,5 +115,44 @@ describe("R1: the live composer takes a video post's brand from its channel labe
       expect(live([h, "विवरण"]).hashtags.map((t) => t.slice(1)), h).toEqual(replayBrand(h));
       expect(videoLabelBrand(h, bookPlaceKind(book)), h).toBe(videoLabelBrand(h, places));
     }
+  });
+});
+
+// ─── N3: a known town as the leading tag ─────────────────────────────────────
+
+describe("N3: a post whose leading tag is a known town gets the Rajasthan brand, live and replay alike", () => {
+  it("the town→district table resolves the tag", () => {
+    const lead = bookLeadTagDistrict(book);
+    expect(lead("किशनगढ़")).toBe("Ajmer");
+    expect(lead("श्रीमाधोपुर")).toBe("Sikar");
+    expect(lead("आकोला")).toBeNull();
+    expect(lead("दिल्ली")).toBeNull();
+  });
+
+  it("#किशनगढ़: and #श्रीमाधोपुर: → #RajasthanWithFirstIndia in the replay, as on the live path; the district is not emitted", () => {
+    for (const [line, district] of [["#किशनगढ़: सड़क हादसे में दो घायल", "Ajmer"], ["#श्रीमाधोपुर: सड़क हादसे में दो घायल", "Sikar"]] as const) {
+      const r = composePostTags(`${line}\n\nपुलिस मौके पर पहुंची`, replayCtx);
+      expect(r.trail, line).toEqual([BRAND_RAJASTHAN]);
+      expect(r.district, line).toBeNull();
+      expect([...r.lead, ...r.trail], line).not.toContain(district);
+      expect(live([line, "पुलिस मौके पर पहुंची"]).hashtags, line).toEqual([`#${BRAND_RAJASTHAN}`]);
+    }
+  });
+
+  it("without the table, or for a town it does not know (#आकोला:), the default stands", () => {
+    expect(composePostTags("#किशनगढ़: सड़क हादसे\n\nपुलिस मौके पर", { places }).trail).toEqual([BRAND_NATIONAL]);
+    expect(composePostTags("#आकोला: पंचायत समिति की बैठक\n\nविकास कार्यों पर चर्चा", replayCtx).trail).toEqual([BRAND_NATIONAL]);
+  });
+
+  it("FL5: a town only in the headline TEXT does not choose the brand, and is never emitted", () => {
+    const r = composePostTags("किशनगढ़ में सड़क हादसे में दो घायल\n\nपुलिस मौके पर पहुंची", replayCtx);
+    expect(r.trail).toEqual([BRAND_NATIONAL]);
+    expect(r.lead).toEqual([]);
+    // Live: the gazetteer's Ajmer is only offered; the footer is the file's default, the same with or without the town
+    const d = live(["किशनगढ़ में सड़क हादसे में दो घायल", "पुलिस मौके पर पहुंची"]);
+    expect(d.bodyText.startsWith("#")).toBe(false);
+    expect(d.hashtags).toEqual(live(["सड़क हादसे में दो घायल", "पुलिस मौके पर पहुंची"]).hashtags);
+    const nws = (headline: string) => composeBreaking({ headline, points: ["पुलिस मौके पर पहुंची"], district: null, town: null, rajasthan: false, leaderPost: false }, rules, book).hashtags;
+    expect(nws("किशनगढ़ में सड़क हादसे में दो घायल")).toEqual([`#${BRAND_NATIONAL}`]);
   });
 });

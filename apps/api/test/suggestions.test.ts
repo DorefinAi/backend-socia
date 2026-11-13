@@ -92,9 +92,10 @@ describe("suggestion views (no database)", () => {
       const good = { handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true, source: "district.police", reason: "r" };
       const stored = [good, boom, null, 7, "x", { handle: 1, handleId: "h" }, { handle: "@X" }, { handleId: "y", handle: "@Y", exact: "yes", score: "high", n: 3, source: "", extra: { raw: true } }];
       const out = mentionSuggestionsView(stored, "draft-t3");
-      expect(out).toEqual([good, { handleId: "y", handle: "@Y", exact: false, n: 3 }]);
+      // Each item on its own (D-b): the one that blows up costs only itself, the others keep their fields
+      expect(out).toEqual([good, { handleId: "y", handle: "@Y", exact: false, n: 3, extra: { raw: true } }]);
       expect(out[0]).not.toBe(good);
-      expect(warned).toEqual([expect.objectContaining({ obj: expect.objectContaining({ draftId: "draft-t3", view: "mention", kept: 2 }) })]);
+      expect(warned).toEqual([expect.objectContaining({ obj: expect.objectContaining({ draftId: "draft-t3", view: "mention", dropped: 6, malformedFields: expect.arrayContaining(["item", "handle", "score", "source"]) }) })]);
       // A list that cannot even be walked: nothing, not the raw value
       const unwalkable = new Proxy([good], { get: (t, k) => { if (k === "length" || k === Symbol.iterator) throw new Error("boom"); return Reflect.get(t, k); } });
       expect(mentionSuggestionsView(unwalkable, "draft-t3b")).toEqual([]);
@@ -177,6 +178,58 @@ describe("suggestion views (no database)", () => {
     // Drafts from before: strings, as they always were
     expect(hashtagSuggestionsView(["#Kota"], null)).toEqual(["#Kota"]);
     expect(hashtagSuggestionsView(["#Kota"], { cls: "other", why: "", warnings: [], handles: [] } as never)).toEqual(["#Kota"]);
+  });
+
+  it("shows a Hindi tag stored in two Unicode forms once, in NFC, with its rule (D-a)", () => {
+    // "ख़बर": the precomposed letter (U+0959) and ख + nukta (U+0916 U+093C); NFC is the second. "Café" both ways too.
+    const pre = "#ख़बर";
+    const dec = "#ख़बर";
+    expect(pre).not.toBe(dec);
+    expect(pre.normalize("NFC")).toBe(dec);
+    const pick = { ...PICK, tagSuggestions: [
+      { tag: pre, source: "topic_rule", reason: "the org's topic rule matched the copy" },
+      { tag: "#CAFÉ", source: "reporter_policy", reason: "p" },
+    ] };
+    const out = hashtagSuggestionsView([pre, "#Café", dec, "#Café", "#Other"], pick as never);
+    expect(out).toEqual([
+      { tag: dec, source: "topic_rule", reason: "the org's topic rule matched the copy" },
+      { tag: "#Café", source: "reporter_policy", reason: "p" },
+      "#Other",
+    ]);
+    // A rule stored in the other form still finds the tag
+    expect(hashtagSuggestionsView([pre], { ...PICK, tagSuggestions: [{ tag: dec, source: "topic_rule", reason: "r" }] } as never)).toEqual([{ tag: dec, source: "topic_rule", reason: "r" }]);
+    // The fallback (a list that breaks while being walked) also sends NFC, each tag once
+    const breaks = new Proxy([pre, dec, "#X"], { get: (t, k) => { if (k === "2") throw new Error("boom"); return Reflect.get(t, k); } });
+    expect(hashtagSuggestionsView(breaks as never, null)).toEqual([dec]);
+  });
+
+  it("lets one malformed tag or rule hide only its own reason line (D-b)", () => {
+    const warned: { obj: Record<string, unknown>; msg: string }[] = [];
+    setSuggestionLogger({ warn: (obj, msg) => void warned.push({ obj, msg }) });
+    try {
+      const pick = { ...PICK, tagSuggestions: [
+        { tag: "#A", source: "topic_rule", reason: "a" },
+        { tag: "#B", get source(): never { throw new Error("boom"); } },
+        { get tag(): never { throw new Error("boom"); } },
+        { tag: 7, source: "topic_rule" },
+        { tag: "#C", source: "reporter_policy", reason: "c" },
+      ] };
+      expect(hashtagSuggestionsView(["#A", 5, "#B", null, { tag: "#X" }, "#C"] as never, pick as never, "draft-db")).toEqual([
+        { tag: "#A", source: "topic_rule", reason: "a" },
+        "#B",
+        { tag: "#C", source: "reporter_policy", reason: "c" },
+      ]);
+      expect(warned).toEqual([expect.objectContaining({ obj: expect.objectContaining({ draftId: "draft-db", view: "hashtag" }) })]);
+
+      // Mentions: an item that breaks while being mapped goes out from its well-formed fields; the others untouched
+      warned.length = 0;
+      const good = { handleId: "suggest:prior:X", entity: "prior", handle: "@X", exact: false, source: "reporter_prior", reason: "r", score: 0.5, n: 20 };
+      const odd = new Proxy({ handleId: "rule:police:KotaPolice", handle: "@KotaPolice", exact: true, reason: "kota" }, { ownKeys: () => { throw new Error("boom"); } });
+      expect(mentionSuggestionsView([good, odd, null], "draft-db")).toEqual([good, { handleId: "rule:police:KotaPolice", handle: "@KotaPolice", exact: true, reason: "kota" }]);
+      expect(warned).toEqual([expect.objectContaining({ obj: expect.objectContaining({ draftId: "draft-db", view: "mention", dropped: 1, malformedFields: expect.arrayContaining(["item", "unreadable"]) }) })]);
+    } finally {
+      setSuggestionLogger({ warn: () => {} });
+    }
   });
 });
 

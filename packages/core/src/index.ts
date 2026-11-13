@@ -20,3 +20,5 @@ export * from "./rewrite";
 export * from "./phase";
 export * from "./breaking";
 export * from "./story-name";
+export * from "./search";
+export * from "./search-glossary";

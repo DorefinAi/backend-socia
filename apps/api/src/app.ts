@@ -19,6 +19,7 @@ import { deskRoutes } from "./routes/desk";
 import { libraryRoutes } from "./routes/library";
 import { orgTemplateRoutes } from "./routes/org-templates";
 import { ownerRoutes, type OwnerLimits } from "./routes/owner";
+import { searchRoutes } from "./routes/search";
 import { statusRoutes } from "./routes/status";
 import { templateRoutes } from "./routes/templates";
 import { trendRoutes } from "./routes/trends";
@@ -36,6 +37,8 @@ export interface AppDeps {
   authLimits?: Partial<AuthLimits>;
   /** Owner API failure limit (routes/owner.ts); tests pass small numbers. Default: OWNER_LIMITS */
   ownerLimits?: Partial<OwnerLimits>;
+  /** GET /search/stories statement timeout in ms (tests pass a small one). Default: SEARCH_TIMEOUT_MS (3 s) */
+  searchTimeoutMs?: number;
   /** This process's ops-log sink (index.ts); GET /owner/logs reports its drop count. Absent (tests): 0 */
   opsLog?: { readonly dropped: number };
 }
@@ -155,6 +158,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   await app.register(templateRoutes, deps);
   await app.register(orgTemplateRoutes, deps);
   await app.register(trendRoutes, deps);
+  await app.register(searchRoutes, deps);
   // The owner console's API exists only with a long enough OWNER_API_KEY; otherwise every /owner path is a 404
   const ownerKey = ownerKeyFrom(deps.config.ownerApiKey ?? undefined);
   if (ownerKey) await app.register(ownerRoutes, { ...deps, ownerKey });

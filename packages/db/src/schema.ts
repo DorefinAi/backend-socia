@@ -317,6 +317,38 @@ export const stories = pgTable(
     index("stories_source_recent_idx").on(t.source, t.createdAt),
     // Stories of an org in a period (status counts, pairing)
     index("stories_org_created_idx").on(t.orgId, t.createdAt),
+    // The story search sweep: stories edited in the last minutes (migration 0025)
+    index("stories_updated_idx").on(t.updatedAt.desc()),
+  ],
+);
+
+/**
+ * The story search index (migration 0025, GET /search/stories): one row per story, kept current by the worker's
+ * search sweep (rows missing, or stories.updated_at newer than source_updated_at). Text columns hold core
+ * fold() / phoneticKey() output wrapped in single spaces (" जयपुर हादसा "), so a query form matches a word's start
+ * with LIKE '% form%' and a whole word with LIKE '% form %'. The headline columns only rank (a headline hit first).
+ */
+export const storySearch = pgTable(
+  "story_search",
+  {
+    storyId: uuid("story_id").primaryKey().references(() => stories.id, { onDelete: "cascade" }),
+    orgId: orgId(),
+    /** fold(headline, body, town, district) */
+    searchText: text("search_text").notNull(),
+    /** phoneticKey of the same */
+    searchKey: text("search_key").notNull(),
+    /** fold(headline) and its phoneticKey */
+    headlineText: text("headline_text").notNull().default(""),
+    headlineKey: text("headline_key").notNull().default(""),
+    /** stories.updated_at when this row was built */
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }).notNull(),
+    /** stories.created_at (never changes): ranks and caps candidates without joining stories */
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("story_search_text_trgm").using("gin", t.searchText.op("gin_trgm_ops")),
+    index("story_search_key_trgm").using("gin", t.searchKey.op("gin_trgm_ops")),
+    index("story_search_org_created_idx").on(t.orgId, t.createdAt.desc()),
   ],
 );
 

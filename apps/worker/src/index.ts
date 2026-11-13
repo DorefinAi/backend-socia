@@ -24,7 +24,7 @@ import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
 import { phaseOneData } from "./data-files";
 import { convertNext } from "./stages/convert";
-import { NightlyFeatures, housekeeping, syncHandles } from "./stages/crons";
+import { NightlyFeatures, SEARCH_SWEEP_IDLE_MS, StorySearchSweep, housekeeping, syncHandles } from "./stages/crons";
 import { Ingest } from "./stages/ingest";
 import { Publisher } from "./stages/publish";
 import { renderNext } from "./stages/render";
@@ -225,6 +225,9 @@ async function main(): Promise<void> {
   if (cfg.roles.includes("maintenance")) {
     const log = stageLog("crons");
     loops.start({ name: "maintenance", idleMs: 30_000, log, tick: () => housekeeping(db, log) });
+    // Its own loop: new and edited stories reach the search index within ~10 s (and a backfill runs batch after batch)
+    const searchSweep = new StorySearchSweep(db, log);
+    loops.start({ name: "story-search", idleMs: SEARCH_SWEEP_IDLE_MS, log, tick: () => searchSweep.tick() });
     // Its own loop: a slow snapshot never holds up the housekeeping above
     const features = new NightlyFeatures(db, pool, cfg.orgId, log, cfg.reporterPrior.smoothingM);
     loops.start({ name: "reporter-features", idleMs: 60_000, log, tick: () => features.tick() });

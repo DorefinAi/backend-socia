@@ -8,6 +8,7 @@
   "scripts": {
     "generate": "drizzle-kit generate",
     "migrate": "tsx scripts/migrate.ts",
+    "search:backfill": "tsx scripts/search-backfill.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },

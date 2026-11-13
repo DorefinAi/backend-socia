@@ -17,6 +17,8 @@ export const FILE_HEADLINE_WORDS = 6;
 const DISTRICT_CHARS = 30;
 /** The slug of a story without a district */
 export const NO_DISTRICT_SLUG = "news";
+/** GET /drafts/resolve finds a story by its linkSlug only when it was received this many days ago or less */
+export const STORY_LINK_DAYS = 30;
 
 // ---- Devanagari → Latin ----------------------------------------------------------------------------------
 

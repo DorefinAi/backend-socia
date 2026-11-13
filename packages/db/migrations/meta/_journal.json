@@ -176,6 +176,13 @@
       "when": 1794561970894,
       "tag": "0024_decision_log",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794569989780,
+      "tag": "0025_story_search",
+      "breakpoints": true
     }
   ]
 }

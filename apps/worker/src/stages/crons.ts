@@ -1,7 +1,8 @@
-// Scheduled work: housekeeping every 30 s, reporter features once each IST day, handles nightly.
+// Scheduled work: housekeeping every 30 s, the story search sweep every 10 s, reporter features once each IST day,
+// handles nightly.
 
 import {
-  expireMediaWaits, getKv, handleDirectoryStaging, istDate, pruneOps, releaseExpiredClaims, reviveExpiredJobs, setKv, snapshotReporterFeatures, type Db,
+  SEARCH_SWEEP_BATCH, SEARCH_SWEEP_RECENT_MINUTES, expireMediaWaits, getKv, handleDirectoryStaging, istDate, pruneOps, releaseExpiredClaims, reviveExpiredJobs, setKv, snapshotReporterFeatures, syncStorySearch, type Db,
 } from "@socia/db";
 import { WIKIDATA_QUERIES, fetchWikidataHandles } from "@socia/providers";
 import { sql } from "drizzle-orm";
@@ -25,6 +26,41 @@ export async function housekeeping(db: Db, log: Logger, now = Date.now()): Promi
     if (pruned && (pruned.lines || pruned.heartbeats)) log.info(pruned, "ops log pruned");
   }
   return false;
+}
+
+/** How often the story search sweep looks for new or edited stories when the last batch was not full */
+export const SEARCH_SWEEP_IDLE_MS = 10_000;
+
+/** How often the sweep checks every story (not only the recently edited ones) */
+export const SEARCH_SWEEP_FULL_EVERY_MS = 60 * 60_000;
+
+/**
+ * The story search sweep (GET /search/stories): builds the story_search rows of stories that have none or were
+ * edited since (any stage that writes a story bumps stories.updated_at), SEARCH_SWEEP_BATCH at a time. A tick
+ * looks only at stories edited in the last SEARCH_SWEEP_RECENT_MINUTES (stories_updated_idx); on worker start and
+ * once an hour it checks every story, batch after batch until none is left (after migration 0025 this is the
+ * backfill). tick() is true when the batch was full, so the loop goes again at once.
+ */
+export class StorySearchSweep {
+  private fullDue = true;
+  private lastFullAt = 0;
+
+  constructor(private readonly db: Db, private readonly log: Logger) {}
+
+  async tick(now = Date.now()): Promise<boolean> {
+    const full = this.fullDue || now - this.lastFullAt >= SEARCH_SWEEP_FULL_EVERY_MS;
+    const r = await syncStorySearch(this.db, { sinceMinutes: full ? undefined : SEARCH_SWEEP_RECENT_MINUTES, log: this.log });
+    // Another worker is sweeping: try again on the next tick
+    if (r.locked) return false;
+    if (r.written || r.skipped) this.log.debug({ written: r.written, skipped: r.skipped, full }, "story search rows built");
+    const more = r.candidates >= SEARCH_SWEEP_BATCH;
+    if (full) {
+      // A full pass goes on until it has seen every story
+      this.fullDue = more;
+      if (!more) this.lastFullAt = now;
+    }
+    return more;
+  }
 }
 
 /** Wikidata into staging. Never into the directory: an editor verifies each handle first. */

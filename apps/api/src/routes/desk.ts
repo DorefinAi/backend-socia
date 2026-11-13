@@ -1,7 +1,7 @@
 // The X console: queue, draft, claim, edit, approve, undo, reject, recall.
 
 import {
-  DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, assemblePostText, checkXPost, istDayRange, istDayStart, parseLinkSlug, storyLinkName, xLen, X_LIMIT,
+  DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, STORY_LINK_DAYS, assemblePostText, checkXPost, istDayRange, istDayStart, parseLinkSlug, storyLinkName, xLen, X_LIMIT,
 } from "@socia/core";
 import {
   approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, copyPosted, extendClaim, ingestedFiles, markPosted, postDrafts, postedView, publishedPosts,
@@ -393,7 +393,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   /**
    * A story link (?story=<linkSlug>) back to its draft id: { id }, or 404 not_found. The slug ends in the story's
-   * received time (HHMM IST), so only the org's drafts received at that hour and minute in the last 30 days (and with
+   * received time (HHMM IST), so only the org's drafts received at that hour and minute in the last STORY_LINK_DAYS (30) days (and with
    * or without a district, as the slug says) are named again; the newest exact match wins.
    */
   app.get(
@@ -402,7 +402,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     async (req) => {
       const { user } = guard(req);
       const slug = req.query.story;
-      const notFound = () => new HttpError(404, "not_found", "This story link does not match a story. It may be older than 30 days.");
+      const notFound = () => new HttpError(404, "not_found", `This story link does not match a story. It may be older than ${STORY_LINK_DAYS} days.`);
       const parsed = parseLinkSlug(slug);
       if (!parsed) throw notFound();
       const istAt = sql`(${stories.createdAt} AT TIME ZONE 'Asia/Kolkata')`;
@@ -414,7 +414,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           and(
             eq(stories.orgId, user.orgId),
             eq(postDrafts.platform, "x"),
-            gte(stories.createdAt, sql`now() - interval '30 days'`),
+            gte(stories.createdAt, sql`now() - make_interval(days => ${STORY_LINK_DAYS})`),
             sql`extract(hour from ${istAt}) = ${parsed.hour}`,
             sql`extract(minute from ${istAt}) = ${parsed.minute}`,
             // "news-…" is a story without a district (or one whose district has no Latin letters to name it by)

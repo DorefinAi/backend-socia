@@ -3,7 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BRAND_NATIONAL, BRAND_RAJASTHAN, PlaceBook, composePostTags, deskPlacePrefix, inferHeadlineDistrict, composeBreaking, isHeadlineLabel, parseBeatHandles, parseBreaking, parseHashtagNormalise, slotFromTags, type BreakingDraft, parseDistricts, parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, reporterPrior } from "../src";
+import { BRAND_NATIONAL, BRAND_RAJASTHAN, PlaceBook, namesOffice, composePostTags, deskPlacePrefix, inferHeadlineDistrict, composeBreaking, isHeadlineLabel, parseBeatHandles, parseBreaking, parseHashtagNormalise, slotFromTags, type BreakingDraft, parseDistricts, parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, reporterPrior } from "../src";
 import { WORD_CHAR, wholeWord } from "../src/breaking/syntax";
 
 const cfg = (f: string) => JSON.parse(readFileSync(new URL(`../../../apps/worker/config/${f}`, import.meta.url), "utf8"));
@@ -188,5 +188,78 @@ describe("O3: composePostTags applies rituraj's rule as composeBreaking does", (
       const ref = composePostTags(`${h}\n\n${pt}\n\n#RajasthanWithFirstIndia`, ctx).policy === "emit";
       expect(ref, h).toBe(live);
     }
+  });
+});
+
+// ─── S1 / S2 / S4: the CS and CM office aliases ──────────────────────────────
+
+describe("S1: the Chief Secretary uses the CM's 'MP/UP only beside the alias' rule; everyday English does not exclude it", () => {
+  const cs = subjects.offices!.find((o) => o.key === "rajasthan_cs")!;
+  it("'set up', 'follow up', 'ex-servicemen', 'सांसद/MP ने ...': still the Rajasthan CS", () => {
+    for (const t of [
+      "Chief Secretary set up a committee", "Chief Secretary will follow up on the flood relief", "मुख्य सचिव ने ex-servicemen से मुलाकात की",
+      "सांसद/MP ने मुख्य सचिव से मुलाकात की", "MP ने CS से की मुलाकात", "UP से आए अधिकारियों ने मुख्य सचिव से की मुलाकात",
+    ]) expect(namesOffice(cs, t), t).toBe(true);
+  });
+  it("'MP के मुख्य सचिव', 'UP CS', 'MP-CS', 'एमपी के मुख्य सचिव': another state's", () => {
+    for (const t of ["MP के मुख्य सचिव", "UP CS ने कहा", "MP-CS ने कहा", "एमपी के मुख्य सचिव पहुंचे", "Chief Secretary of MP"]) expect(namesOffice(cs, t), t).toBe(false);
+  });
+  it("'Ex' and 'Former' in their own sense still exclude: 'Ex CS', 'Ex-CS', 'Former Chief Secretary', 'पूर्व मुख्य सचिव'", () => {
+    for (const t of ["Ex CS writes to the CM", "Ex-CS writes to the CM", "EX Chief Secretary joins BJP", "Former Chief Secretary joins BJP", "former Chief Secretary joins BJP", "पूर्व मुख्य सचिव ने साधा निशाना", "MP के पूर्व CS का निधन"]) {
+      expect(namesOffice(cs, t), t).toBe(false);
+    }
+  });
+  it("on a draft: 'मुख्य सचिव ने ex-servicemen से की मुलाकात' is offered", () => {
+    const d = draft(fileFor(null, "JPR3"), ["मुख्य सचिव ने ex-servicemen से की मुलाकात", "समस्याओं के समाधान का भरोसा दिलाया"]);
+    expect(d.handleSuggestions.filter((h) => h.reason === "office").map((h) => h.handle)).toContain("svoruganti1466");
+  });
+});
+
+describe("S2: the CS and the CM read one shared list of other states", () => {
+  const cs = subjects.offices!.find((o) => o.key === "rajasthan_cs")!;
+  const cm = subjects.offices!.find((o) => o.key === "rajasthan_cm")!;
+  it("'छत्तीसगढ़ के मुख्य सचिव', 'Karnataka Chief Secretary meets', 'मप्र के मुख्य सचिव' and the rest: none", () => {
+    for (const t of ["छत्तीसगढ़ के मुख्य सचिव ने ली बैठक", "Karnataka Chief Secretary meets the delegation", "मप्र के मुख्य सचिव पहुंचे", "केरल के मुख्य सचिव", "West Bengal Chief Secretary", "तेलंगाना के CS"]) {
+      expect(namesOffice(cs, t), t).toBe(false);
+    }
+  });
+  it("every state on the shared list excludes both offices", () => {
+    const json = cfg("subject-handles.json");
+    const states: string[] = json.office_exclusion_lists.other_states;
+    expect(states.length).toBeGreaterThanOrEqual(45);
+    for (const s of states) {
+      expect(namesOffice(cs, `${s} के मुख्य सचिव ने कहा`), s).toBe(false);
+      expect(namesOffice(cm, `${s} के मुख्यमंत्री ने कहा`), s).toBe(false);
+    }
+  });
+  it("the CM's exclusions are exactly what they were before the list was shared", () => {
+    const before = [
+      "पूर्व", "दिल्ली", "मध्यप्रदेश", "मध्य प्रदेश", "मप्र", "यूपी", "उत्तर प्रदेश", "पंजाब", "गुजरात", "हरियाणा", "महाराष्ट्र", "बिहार", "छत्तीसगढ़", "कर्नाटक",
+      "बंगाल", "पश्चिम बंगाल", "गोवा", "तमिलनाडु", "केरल", "असम", "ओडिशा", "झारखंड", "उत्तराखंड", "हिमाचल", "तेलंगाना", "आंध्र", "आंध्र प्रदेश", "मोहन यादव", "योगी",
+      "रेखा गुप्ता", "भगवंत मान", "फडणवीस", "नीतीश", "गहलोत", "डिप्टी", "Deputy", "उप", "Former", "Ex", "Delhi", "Madhya Pradesh", "Uttar Pradesh", "Bihar",
+      "Punjab", "Gujarat", "Haryana", "Maharashtra", "Chhattisgarh", "Karnataka", "Bengal", "West Bengal", "Goa", "Tamil Nadu", "Kerala", "Assam", "Odisha",
+      "Jharkhand", "Uttarakhand", "Himachal", "Telangana", "Andhra", "Andhra Pradesh", "Yogi", "Rekha Gupta", "Mohan Yadav", "Gehlot", "Nitish", "Mann",
+      "Bhagwant Mann", "Fadnavis",
+    ];
+    const json = cfg("subject-handles.json");
+    const now = [...json.offices.rajasthan_cm.exclude_same_sentence, ...json.office_exclusion_lists.other_states];
+    expect(new Set(now)).toEqual(new Set(before));
+  });
+  it("a list an office names that does not exist, or a malformed shared list, rejects the file", () => {
+    const json = cfg("subject-handles.json");
+    expect(() => parseSubjectHandles({ ...json, offices: { ...json.offices, rajasthan_cs: { ...json.offices.rajasthan_cs, exclude_same_sentence_lists: ["other_statez"] } } })).toThrow(/not a list in office_exclusion_lists/);
+    expect(() => parseSubjectHandles({ ...json, office_exclusion_lists: { other_states: "Delhi" } })).toThrow(/must be a list of words/);
+  });
+});
+
+describe("S4: the CM next to a code with a hyphen, a slash or the Hindi code", () => {
+  const cm = subjects.offices!.find((o) => o.key === "rajasthan_cm")!;
+  it("'एमपी के सीएम', 'MP-CM ने कहा', 'UP/CM', 'यूपी के मुख्यमंत्री': no CM suggestion", () => {
+    for (const t of ["एमपी के सीएम ने की घोषणा", "MP-CM ने कहा", "MP - CM ने कहा", "UP/CM का दौरा", "यूपी के मुख्यमंत्री पहुंचे", "एमपी सीएम का बयान"]) expect(namesOffice(cm, t), t).toBe(false);
+    const d = draft(fileFor(null, "JPR3"), ["एमपी के सीएम ने की घोषणा", "किसानों को मिलेगा लाभ"]);
+    expect(d.handleSuggestions.filter((h) => h.reason === "office").map((h) => h.handle)).toEqual([]);
+  });
+  it("an MP (सांसद) meeting the CM still offers the CM", () => {
+    for (const t of ["MP ने CM से मुलाकात की", "सांसद/MP ने CM से मुलाकात की", "एमपी ने सीएम से की मुलाकात"]) expect(namesOffice(cm, t), t).toBe(true);
   });
 });

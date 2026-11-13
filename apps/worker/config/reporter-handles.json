@@ -23,7 +23,8 @@
     "An RCA handle for Dinesh Kasana's cricket beat ('rca-cricket'): 0 corpus posts so far (brief §5.2)",
     "The real file-name tokens for Dinesh Dangi and Dinesh Kasana (bare DINESH is ambiguous): read them from the decision log's weekly report (brief §5.1)",
     "Which district codes are real bureau codes: only AJM, JJN and TOK have been seen in file names (brief §2.6)",
-    "@navinsharmabki: api.fxtwitter.com returned 404 on 12 Nov; check the account live on X before removing it (brief §5.3)"
+    "@navinsharmabki: api.fxtwitter.com returned 404 on 12 Nov; check the account live on X before removing it (brief §5.3)",
+    "confirm @svoruganti1466 is the Chief Secretary's account"
   ],
   "entries": [
     {
@@ -244,18 +245,6 @@
       "source": "@1stIndiaNews timeline, 18 posts",
       "evidence": 18,
       "note": "Handle confirmed from 18 published posts, all Bikaner. The token has not appeared in a file name yet, so nothing is tagged from it until it does."
-    },
-    {
-      "handle": "@svoruganti1466",
-      "name": "S Voruganti",
-      "names_hi": [],
-      "names_en": ["voruganti", "s_voruganti"],
-      "districts": ["Jaipur"],
-      "prior": { "computed_at": "2026-11-13", "source": "corpus-2476 (tagged-reporter sample, upper bound)", "n": 34, "handles": { "RajGovOfficial": 0.29, "RajCMO": 0.21 }, "hashtags": {} },
-      "verified": true,
-      "source": "@1stIndiaNews timeline, 18 posts",
-      "evidence": 18,
-      "note": "Handle confirmed from 18 published posts. The token has not appeared in a file name yet."
     },
     {
       "handle": "@jawaharbedam",

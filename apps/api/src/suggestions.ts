@@ -11,7 +11,7 @@
 // A stored item that is not usable is left out and reported once per draft; anything unexpected while mapping
 // falls back to the arrays as stored, so a draft always opens.
 
-import { handleSource, type HandlePick } from "@socia/core";
+import { handleSource, PROPOSAL_SOURCES, type RuleHandlePick } from "@socia/core";
 import type { DraftHandlePick } from "@socia/db";
 
 export interface MentionSuggestionView {
@@ -71,7 +71,11 @@ function mentionView(raw: unknown): { view: MentionSuggestionView | null; malfor
   // "rule:<reason>:<handle>" / "suggest:<reason>:<handle>": the reason code the rule id falls back to
   const code = /^(?:rule|suggest):([a-z_]+):/.exec(m.handleId)?.[1];
   const stored = str(m.source);
-  const derived = !stored && code && REASONS.has(code) ? handleSource({ handle: m.handle, reason: code as HandlePick["reason"] }) : undefined;
+  // A prior pick's rule id is fixed (core's PriorHandlePick needs score and n, which an old row may lack)
+  const derived =
+    !stored && code && REASONS.has(code)
+      ? code === "prior" ? PROPOSAL_SOURCES.reporterPrior : handleSource({ handle: m.handle, reason: code as RuleHandlePick["reason"] })
+      : undefined;
   const reason = str(m.reason);
   const detail = str(m.detail);
   const score = num(m.score);

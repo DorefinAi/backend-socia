@@ -25,7 +25,7 @@ const fixture = (name: string) => new URL(name, FIXTURES);
 describe("explore roll (reporter-prior brief §7.2.3)", () => {
   it("draftProposals keeps core's list and falls back to reason codes without one", async () => {
     const { draftProposals } = await import("../src/stages/compose");
-    const core = [{ item: "#X", kind: "hashtag" as const, layer: "emit" as const, source: "brand.geo", reason: "r" }];
+    const core = [{ item: "#X", kind: "hashtag" as const, layer: "emit" as const, source: "brand.geo" as const, reason: "r" }];
     let fellBack = 0;
     expect(draftProposals({ hashtags: [], handles: [], handleSuggestions: [], hashtagSuggestions: [], proposals: core }, () => fellBack++)).toEqual(core);
     expect(fellBack).toBe(0);

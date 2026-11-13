@@ -4,9 +4,9 @@
 // copy and logs why, so a typo never stops the desk. Whether each file is readable goes to /ingest/status.
 
 import {
-  DataFileRejected, EMPTY_HANDLE_RULES, EMPTY_NORMALISER, EMPTY_PARTY_RULES, EMPTY_REPORTER_RULES, EMPTY_SUBJECT_RULES, EMPTY_SUGGEST_RULES, PlaceBook,
-  parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules,
-  type HandleRules, type PartyRules, type ReporterRules, type SubjectRules, type SuggestRules, type TagNormaliser,
+  DataFileRejected, EMPTY_BEAT_RULES, EMPTY_HANDLE_RULES, EMPTY_NORMALISER, EMPTY_PARTY_RULES, EMPTY_REPORTER_RULES, EMPTY_SUBJECT_RULES, EMPTY_SUGGEST_RULES, PlaceBook,
+  parseBeatHandles, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules,
+  type BeatRules, type HandleRules, type PartyRules, type ReporterRules, type SubjectRules, type SuggestRules, type TagNormaliser,
 } from "@socia/core";
 import type { DataFileStatus } from "@socia/db";
 import { readFileSync } from "node:fs";
@@ -23,6 +23,7 @@ export const REPORTER_HANDLES_FILE = fileURLToPath(new URL("../config/reporter-h
 export const PARTY_HANDLES_FILE = fileURLToPath(new URL("../config/party-handles.json", import.meta.url));
 export const HASHTAG_NORMALISE_FILE = fileURLToPath(new URL("../config/hashtag-normalise.json", import.meta.url));
 export const CAMPAIGNS_FILE = fileURLToPath(new URL("../config/campaigns.json", import.meta.url));
+export const BEAT_HANDLES_FILE = fileURLToPath(new URL("../config/beat-handles.json", import.meta.url));
 
 /** A data file the pipeline needs is not readable: retry later, do not fail the story */
 export class DataUnavailable extends Error {
@@ -142,21 +143,53 @@ export interface PhaseOneData {
   normalise: JsonDataFile<TagNormaliser>;
   /** Campaign and keyword tags offered to the desk */
   campaigns: JsonDataFile<SuggestRules>;
+  /** Desk-declared reporter beats and the handles each offers when its keywords match (reporter-prior brief §3.3) */
+  beats: JsonDataFile<BeatRules>;
+}
+
+/**
+ * Every handle the directory files carry, lower-cased without the @: what a beat may offer (a handle is never
+ * invented). The copies already loaded when there are, else each file read here; a file that cannot be read adds
+ * nothing, so its handles fail the beat file loudly rather than pass unchecked.
+ */
+function directoryHandles(files: { handles: JsonDataFile<HandleRules>; subjects: JsonDataFile<SubjectRules>; parties: JsonDataFile<PartyRules>; reporters: JsonDataFile<ReporterRules> }, env: NodeJS.ProcessEnv): Set<string> {
+  const read = <T>(f: JsonDataFile<T>, path: string, parse: (j: unknown) => T): T | null => {
+    const cur = f.current();
+    if (cur) return cur;
+    try {
+      return parse(JSON.parse(readFileSync(path, "utf8")));
+    } catch {
+      return null;
+    }
+  };
+  const sets: (ReadonlySet<string> | undefined)[] = [
+    read(files.handles, env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j))?.all,
+    read(files.subjects, env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j) => parseSubjectHandles(j))?.handles,
+    read(files.parties, env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j) => parsePartyHandles(j))?.handles,
+    read(files.reporters, env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j) => parseReporterHandles(j))?.handles,
+  ];
+  return new Set(sets.flatMap((s) => [...(s ?? [])]).map((h) => h.replace(/^@/, "").toLowerCase()));
 }
 
 export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process.env): PhaseOneData {
   const placesPath = env.PLACES_FILE ?? PLACES_FILE;
   const places = new JsonDataFile("places", placesPath, (j, problem) => new PlaceBook(parsePlacesData(j, problem)), log, undefined, onStatus);
+  // No handles file: posts go out without handles rather than wait
+  const handles = new JsonDataFile("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j), log, EMPTY_HANDLE_RULES, onStatus);
+  // No subjects file (or a broken one at start): no subject handles
+  const subjects = new JsonDataFile("subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j, problem) => parseSubjectHandles(j, problem), log, EMPTY_SUBJECT_RULES, onStatus);
+  // No reporters file: posts go out without a byline rather than wait
+  const reporters = new JsonDataFile("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j, problem) => parseReporterHandles(j, problem), log, EMPTY_REPORTER_RULES, onStatus);
+  // No party file: political posts go out with the leader and the reporter, no party handle
+  const parties = new JsonDataFile("parties", env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j, problem) => parsePartyHandles(j, problem), log, EMPTY_PARTY_RULES, onStatus);
   return {
     places,
-    // No handles file: posts go out without handles rather than wait
-    handles: new JsonDataFile("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j), log, EMPTY_HANDLE_RULES, onStatus),
-    // No subjects file (or a broken one at start): no subject handles
-    subjects: new JsonDataFile("subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j, problem) => parseSubjectHandles(j, problem), log, EMPTY_SUBJECT_RULES, onStatus),
-    // No reporters file: posts go out without a byline rather than wait
-    reporters: new JsonDataFile("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j, problem) => parseReporterHandles(j, problem), log, EMPTY_REPORTER_RULES, onStatus),
-    // No party file: political posts go out with the leader and the reporter, no party handle
-    parties: new JsonDataFile("parties", env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j, problem) => parsePartyHandles(j, problem), log, EMPTY_PARTY_RULES, onStatus),
+    handles,
+    subjects,
+    reporters,
+    parties,
+    // No beats file (or one naming a handle in no directory file): no declared-beat suggestions
+    beats: new JsonDataFile("beats", env.BEAT_HANDLES_FILE ?? BEAT_HANDLES_FILE, (j) => parseBeatHandles(j, directoryHandles({ handles, subjects, parties, reporters }, env)), log, EMPTY_BEAT_RULES, onStatus),
     // No normalise file: typos stay as the desk typed them (still flagged near the brand tags)
     normalise: new JsonDataFile("normalise", env.HASHTAG_NORMALISE_FILE ?? HASHTAG_NORMALISE_FILE, (j, problem) => parseHashtagNormalise(j, problem, placeTags(places, placesPath)), log, EMPTY_NORMALISER, onStatus),
     // No campaigns file: no campaign or keyword tags offered

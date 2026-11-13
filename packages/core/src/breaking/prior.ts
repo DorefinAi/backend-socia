@@ -150,7 +150,7 @@ export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: Be
       if (!ok(h)) continue;
       seen.add(h.toLowerCase());
       out.handles.push({
-        handle: h, reason: "prior", source: SOURCES.reporterPrior, title: p.name, score: Math.round(score * 100) / 100, n,
+        handle: h, reason: "prior", source: SOURCES.reporterPrior, score: Math.round(score * 100) / 100, n,
         detail: `${first(p.name)} files @${h} stories ${pct(r)} of the time (${n} posts; smoothed ${score.toFixed(2)}, an upper bound)`,
       });
     }
@@ -170,7 +170,7 @@ export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: Be
     for (const h of beat.handles) {
       if (!ok(h)) continue;
       seen.add(h.toLowerCase());
-      out.handles.push({ handle: h, reason: "beat", source: beatSource(key), title: p.name, detail: `declared beat: ${key} (${first(p.name)}, told to us by the desk), and the copy matches it` });
+      out.handles.push({ handle: h, reason: "beat", source: beatSource(key), detail: `declared beat: ${key} (${first(p.name)}, told to us by the desk), and the copy matches it` });
     }
   }
   return out;

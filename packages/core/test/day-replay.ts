@@ -50,25 +50,25 @@ import { hindiPlaceTag, inferHeadlineDistrict } from "../src/breaking/parse";
 import { bookLeadTagDistrict } from "../src/breaking/compose";
 
 /**
- * The floor table. `exact` = exact-set posts measured on fx-replay at dc6ecde (13 Nov 2026), `posts` = the
+ * The floor table. `exact` = exact-set posts measured on reporter-prior-all after the FL/V/N/M/D/C fixes (13 Nov 2026), `posts` = the
  * export's post count at that time (a changed export shows up as a count mismatch). Re-baseline: see the top.
  */
 export const DAY_FLOORS = {
-  sep09: { date: "2026-09-09", posts: 461, exact: 293 as number | null },
-  oct20: { date: "2026-10-20", posts: 326, exact: 242 as number | null },
-  oct21: { date: "2026-10-21", posts: 380, exact: 296 as number | null },
+  sep09: { date: "2026-09-09", posts: 461, exact: 296 as number | null },
+  oct20: { date: "2026-10-20", posts: 326, exact: 248 as number | null },
+  oct21: { date: "2026-10-21", posts: 380, exact: 301 as number | null },
   oct30: { date: "2026-10-30", posts: 400, exact: 329 as number | null },
   nov10: { date: "2026-11-10", posts: 602, exact: 514 as number | null },
-  nov11: { date: "2026-11-11", posts: 307, exact: 206 as number | null },
-  nov12: { date: "2026-11-12", posts: 193, exact: 157 as number | null },
+  nov11: { date: "2026-11-11", posts: 307, exact: 208 as number | null },
+  nov12: { date: "2026-11-12", posts: 193, exact: 161 as number | null },
   // TODO(FL4): the 13 Nov export is not available yet. When it arrives, add it to REPLAY_DAYS (or the exports
   // dir), run the CLI, and set `posts` and `exact` from the measured numbers.
   nov13: { date: "2026-11-13", posts: null as number | null, exact: null as number | null },
 } as const;
 /** A day fails only below (exact − EXACT_TOLERANCE) exact-set posts */
 export const EXACT_TOLERANCE = 2;
-/** Pooled precision measured on the seven floored days at dc6ecde: 95.18% (3141/3300 tags), minus PRECISION_MARGIN (0.5 pp ≈ 16 tags). Blocks. */
-export const POOLED_PRECISION_FLOOR = 0.9468;
+/** Pooled precision measured on the seven floored days after the fixes: 95.88% (3164/3300 tags), minus PRECISION_MARGIN (0.5 pp ≈ 16 tags). Blocks. */
+export const POOLED_PRECISION_FLOOR = 0.9538;
 export const PRECISION_MARGIN = 0.005;
 /** Per-day precision below this only warns */
 export const DAY_PRECISION_WARN = 0.94;

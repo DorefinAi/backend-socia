@@ -253,7 +253,7 @@ describe("BreakingShareSource (no database)", () => {
     // A crime story carries no byline anyway, so the unknown name is not raised as something to look at
     // — but it is still stored, which is what lets an editor's own edit teach it.
     expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).not.toMatch(/reporter list/);
-    expect(draft!.composeVersion.startsWith("b7.")).toBe(true);
+    expect(draft!.composeVersion.startsWith("b8.")).toBe(true);
     // The footer is the only hashtag that goes on a post by itself; the inferred district is offered first.
     // This org has no topic rules, so nothing else is offered; packages/core covers the case where one matches.
     expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia"]);

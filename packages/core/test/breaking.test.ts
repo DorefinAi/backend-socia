@@ -5,8 +5,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CATEGORY_SEED_RULES, EMPTY_HANDLE_RULES, LINKING_WORDS, PlaceBook, actingAgents, assemblePostText, composeBreaking, daysToScan, dayFolderName,
-  fileTags, hashtagGazetteer, isBreakingFileName, joinPoints, linkingCuts, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
+  fileTags, hashtagGazetteer, isBreakingFileName, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
   parsePlacesData, parseSubjectHandles, phaseFeatures, phaseFrom, pickCategoryTags, pickHandles, xLen,
+  breakingDots, crispPoints, plainHeadline, BREAKING_BODY_FLOOR, BREAKING_BODY_MAX, BREAKING_BODY_MIN, BREAKING_POST_MAX,
 } from "../src";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/breaking/${name}`, import.meta.url), "utf8");
@@ -272,23 +273,29 @@ describe("composeBreaking", () => {
     expect(d.hashtagSuggestions).toContain("#RajasthanPolice");
     expect(text).not.toContain("#RajasthanPolice");
     expect(text).toContain("तलवारे और डंडे लेकर आए बदमाशों ने किया हमला, दादाबाड़ी");
-    expect(d.composeVersion).toBe("b7.0");
+    expect(d.composeVersion).toBe("b8.0");
   });
 
-  it("adds the Hindi town tag and cuts the points right after a linking word with ...", () => {
+  it("adds the Hindi town tag and cuts line 2 right after a linking word, at the desk's length, with 3 or 4 dots (b8)", () => {
     const { text } = post("BTN_RJ_BREAKING_6072_29OCT_US_CONTROL_REPORTER_karari_big.txt");
     expect(text.split("\n")[0]).toBe("#Chittorgarh #निम्बाहेड़ा: काश, पहले भी जारी हो जाती ऐसी एडवाइजरी !");
     const body = text.split("\n\n")[1]!;
-    expect(body.endsWith("...")).toBe(true);
-    expect(LINKING_WORDS.has(body.slice(0, -3).split(" ").pop()!)).toBe(true);
+    expect(body).toMatch(/[^.]\.{3,4}$/);
+    expect(LINKING_WORDS.has(body.replace(/\.+$/, "").split(" ").pop()!)).toBe(true);
+    expect(xLen(body)).toBeGreaterThanOrEqual(100);
+    expect(xLen(body)).toBeLessThanOrEqual(130);
     expect(xLen(text)).toBeLessThanOrEqual(280);
   });
 
-  it("stays within 280 even for a huge headline", () => {
-    const s = parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(40)}\nबिंदु`, "x_breaking.txt", book);
-    const d = composeBreaking(s, rules, book, { topics });
-    expect(d.headlineCut).toBe(true);
-    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(280);
+  it("cuts a headline only past the post's limit: 1,000 by default, or a limit the caller sets", () => {
+    const long = parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(40)}\nबिंदु`, "x_breaking.txt", book);
+    expect(composeBreaking(long, rules, book, { topics }).headlineCut).toBe(false);
+    const huge = composeBreaking(parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(80)}\nबिंदु`, "x_breaking.txt", book), rules, book, { topics });
+    expect(huge.headlineCut).toBe(true);
+    expect(xLen(assemblePostText(huge.bodyText, huge.hashtags, huge.mentions))).toBeLessThanOrEqual(BREAKING_POST_MAX);
+    const capped = composeBreaking(long, rules, book, { topics, limit: 280 });
+    expect(capped.headlineCut).toBe(true);
+    expect(xLen(assemblePostText(capped.bodyText, capped.hashtags, capped.mentions))).toBeLessThanOrEqual(280);
   });
 
   it("uses #FirstIndiaNews outside Rajasthan, only national-safe category tags, and tags nobody there", () => {
@@ -314,8 +321,8 @@ describe("composeBreaking", () => {
   });
 
   it("adds no dots when every point fits, and no category tag without topic rules", () => {
-    const d = composeBreaking(parseBreaking("जयपुर\nहत्या के आरोपी से पूछताछ\nदो बिंदु\nतीन बिंदु", "x_breaking.txt", book), rules, book);
-    expect(d.bodyText).toBe("#Jaipur: हत्या के आरोपी से पूछताछ\n\nदो बिंदु, तीन बिंदु");
+    const d = composeBreaking(parseBreaking("जयपुर\nहत्या के आरोपी से पूछताछ\nपुलिस ने आरोपी से की लंबी पूछताछ\nपरिजनों के बयान भी दर्ज", "x_breaking.txt", book), rules, book);
+    expect(d.bodyText).toBe("#Jaipur: हत्या के आरोपी से पूछताछ\n\nपुलिस ने आरोपी से की लंबी पूछताछ, परिजनों के बयान भी दर्ज");
     expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
   });
 
@@ -342,44 +349,100 @@ ${point}`, "x_breaking.txt", book), rules, book, { topics }).mentions;
   });
 });
 
-describe("the catchy cut", () => {
-  const p1 = "पहला बिंदु पूरा";
-  const p2 = "बदमाशों ने युवक पर चाकू से किया हमला";
-  const whole = `${p1}, ${p2}`;
+describe("the catchy cut (b8 crispPoints scoring)", () => {
+  const lead = "कुंभलगढ़ घूमने आए मध्यप्रदेश के पर्यटकों की कार हादसे का शिकार";
 
-  it("cuts the next point right after a linking word, preferring the latest that hides 2+ content words", () => {
-    expect(joinPoints([p1, p2], xLen(whole) - 1)).toBe(`${p1}, बदमाशों ने युवक पर चाकू से...`);
-    // Less room: the latest cut that still fits
-    expect(joinPoints([p1, p2], xLen(`${p1}, बदमाशों ने युवक पर`) + 3)).toBe(`${p1}, बदमाशों ने युवक पर...`);
-    expect(joinPoints([p1, p2], xLen(whole))).toBe(whole); // everything fits: no dots
+  it("stops on a describing word with the payoff still to come", () => {
+    expect(crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर", "भीषण सड़क हादसे में पांच पर्यटक घायल"], "....")).toBe(
+      `${lead}, ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर, भीषण....`,
+    );
   });
 
-  it("never cuts inside a number range, before an auxiliary or another link, or with no content before the link", () => {
-    expect(linkingCuts("10 से 15 लोग घायल")).toEqual([]);
-    const cuts = (p: string) => linkingCuts(p).map((c) => p.slice(0, c.end));
-    expect(cuts("मामले की जांच की गई और रिपोर्ट सौंपी")).toEqual(["मामले की जांच की गई और", "मामले की"]);
-    expect(cuts("हादसे के बाद पुलिस पहुंची")).toEqual(["हादसे के बाद"]);
-    expect(cuts("और फिर बात बढ़ी")).toEqual([]);
+  it("stops on the person or thing just before its action", () => {
+    expect(crispPoints(["सादुलपुर पुलिस को मिली बड़ी सफलता", "आरोपी रमेश उर्फ मोनू गिरफ्तार", "आरोपी अनिल उर्फ मोलड़ के गोली मारकर शव फेंक गए थे सूरतपुरा गांव में"], "....")).toBe(
+      "सादुलपुर पुलिस को मिली बड़ी सफलता, आरोपी रमेश उर्फ मोनू गिरफ्तार, आरोपी अनिल उर्फ मोलड़ के गोली मारकर शव फेंक....",
+    );
   });
 
-  it("falls back to a word cut when no linking word fits, never leaving a dangling comma", () => {
-    expect(joinPoints(["पहला", "अलफा बीटा गामा डेल्टा"], xLen("पहला, अलफा बीटा") + 3)).toBe("पहला, अलफा बीटा...");
-    expect(joinPoints(["पहला", "दूसरा, तीसरा चौथा पांचवां"], xLen("पहला, दूसरा") + 5)).toBe("पहला, दूसरा...");
+  it("never stops inside a number range ('10 से 15')", () => {
+    const out = crispPoints(["जयपुर में तेज बारिश से कई इलाकों में जलभराव की स्थिति", "शहर के निचले इलाकों में पानी भरा", "बारिश के बाद 10 से 15 मकानों में घुसा पानी"], "...");
+    expect(out).not.toMatch(/10 से\.+$/u);
+    expect(out.endsWith("मकानों में...")).toBe(true);
   });
 
-  it("never ends on a completed point: with no room for the next point, the last whole one is cut", () => {
-    const first = "राजस्थान समेत 10 राज्यों में खनिज ब्लॉकों की नीलामी और संचालन की होनी थी समीक्षा";
-    expect(joinPoints([first, "लंबित मंजूरियों"], xLen(first) + 5)).toBe("राजस्थान समेत 10 राज्यों में खनिज ब्लॉकों की नीलामी और संचालन की...");
+  it("prefers a linking word over a word that finishes the statement", () => {
+    const out = crispPoints(["पुलिस ने अवैध शराब के खिलाफ अभियान चलाकर बड़ी कार्रवाई की", "तस्करों के ठिकानों पर दबिश देकर शराब बरामद", "दो आरोपियों को किया गिरफ्तार और वाहन जब्त"], "...");
+    expect(out.endsWith("दो आरोपियों को...")).toBe(true);
   });
 
-  it("measures Devanagari the way X does and never goes over the budget", () => {
-    const points = Array.from({ length: 12 }, (_, i) => `क्षेत्र में ${i} श्रद्धालुओं के लिए व्यवस्था की गई और प्रशासन ने निर्देश दिए`);
-    for (const budget of [40, 90, 150, 200, 240]) {
-      const out = joinPoints(points, budget);
-      expect(xLen(out)).toBeLessThanOrEqual(budget);
-      expect(out.endsWith("...")).toBe(true);
-      expect(out).not.toMatch(/[,्]\.\.\.$/u);
+  it("counts the dots inside 100–130", () => {
+    for (const dots of ["...", "...."]) {
+      const out = crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर", "भीषण सड़क हादसे में पांच पर्यटक घायल"], dots);
+      expect(xLen(out)).toBeGreaterThanOrEqual(BREAKING_BODY_MIN);
+      expect(xLen(out)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
     }
+  });
+
+  it("cuts one huge word by letters instead of losing line 2", () => {
+    const out = crispPoints(["अ".repeat(200)], "...");
+    expect(out).toBe(`${"अ".repeat(BREAKING_BODY_MAX - 3)}...`);
+  });
+
+  it("drops a line 2 under the 40-character floor, never a stub", () => {
+    expect(crispPoints(["पुलिस ने आरोपी को पकड़ा", "जांच जारी"], "....")).toBe("");
+    expect(crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर"], "...", 35)).toBe("");
+    const tight = crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर"], "...", 60);
+    expect(xLen(tight)).toBeGreaterThanOrEqual(BREAKING_BODY_FLOOR);
+    expect(xLen(tight)).toBeLessThanOrEqual(60);
+  });
+
+  it("keeps a short story whole, with no dots, when it is over the floor", () => {
+    expect(crispPoints(["पुलिस ने हत्या के आरोपी को किया गिरफ्तार", "जांच जारी, परिजनों ने राहत की सांस ली"], "...")).toBe(
+      "पुलिस ने हत्या के आरोपी को किया गिरफ्तार, जांच जारी, परिजनों ने राहत की सांस ली",
+    );
+  });
+
+  it("stays fast on a 200-point story (stops scanning past the limit)", () => {
+    const big = Array.from({ length: 200 }, (_, i) => `क्षेत्र में ${i} श्रद्धालुओं के लिए व्यवस्था की गई और प्रशासन ने निर्देश दिए`);
+    const t = performance.now();
+    const out = crispPoints(big, "....");
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(xLen(out)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
+  });
+
+  it("measures Devanagari the way X does and never goes over the limit", () => {
+    const points = Array.from({ length: 12 }, (_, i) => `क्षेत्र में ${i} श्रद्धालुओं के लिए व्यवस्था की गई और प्रशासन ने निर्देश दिए`);
+    for (const max of [60, 90, 130]) {
+      const out = crispPoints(points, "...", max);
+      expect(xLen(out)).toBeLessThanOrEqual(max);
+      expect(out).toMatch(/[^,्.]\.\.\.$/u);
+    }
+  });
+
+  it("seeds the dots with the headline without its tags", () => {
+    expect(plainHeadline("#Jaipur #डग:  बिजली गुल")).toBe("बिजली गुल");
+    expect(plainHeadline("#Chittorgarh #आकोला में पैंथर")).toBe("में पैंथर");
+    expect(plainHeadline("कोटा में हादसा")).toBe("कोटा में हादसा");
+  });
+});
+
+describe("the whole breaking post (b8 decisions §1)", () => {
+  it("keeps line 2 at 100–130 when a long headline and many handles push the post past 280", () => {
+    const head = "जयपुर में राज्य सरकार के मंत्री ने विधानसभा में बजट घोषणाओं की समीक्षा बैठक में अधिकारियों को दिए सख्त निर्देश और समय पर काम पूरा करने को कहा";
+    const points = Array.from({ length: 6 }, (_, i) => `बैठक में ${i} विभागों के अधिकारियों ने अपनी योजनाओं की प्रगति रिपोर्ट पेश की और लंबित कामों की जानकारी दी`);
+    const d = composeBreaking(parseBreaking(`जयपुर\n${head}\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics });
+    const line2 = d.bodyText.split("\n\n")[1]!;
+    expect(xLen(line2)).toBeGreaterThanOrEqual(BREAKING_BODY_MIN);
+    expect(xLen(line2)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
+    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(BREAKING_POST_MAX);
+  });
+
+  it("uses the bodyMax option as line 2's ceiling", () => {
+    const points = Array.from({ length: 6 }, (_, i) => `बैठक में ${i} विभागों के अधिकारियों ने अपनी योजनाओं की प्रगति रिपोर्ट पेश की और लंबित कामों की जानकारी दी`);
+    const d = composeBreaking(parseBreaking(`जयपुर\nसमीक्षा बैठक\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics, bodyMax: 80 });
+    const line2 = d.bodyText.split("\n\n")[1]!;
+    expect(xLen(line2)).toBeLessThanOrEqual(80);
+    expect(xLen(line2)).toBeGreaterThanOrEqual(BREAKING_BODY_FLOOR);
   });
 });
 
@@ -599,5 +662,65 @@ describe("PHASE", () => {
     expect(() => phaseFrom("one")).toThrow(/PHASE/);
     expect(phaseFeatures(1)).toMatchObject({ xApiPosting: false, cardOnDemand: true, samvadia: false, webScraper: true, copyPosted: true });
     expect(phaseFeatures(2)).toMatchObject({ xApiPosting: true, cardOnDemand: false });
+  });
+});
+
+describe("crispPoints (b8 line 2)", () => {
+  const points = [
+    "मंडी की एडवाइजरी में भी सियासी सवाल",
+    "किसान पहले जाएं या मौसम देखें",
+    "फसल खाली जमीन पर नहीं रखने का फरमान",
+    "किसानों की मजबूरी पर किसी का ध्यान नहीं",
+  ];
+
+  it("shows points that fit whole, with no dots", () => {
+    expect(crispPoints(["पुलिस ने हत्या के आरोपी को किया गिरफ्तार", "जांच जारी, परिजनों ने राहत की सांस ली"], "....")).toBe(
+      "पुलिस ने हत्या के आरोपी को किया गिरफ्तार, जांच जारी, परिजनों ने राहत की सांस ली",
+    );
+  });
+
+  it("cuts long points to the desk's 100–130 and ends with the given dots", () => {
+    for (const dots of ["...", "...."]) {
+      const body = crispPoints(points, dots);
+      expect(body.endsWith(dots)).toBe(true);
+      expect(body.slice(0, -dots.length).endsWith(".")).toBe(false);
+      expect(xLen(body)).toBeGreaterThanOrEqual(BREAKING_BODY_MIN);
+      expect(xLen(body)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
+    }
+  });
+
+  it("withholds the payoff: stops on a linking word before the noun, not after a finished verb", () => {
+    const body = crispPoints(points, "...");
+    const last = body.replace(/\.+$/, "").split(" ").pop()!;
+    expect(LINKING_WORDS.has(last)).toBe(true);
+  });
+
+  it("goes shorter only when it is given less room, and never past it", () => {
+    for (const max of [40, 70, 90]) expect(xLen(crispPoints(points, "....", max))).toBeLessThanOrEqual(max);
+    expect(crispPoints(points, "...", 0)).toBe("");
+    expect(crispPoints([], "...")).toBe("");
+  });
+});
+
+describe("breakingDots", () => {
+  it("is the same for the same headline, and mixes 3 and 4 dots across headlines", () => {
+    expect(breakingDots("जयपुर में हादसा")).toBe(breakingDots("जयपुर में हादसा"));
+    const seen = new Set(Array.from({ length: 50 }, (_, i) => breakingDots(`खबर ${i}`)));
+    expect([...seen].sort()).toEqual(["...", "...."]);
+  });
+
+  it("reads composed and decomposed Hindi alike (NFC)", () => {
+    const h = "बड़ी ख़बर";
+    expect(breakingDots(h.normalize("NFD"))).toBe(breakingDots(h.normalize("NFC")));
+  });
+});
+
+describe("the shared crispPoints cases (b8 decisions #11)", () => {
+  // 200 real cases from the desk's posts; the frontend's Fit test reads the same file and must match every one
+  const { cases } = json("./fixtures/crisp-cases.json") as { cases: { points: string[]; dots: string; max: number; expected: string }[] };
+
+  it("matches every case", () => {
+    expect(cases.length).toBe(200);
+    for (const c of cases) expect(crispPoints(c.points, c.dots, c.max)).toBe(c.expected);
   });
 });

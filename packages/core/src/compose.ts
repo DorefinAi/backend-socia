@@ -128,7 +128,7 @@ export function cutOnWords(text: string, budget: number): string {
 }
 
 /** Whole graphemes within the budget, never ending on a virama (half a conjunct). The fallback for one huge word. */
-function cutOnGraphemes(text: string, budget: number): string {
+export function cutOnGraphemes(text: string, budget: number): string {
   let out = "";
   for (const { segment } of graphemes.segment(text)) {
     if (xLen(out + segment) > budget) break;

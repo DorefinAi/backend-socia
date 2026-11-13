@@ -24,7 +24,7 @@ import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
 import { phaseOneData } from "./data-files";
 import { convertNext } from "./stages/convert";
-import { housekeeping, syncHandles } from "./stages/crons";
+import { NightlyFeatures, housekeeping, syncHandles } from "./stages/crons";
 import { Ingest } from "./stages/ingest";
 import { Publisher } from "./stages/publish";
 import { renderNext } from "./stages/render";
@@ -224,7 +224,8 @@ async function main(): Promise<void> {
 
   if (cfg.roles.includes("maintenance")) {
     const log = stageLog("crons");
-    loops.start({ name: "maintenance", idleMs: 30_000, log, tick: () => housekeeping(db, log) });
+    const features = new NightlyFeatures(db, cfg.orgId, log, cfg.reporterPrior.smoothingM);
+    loops.start({ name: "maintenance", idleMs: 30_000, log, tick: async () => (await features.tick(), housekeeping(db, log)) });
   }
 
   let stopping = false;

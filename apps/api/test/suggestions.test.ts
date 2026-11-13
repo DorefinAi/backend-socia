@@ -2,7 +2,7 @@
 // items may carry source, reason, score and n; hashtagSuggestions mixes plain strings and { tag, source, reason,
 // score?, n? }. Old drafts keep working. The view test needs TEST_DATABASE_URL (the database is wiped).
 
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDb, orgs, postDrafts, runMigrations, stories, users, type DbHandle } from "@socia/db";
@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { hashPassword } from "../src/auth";
 import type { ApiConfig } from "../src/config";
-import { hashtagSuggestionsView, mentionSuggestionsView, setSuggestionLogger } from "../src/suggestions";
+import { hashtagSuggestionsView, mentionSuggestionsView, officeSourcesFrom, resetOfficeSources, setSuggestionLogger } from "../src/suggestions";
 
 const URL_ = process.env.TEST_DATABASE_URL;
 
@@ -110,6 +110,46 @@ describe("suggestion views (no database)", () => {
     }
   });
 
+  it("gives an old office suggestion the rule id of the office listing its handle, never a guessed CM (S5)", () => {
+    resetOfficeSources();
+    const old = (handle: string) => ({ handleId: `suggest:office:${handle.slice(1)}`, entity: "office", handle, exact: false });
+    // The worker's subject-handles.json: the Chief Secretary's account is not the CM's
+    expect(mentionSuggestionsView([old("@svoruganti1466")])).toEqual([{ ...old("@svoruganti1466"), source: "office_alias.rajasthan_cs", sourceDerived: true }]);
+    expect(mentionSuggestionsView([old("@BhajanlalBjp"), old("@rajcmo")])).toEqual([
+      { ...old("@BhajanlalBjp"), source: "office_alias.rajasthan_cm", sourceDerived: true },
+      { ...old("@rajcmo"), source: "office_alias.rajasthan_cm", sourceDerived: true },
+    ]);
+    // An office handle no office lists: no rule id rather than the CM's
+    expect(mentionSuggestionsView([old("@SomeCollectorOffice")])).toEqual([old("@SomeCollectorOffice")]);
+    // A stored source always wins
+    expect(mentionSuggestionsView([{ ...old("@svoruganti1466"), source: "office_alias.rajasthan_cm" }])).toEqual([{ ...old("@svoruganti1466"), source: "office_alias.rajasthan_cm" }]);
+  });
+
+  it("reads the offices leniently, and a handle two offices list belongs to neither", async () => {
+    expect([...officeSourcesFrom({ offices: { _note: "x", a: { handles: ["@One", " two ", 3] }, b: { handles: ["@ONE", "@Three"] }, c: null, d: { handles: "@Four" } } })]).toEqual([
+      ["one", null], ["two", "office_alias.a"], ["three", "office_alias.b"],
+    ]);
+    expect(officeSourcesFrom(null).size).toBe(0);
+    expect(officeSourcesFrom({ offices: [] }).size).toBe(0);
+    // SUBJECT_HANDLES_FILE points elsewhere (as for the desk handles); an unreadable file means no office known
+    const dir = await mkdtemp(join(tmpdir(), "socia-offices-"));
+    const before = process.env.SUBJECT_HANDLES_FILE;
+    try {
+      await writeFile(join(dir, "s.json"), JSON.stringify({ offices: { rajasthan_cm: { handles: ["@Shared"] }, rajasthan_cs: { handles: ["@shared", "@CsOnly"] } } }));
+      process.env.SUBJECT_HANDLES_FILE = join(dir, "s.json");
+      resetOfficeSources();
+      const old = (handle: string) => ({ handleId: `suggest:office:${handle.slice(1)}`, handle, exact: false });
+      expect(mentionSuggestionsView([old("@Shared"), old("@CsOnly")])).toEqual([old("@Shared"), { ...old("@CsOnly"), source: "office_alias.rajasthan_cs", sourceDerived: true }]);
+      process.env.SUBJECT_HANDLES_FILE = join(dir, "missing.json");
+      resetOfficeSources();
+      expect(mentionSuggestionsView([old("@CsOnly")])).toEqual([old("@CsOnly")]);
+    } finally {
+      if (before === undefined) delete process.env.SUBJECT_HANDLES_FILE;
+      else process.env.SUBJECT_HANDLES_FILE = before;
+      resetOfficeSources();
+    }
+  });
+
   it("passes core's detail through and drops a malformed score or n", () => {
     const m = { handleId: "suggest:prior:X", entity: "prior", handle: "@X", exact: false, source: "reporter_prior", reason: "r", detail: "rituraj files @X 40% (30 posts)", score: "high", n: 30 };
     expect(mentionSuggestionsView([m])).toEqual([{ handleId: "suggest:prior:X", entity: "prior", handle: "@X", exact: false, source: "reporter_prior", reason: "r", detail: "rituraj files @X 40% (30 posts)", n: 30 }]);
@@ -171,7 +211,13 @@ describe("suggestion views (no database)", () => {
       return d!.id;
     };
     draftId = await mk({ mentionSuggestions: MENTIONS, hashtagSuggestions: ["#Jaipur", "#RoadAccident", "#Kota"], handlePick: PICK as never });
-    oldDraftId = await mk({ mentionSuggestions: [{ handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true }], hashtagSuggestions: ["#Kota"] });
+    oldDraftId = await mk({
+      mentionSuggestions: [
+        { handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true },
+        { handleId: "suggest:office:svoruganti1466", entity: "office", handle: "@svoruganti1466", exact: false },
+      ],
+      hashtagSuggestions: ["#Kota"],
+    });
 
     app = await buildApp({ db: h.db, storage: new LocalStorage(await mkdtemp(join(tmpdir(), "socia-sugg-")), "http://localhost/dev-files"), config }, false);
     const res = await app.inject({ method: "POST", url: "/auth/login", payload: { email: "op@test", password: "correct horse battery" } });
@@ -203,6 +249,9 @@ describe("suggestion views (no database)", () => {
   it("an older draft keeps its shape, plus the rule id its reason code implies", async () => {
     const d = await get(oldDraftId);
     expect(d.hashtagSuggestions).toEqual(["#Kota"]);
-    expect(d.mentionSuggestions).toEqual([{ handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true, source: "district.police", sourceDerived: true }]);
+    expect(d.mentionSuggestions).toEqual([
+      { handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true, source: "district.police", sourceDerived: true },
+      { handleId: "suggest:office:svoruganti1466", entity: "office", handle: "@svoruganti1466", exact: false, source: "office_alias.rajasthan_cs", sourceDerived: true },
+    ]);
   });
 });

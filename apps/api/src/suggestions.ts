@@ -4,15 +4,18 @@
 //
 // - mentionSuggestions: the stored items, passed through. Items stored before the rule ids existed get a
 //   `source` derived from the reason code in their handleId ("rule:police:..." → "district.police"), as core does,
-//   marked `sourceDerived: true`.
+//   marked `sourceDerived: true`. An old office suggestion ("suggest:office:...") gets the rule id of the office
+//   whose handles include it, read from subject-handles.json `offices`; none when no office (or two) lists it.
 // - hashtagSuggestions: plain strings, except a tag whose rule is known (handle_pick.tagSuggestions), which goes
 //   out as { tag, source, reason, score?, n? }. Reporter and policy tags always have one.
 //
 // A stored item that is not usable is left out and reported once per draft and view; anything unexpected while
 // mapping falls back to the well-formed items alone (never raw ones), so a draft always opens.
 
-import { handleSource, PROPOSAL_SOURCES, type RuleHandlePick } from "@socia/core";
+import { handleSource, PROPOSAL_SOURCES, type OfficeRuleId, type RuleHandlePick } from "@socia/core";
 import type { DraftHandlePick } from "@socia/db";
+import { readFileSync, statSync } from "node:fs";
+import { SUBJECT_HANDLES_FILE } from "./handle-keywords";
 
 export interface MentionSuggestionView {
   handleId: string;
@@ -64,6 +67,69 @@ function report(draftId: string | undefined, view: View, obj: Record<string, unk
   }
 }
 
+// --- Offices: the rule id of an old office suggestion ---
+
+/** handle (lower case, no @) -> the rule id of the office listing it; null when two offices list it */
+export type OfficeSources = ReadonlyMap<string, OfficeRuleId | null>;
+
+/** The handles of subject-handles.json `offices`, each with its office's rule id ("office_alias.rajasthan_cs") */
+export function officeSourcesFrom(json: unknown): Map<string, OfficeRuleId | null> {
+  const out = new Map<string, OfficeRuleId | null>();
+  const offices = json && typeof json === "object" ? (json as { offices?: unknown }).offices : undefined;
+  if (!offices || typeof offices !== "object" || Array.isArray(offices)) return out;
+  for (const [key, office] of Object.entries(offices as Record<string, unknown>)) {
+    if (key.startsWith("_") || !office || typeof office !== "object") continue;
+    const handles = (office as { handles?: unknown }).handles;
+    if (!Array.isArray(handles)) continue;
+    const source: OfficeRuleId = `office_alias.${key}`;
+    for (const h of handles) {
+      if (typeof h !== "string") continue;
+      const k = h.trim().replace(/^@/, "").toLowerCase();
+      if (k) out.set(k, out.has(k) && out.get(k) !== source ? null : source);
+    }
+  }
+  return out;
+}
+
+const OFFICES_RECHECK_MS = 60_000;
+const officeFile: { sources: OfficeSources | null; path: string; mtimeMs: number; checkedAt: number } = { sources: null, path: "", mtimeMs: -1, checkedAt: 0 };
+
+/**
+ * The offices of the worker's subject-handles.json (SUBJECT_HANDLES_FILE overrides it, as for the desk handles),
+ * read again when it changes, checked at most once a minute. A file that cannot be read keeps the last good copy;
+ * until one is read no office is known.
+ */
+function officeSources(now = Date.now()): OfficeSources | null {
+  const path = process.env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE;
+  if (path === officeFile.path && now - officeFile.checkedAt < OFFICES_RECHECK_MS) return officeFile.sources;
+  officeFile.checkedAt = now;
+  try {
+    const { mtimeMs } = statSync(path);
+    if (path !== officeFile.path || mtimeMs !== officeFile.mtimeMs || officeFile.sources === null) {
+      officeFile.sources = officeSourcesFrom(JSON.parse(readFileSync(path, "utf8")));
+      officeFile.mtimeMs = mtimeMs;
+    }
+  } catch (err) {
+    try {
+      logger?.warn({ err, path }, "subject-handles.json unreadable; old office suggestions get no rule id from it");
+    } catch {
+      // a broken logger never breaks a draft view
+    }
+  }
+  officeFile.path = path;
+  return officeFile.sources;
+}
+
+/** Tests: forget the offices read so far */
+export function resetOfficeSources(): void {
+  Object.assign(officeFile, { sources: null, path: "", mtimeMs: -1, checkedAt: 0 });
+}
+
+/** The rule id of the office listing `handle` ("@svoruganti1466" -> "office_alias.rajasthan_cs"); undefined when unknown */
+function officeSourceOf(handle: string): OfficeRuleId | undefined {
+  return officeSources()?.get(handle.trim().replace(/^@/, "").toLowerCase()) ?? undefined;
+}
+
 const REASONS: ReadonlySet<string> = new Set(["cm", "police", "collector", "government", "state_police", "subject", "desk", "party", "reporter", "prior", "beat", "office"]);
 
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined);
@@ -80,10 +146,14 @@ function mentionView(raw: unknown): { view: MentionSuggestionView | null; malfor
   // "rule:<reason>:<handle>" / "suggest:<reason>:<handle>": the reason code the rule id falls back to
   const code = /^(?:rule|suggest):([a-z_]+):/.exec(m.handleId)?.[1];
   const stored = str(m.source);
-  // A prior pick's rule id is fixed (core's PriorHandlePick needs score and n, which an old row may lack)
+  // A prior pick's rule id is fixed (core's PriorHandlePick needs score and n, which an old row may lack). An
+  // office's is the office listing the handle: core's fallback for "office" is always the CM's office, which
+  // would mislabel the Chief Secretary's; a handle no office lists gets none rather than a guess.
   const derived =
     !stored && code && REASONS.has(code)
-      ? code === "prior" ? PROPOSAL_SOURCES.reporterPrior : handleSource({ handle: m.handle, reason: code as RuleHandlePick["reason"] })
+      ? code === "prior" ? PROPOSAL_SOURCES.reporterPrior
+        : code === "office" ? officeSourceOf(m.handle)
+        : handleSource({ handle: m.handle, reason: code as RuleHandlePick["reason"] })
       : undefined;
   const reason = str(m.reason);
   const detail = str(m.detail);

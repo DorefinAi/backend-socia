@@ -91,13 +91,14 @@ export class NightlyFeatures {
   /** Takes today's snapshot when it is due; the reporters it holds, or null when nothing ran or it failed */
   async run(now = new Date()): Promise<number | null> {
     const today = istDate(now);
+    // The backoff comes first: a failed kv read waits the hour too, rather than being tried (and escalated) every tick
+    if (this.failedAt && now.getTime() - this.failedAt < FEATURES_RETRY_MS) return null;
     try {
       if (this.lastDay === undefined) this.lastDay = (await getKv<{ day: string }>(this.db, FEATURES_KV))?.day ?? null;
     } catch (err) {
       return this.failed(now, err, "could not read when the reporter features last ran");
     }
     if (this.lastDay === today) return null;
-    if (this.failedAt && now.getTime() - this.failedAt < FEATURES_RETRY_MS) return null;
 
     let snap: Awaited<ReturnType<typeof snapshotReporterFeatures>>;
     try {

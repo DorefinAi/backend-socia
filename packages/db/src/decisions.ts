@@ -480,6 +480,12 @@ export interface FeatureSnapshot {
   pruned: number;
 }
 
+/** Tests only: lets a test act between the snapshot's reads (another connection commits a decision, say) */
+export interface SnapshotHooks {
+  /** After the reporters are counted, before their items and sources are read */
+  betweenReads?: () => Promise<void>;
+}
+
 /**
  * Today's snapshot of every matched reporter's features, keyed by handle.
  *
@@ -495,14 +501,16 @@ export interface FeatureSnapshot {
  * (a lock taken inside the transaction would come after its snapshot, and the second run's inserts would hit
  * rows it cannot see). Inserts only (a snapshot already taken is kept); snapshots older than the retention go.
  */
-export async function snapshotReporterFeatures(pool: pg.Pool, orgId: string, now = new Date(), m = FEATURE_SMOOTHING_M): Promise<FeatureSnapshot> {
+export async function snapshotReporterFeatures(
+  pool: pg.Pool, orgId: string, now = new Date(), m = FEATURE_SMOOTHING_M, hooks: SnapshotHooks = {},
+): Promise<FeatureSnapshot> {
   const client = await pool.connect();
   let broken: Error | undefined;
   try {
     await client.query("SET statement_timeout = '60s'");
     await client.query("SELECT pg_advisory_lock(hashtext('socia.reporter_features'), hashtext($1))", [orgId]);
     try {
-      return await snapshotOn(drizzle(client, { schema }), orgId, now, m);
+      return await snapshotOn(drizzle(client, { schema }), orgId, now, m, hooks);
     } finally {
       await client.query("SELECT pg_advisory_unlock(hashtext('socia.reporter_features'), hashtext($1))", [orgId]);
     }
@@ -516,7 +524,7 @@ export async function snapshotReporterFeatures(pool: pg.Pool, orgId: string, now
   }
 }
 
-async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date, m: number): Promise<FeatureSnapshot> {
+async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date, m: number, hooks: SnapshotHooks): Promise<FeatureSnapshot> {
   const cutoff = istDayStart(now);
   const since = new Date(cutoff.getTime() - FEATURE_WINDOW_DAYS * 86_400_000);
   const day = istDate(now);
@@ -536,11 +544,18 @@ async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date,
         SELECT r, count(*)::int AS n, avg(rework_ratio)::float8 AS rework FROM base GROUP BY r`)).rows as { r: string; n: number; rework: number | null }[];
       const total = reporters.reduce((a, r) => a + r.n, 0);
       if (!total) return { day, written: 0, ...(await finish(tx, orgId, day)) };
+      await hooks.betweenReads?.();
 
+      // An item's key as itemKey() makes it: NFC and lower case, so "#क़ानून" stored precomposed and decomposed
+      // count as one item. normalize() needs PostgreSQL 13+ on a UTF8 database; anywhere else lower() alone
+      // (the outcome writes already store NFC: postItems normalizes the final text).
+      const nfc = ((await tx.execute(sql`
+        SELECT current_setting('server_version_num')::int >= 130000 AND current_setting('server_encoding') = 'UTF8' AS ok`)).rows[0] as { ok?: boolean } | undefined)?.ok === true;
+      const key = nfc ? sql`lower(normalize(i, NFC))` : sql`lower(i)`;
       const items = (await tx.execute(sql`
         WITH base AS (${base}),
         items AS (
-          SELECT DISTINCT b.id, b.r, lower(i) AS k
+          SELECT DISTINCT b.id, b.r, ${key} AS k
             FROM base b CROSS JOIN LATERAL unnest(coalesce(b.final_hashtags, '{}'::text[]) || coalesce(b.final_handles, '{}'::text[])) AS i
         ),
         tot AS (SELECT k, count(*)::int AS all_c FROM items GROUP BY k),

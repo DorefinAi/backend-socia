@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DbHandle } from "../src/client";
 import {
-  LOGIC_VERSION, editDistance, istDate, itemOutcomes, minusDays, postItems, recordOutcome, recordProposal, reporterStatusReport, reworkBase, reworkRatio,
+  LOG_LOCK_TIMEOUT, LOGIC_VERSION, editDistance, istDate, itemKey, itemOutcomes, minusDays, postItems, recordOutcome, recordProposal, reporterStatusReport, reworkBase, reworkRatio,
   setDecisionLogger, snapshotReporterFeatures, voidOutcome, type ProposalRecord,
 } from "../src/decisions";
 import { claimDraft, copyPosted, rejectDraft, restoreDraft, undoCopyPosted } from "../src/desk";
@@ -19,6 +19,8 @@ async function refused(p: Promise<unknown>, re: RegExp) {
   expect(err, "expected the database to refuse").not.toBeNull();
   expect(`${err!.message} ${err!.cause?.message ?? ""}`).toMatch(re);
 }
+
+const round4 = (x: number) => Math.round(x * 10_000) / 10_000;
 
 const P = (item: string, layer: "emit" | "suggest", source: string, extra: Partial<LoggedProposal> = {}): LoggedProposal => ({
   item, kind: item.startsWith("#") ? "hashtag" : "handle", layer, source, reason: `${source} reason`, ...extra,
@@ -152,7 +154,7 @@ describe("istDate", () => {
     expect(await propose(d2, { orgId: "00000000-0000-0000-0000-000000000000" })).toBe("failed");
   });
 
-  it("D11: a log write waits at most 500ms on a row lock, and the caller's own lock timeout comes back afterwards", async () => {
+  it("D9: a log write waits about 500ms on a row lock, then gives up; the caller's own lock timeout comes back afterwards", async () => {
     const d = await s.draft("ताला");
     await propose(d);
     const other = await h.pool.connect();
@@ -166,8 +168,12 @@ describe("istDate", () => {
         const lt = (await tx.execute(sql`SELECT current_setting('lock_timeout') AS lt`)).rows[0] as { lt: string };
         return [st, lt.lt] as const;
       });
+      const waited = Date.now() - started;
       expect(status).toBe("failed");
-      expect(Date.now() - started).toBeLessThan(3000);
+      // LOG_LOCK_TIMEOUT (500ms), not the caller's 7s and not at once
+      expect(LOG_LOCK_TIMEOUT).toBe("500ms");
+      expect(waited).toBeGreaterThanOrEqual(300);
+      expect(waited).toBeLessThan(1500);
       expect(after).toBe("7s");
     } finally {
       await other.query("ROLLBACK");
@@ -365,6 +371,55 @@ describe("istDate", () => {
     expect(report.coverage.breakingDrafts - report.coverage.logged).toBe(3);
     expect((await reporterStatusReport(h.db, s.org.id, { since, limit: 1 })).rows).toHaveLength(3);
   });
+
+  it("the CHECK constraints refuse a half outcome, an unknown decision, a non-array proposals or voided, a negative rework", async () => {
+    const d = await s.draft("जांच");
+    const base = {
+      orgId: s.org.id, draftId: d.id, storyId: d.storyId, reporterStatus: "matched", logicVersion: LOGIC_VERSION, composeVersion: "t", draftText: "x",
+      proposals: [] as LoggedProposal[],
+    };
+    const decidedRow = { decision: "copy_posted" as const, decidedAt: new Date(), finalText: "x #T", finalHashtags: ["#T"], finalHandles: [], reworkRatio: 0 };
+    const insert = (values: Record<string, unknown>) => h.db.insert(postDecisions).values({ ...base, ...values } as typeof postDecisions.$inferInsert);
+    // post_decisions_outcome_whole: decision, decided_at and final_text are set together or not at all
+    await refused(insert({ decision: "copy_posted", finalText: "x" }), /post_decisions_outcome_whole/);
+    await refused(insert({ decidedAt: new Date(), finalText: "x" }), /post_decisions_outcome_whole/);
+    await refused(insert({ decision: "rejected", decidedAt: new Date() }), /post_decisions_outcome_whole/);
+    await refused(insert({ finalText: "x" }), /post_decisions_outcome_whole/);
+    // post_decisions_decision_known
+    await refused(insert({ ...decidedRow, decision: "posted_somewhere" }), /post_decisions_decision_known/);
+    // post_decisions_proposals_array: proposals and voided are JSON arrays
+    await refused(h.db.execute(sql`INSERT INTO post_decisions (org_id, draft_id, story_id, reporter_status, logic_version, compose_version, draft_text, proposals)
+      VALUES (${s.org.id}, ${d.id}, ${d.storyId}, 'matched', ${LOGIC_VERSION}, 't', 'x', '{"item":"#T"}'::jsonb)`), /post_decisions_proposals_array/);
+    await refused(h.db.execute(sql`INSERT INTO post_decisions (org_id, draft_id, story_id, reporter_status, logic_version, compose_version, draft_text, proposals, voided)
+      VALUES (${s.org.id}, ${d.id}, ${d.storyId}, 'matched', ${LOGIC_VERSION}, 't', 'x', '[]'::jsonb, '{}'::jsonb)`), /post_decisions_proposals_array/);
+    await refused(h.db.execute(sql`INSERT INTO post_decisions (org_id, draft_id, story_id, reporter_status, logic_version, compose_version, draft_text, proposals)
+      VALUES (${s.org.id}, ${d.id}, ${d.storyId}, 'matched', ${LOGIC_VERSION}, 't', 'x', 'null'::jsonb)`), /post_decisions_proposals_array/);
+    // post_decisions_rework_range
+    await refused(insert({ ...decidedRow, reworkRatio: -0.01 }), /post_decisions_rework_range/);
+    expect(await h.db.select().from(postDecisions).where(eq(postDecisions.draftId, d.id))).toEqual([]);
+
+    // The legitimate writes pass. An undecided proposal row:
+    await insert({});
+    // ...decided (rework 0: the words unchanged), voided by the app, decided again (rework 1: every word gone)
+    expect(await recordOutcome(h.db, { orgId: s.org.id, draftId: d.id, decision: "copy_posted", finalText: "x #T", decidedBy: s.priya.id })).toBe("written");
+    expect(await row(d.id)).toMatchObject({ decision: "copy_posted", reworkRatio: 0 });
+    expect(await voidOutcome(h.db, { orgId: s.org.id, draftId: d.id, voidedBy: s.priya.id })).toBe("written");
+    const voided = await row(d.id);
+    expect(voided).toMatchObject({ decision: null, decidedAt: null, finalText: null, reworkRatio: null });
+    expect(voided.voided).toHaveLength(1);
+    expect(await recordOutcome(h.db, { orgId: s.org.id, draftId: d.id, decision: "rejected", finalText: "#T", decidedBy: s.amit.id, rejectReason: "other" })).toBe("written");
+    expect(await row(d.id)).toMatchObject({ decision: "rejected", reworkRatio: 1 });
+    expect((await row(d.id)).voided).toHaveLength(1);
+    // Each decision the log knows, a rework over 1 (more words than the draft had), and a row inserted already voided
+    for (const decision of ["copy_posted", "mark_posted", "approved", "rejected"] as const) {
+      const dd = await s.draft(decision);
+      await insert({ draftId: dd.id, storyId: dd.storyId, ...decidedRow, decision, reworkRatio: 1.5 });
+    }
+    const dv = await s.draft("voided");
+    await insert({ draftId: dv.id, storyId: dv.storyId, voided: [{ outcome: { decision: "rejected" }, proposal: { proposals: [] } }] });
+    expect((await row(dv.id)).voided).toHaveLength(1);
+    expect(at("error")).toEqual([]);
+  });
 });
 
 (TEST_URL ? describe : describe.skip)("nightly reporter features (brief §7.1)", () => {
@@ -461,5 +516,74 @@ describe("istDate", () => {
     const [a, b] = await Promise.all([snapshotReporterFeatures(h.pool, s.org.id, day), snapshotReporterFeatures(h.pool, s.org.id, day)]);
     expect(a.written + b.written).toBe(a.reporters);
     expect(a.reporters).toBe(b.reporters);
+  });
+
+  it("counts a Devanagari tag stored in NFC and in NFD as one item (normalize NFC, then lower case)", async () => {
+    const yesterday = new Date("2026-11-14T10:00:00Z");
+    // क़ (U+0958) precomposed and क + nukta; ऩ (U+0929) composed and न + nukta
+    const qanoon = "#क़ानून";
+    const qanoonNfd = qanoon.normalize("NFD");
+    const naya = "#ऩया";
+    const nayaNfd = naya.normalize("NFD");
+    expect(qanoonNfd).not.toBe(qanoon);
+    expect(nayaNfd).not.toBe(naya);
+    await decided("unicode", yesterday, [qanoon, naya]);
+    await decided("unicode", yesterday, [qanoonNfd, nayaNfd, "#UPPER"]);
+    await decided("unicode", yesterday, ["#upper"]);
+    await snapshotReporterFeatures(h.pool, s.org.id, new Date(NOW.getTime() + 2 * 86_400_000 + 86_400_000));
+    const [u] = await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "unicode"), eq(reporterFeatures.snapshotDate, "2026-11-16")));
+    expect(u!.n).toBe(3);
+    const keys = Object.keys(u!.features.items).sort();
+    expect(keys).toEqual([itemKey(qanoon), itemKey(naya), "#upper"].sort());
+    // The key is the one itemKey() gives the post text, whichever form was stored
+    expect(itemKey(qanoonNfd)).toBe(itemKey(qanoon));
+    expect(u!.features.items[itemKey(qanoon)]).toMatchObject({ count: 2, rate: round4(2 / 3) });
+    expect(u!.features.items[itemKey(naya)]).toMatchObject({ count: 2 });
+    expect(u!.features.items["#upper"]).toMatchObject({ count: 2 });
+  });
+
+  it("is one consistent snapshot: a decision committed between its reads is in none of its numbers", async () => {
+    // Two reporters with known rows, decided before the snapshot's day (2026-11-18 IST) began
+    const before = new Date("2026-11-17T08:00:00Z");
+    for (let i = 0; i < 3; i++) await decided("iso_a", before, ["#IsoOnly", "@IsoHandle"], "copy_posted", [{ source: "iso_rule", outcome: "accepted" }]);
+    await decided("iso_a", before, ["#IsoOther"], "copy_posted", [{ source: "iso_rule", outcome: "ignored" }]);
+    await decided("iso_b", before, ["#IsoOther"]);
+    const day = new Date("2026-11-18T04:30:00Z");
+
+    let committed = 0;
+    const snap = await snapshotReporterFeatures(h.pool, s.org.id, day, 20, {
+      betweenReads: async () => {
+        // On another connection, committed: more of iso_a's items and outcomes, and a reporter who was not there
+        for (let i = 0; i < 4; i++) await decided("iso_a", before, ["#IsoOnly", "@IsoHandle", "#IsoLate"], "copy_posted", [{ source: "iso_rule", outcome: "ignored" }]);
+        await decided("iso_new", before, ["#IsoOnly", "#IsoOther"], "copy_posted", [{ source: "iso_rule", outcome: "accepted" }]);
+        committed = (await h.db.select().from(postDecisions).where(eq(postDecisions.reporterHandle, "iso_a"))).length;
+      },
+    });
+    // The rows were really there, committed, while the snapshot read
+    expect(committed).toBe(8);
+
+    const rows = await h.db.select().from(reporterFeatures).where(eq(reporterFeatures.snapshotDate, "2026-11-18"));
+    expect(snap.written).toBe(rows.length);
+    expect(rows.map((r) => r.reporter)).not.toContain("iso_new");
+    const total = rows.reduce((a, r) => a + r.n, 0);
+    const a = rows.find((r) => r.reporter === "iso_a")!;
+    expect(a.n).toBe(4);
+    const f = a.features;
+    // iso_a's own counts are those of its 4 rows; nothing from the 5 committed between the reads
+    expect(f.items["#isoonly"]).toEqual({ kind: "hashtag", count: 3, rate: 0.75, base: round4(3 / total), smoothed: round4((3 + 20 * (3 / total)) / (4 + 20)) });
+    expect(f.items["@isohandle"]).toMatchObject({ count: 3 });
+    expect(f.items["#isoother"]).toMatchObject({ count: 1, base: round4(2 / total) });
+    expect(f.items["#isolate"]).toBeUndefined();
+    expect(f.sources.iso_rule).toEqual({ proposed: 4, taken: 3, rate: 0.75, base: 0.75, smoothed: 0.75 });
+    // Every reporter's numbers agree with the reporters read: no item counted more often than its reporter posted
+    for (const r of rows) for (const it of Object.values(r.features.items)) expect(it.count).toBeLessThanOrEqual(r.n);
+
+    // The next day's snapshot sees them all
+    await snapshotReporterFeatures(h.pool, s.org.id, new Date(day.getTime() + 86_400_000));
+    const [next] = await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "iso_a"), eq(reporterFeatures.snapshotDate, "2026-11-19")));
+    expect(next!.n).toBe(8);
+    expect(next!.features.items["#isolate"]).toMatchObject({ count: 4 });
+    expect(next!.features.sources.iso_rule).toMatchObject({ proposed: 8, taken: 3 });
+    expect((await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "iso_new"), eq(reporterFeatures.snapshotDate, "2026-11-19")))).length).toBe(1);
   });
 });

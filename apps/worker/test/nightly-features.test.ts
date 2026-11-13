@@ -97,3 +97,28 @@ describe("reporter prior settings", () => {
     expect(await getKv(h.db, FEATURES_ERROR_KV)).toMatchObject({ failures: 3, message: expect.any(String) });
   });
 });
+
+describe("NightlyFeatures when the day marker cannot be read", () => {
+  it("waits the hour after a failed kv read too: not retried (nor escalated) every minute", async () => {
+    const { log, lines } = capture();
+    // A database that fails every call: the kv read, and the kv write that records the failure
+    let calls = 0;
+    const dead = new Proxy({}, { get: () => () => { calls++; throw new Error("database down"); } });
+    const job = new NightlyFeatures(dead as never, dead as never, "org", log);
+    const t = new Date("2026-11-20T00:30:00Z").getTime();
+    const failuresLogged = () => lines.filter((l) => /could not read when the reporter features last ran/.test(l.msg));
+    expect(await job.run(new Date(t))).toBeNull();
+    const afterFirst = calls;
+    expect(afterFirst).toBeGreaterThan(0);
+    // One tick a minute for the next 59 minutes: nothing tried, nothing logged
+    for (let i = 1; i < 60; i++) expect(await job.run(new Date(t + i * 60_000))).toBeNull();
+    expect(calls).toBe(afterFirst);
+    expect(failuresLogged()).toHaveLength(1);
+    expect(failuresLogged()[0]).toMatchObject({ level: 40, failures: 1 });
+    // An hour on it is tried again: the second failure, still a warning
+    expect(await job.run(new Date(t + 3600_000))).toBeNull();
+    expect(calls).toBeGreaterThan(afterFirst);
+    expect(failuresLogged()).toHaveLength(2);
+    expect(failuresLogged()[1]).toMatchObject({ level: 40, failures: 2 });
+  });
+});

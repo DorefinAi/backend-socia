@@ -12,12 +12,12 @@
         "पूर्व",
         "मोहन यादव", "योगी", "रेखा गुप्ता", "भगवंत मान", "फडणवीस", "नीतीश", "गहलोत",
         "डिप्टी", "Deputy", "उप",
-        "Former", "Ex",
+        "Former",
         "Yogi", "Rekha Gupta", "Mohan Yadav", "Gehlot", "Nitish", "Mann", "Bhagwant Mann", "Fadnavis"
       ],
       "exclude_same_sentence_lists": ["other_states"],
-      "_exclude_next_to_alias_note": "Short codes that are also other words: they make it another state's CM ONLY right beside the alias ('MP CM', 'MP के मुख्यमंत्री', 'UP के CM', 'MP-CM', 'एमपी के सीएम'), never elsewhere in the sentence: 'सांसद/MP ने CM से मुलाकात की' is still the Rajasthan CM. A hyphen or slash may join them. Matched with case as written.",
-      "exclude_next_to_alias": ["MP", "UP", "एमपी", "यूपी"]
+      "_exclude_next_to_alias_note": "Short codes that are also other words: they make it another state's CM ONLY right beside the alias ('MP CM', 'MP के मुख्यमंत्री', 'UP के CM', 'MP-CM', 'एमपी के सीएम'), never elsewhere in the sentence: 'सांसद/MP ने CM से मुलाकात की' is still the Rajasthan CM. A hyphen or slash may join them. Matched with case as written. 'Ex' / 'EX' / 'ex' (a former CM) is here too, not in exclude_same_sentence: only 'Ex CM', 'Ex-CM', 'EX CM' are a former CM, while 'CM ने ex-servicemen से मुलाकात की' is still the Rajasthan CM, as for the Chief Secretary. 'Former' / 'पूर्व' stay sentence-wide.",
+      "exclude_next_to_alias": ["MP", "UP", "एमपी", "यूपी", "Ex", "EX", "ex"]
     },
     "rajasthan_cs": {
       "note": "The Chief Secretary named without a name ('मुख्य सचिव ने ली बैठक'): OFFERED only, never tagged (approved 2026-11-13). 'CS' is a whole word, so never ACS, CSR or CSIR; 'अतिरिक्त' / 'Additional' is the ACS spelled out ('अतिरिक्त मुख्य सचिव'), 'ICSI' / 'कंपनी सचिव' / 'Company Secretary' is the CS exam. The other states come from the shared office_exclusion_lists.other_states, as for the CM. MP / UP and Ex are next-to-alias only ('MP के मुख्य सचिव', 'Ex CS', 'Ex-Chief Secretary'), so 'set up', 'follow up', 'ex-servicemen' and 'सांसद/MP ने मुख्य सचिव से मुलाकात की' still name the Rajasthan CS. @svoruganti1466 is still HELD for desk check in this file's entries, which is why this is a suggestion at most.",

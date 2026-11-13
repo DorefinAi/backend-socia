@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DbHandle } from "../src/client";
 import {
-  LOGIC_VERSION, editDistance, istDate, itemKey, itemOutcomes, minusDays, postItems, recordOutcome, recordProposal, reporterStatusReport, reworkBase, reworkRatio,
+  LOG_LOCK_TIMEOUT, LOGIC_VERSION, editDistance, istDate, itemKey, itemOutcomes, minusDays, postItems, recordOutcome, recordProposal, reporterStatusReport, reworkBase, reworkRatio,
   setDecisionLogger, snapshotReporterFeatures, voidOutcome, type ProposalRecord,
 } from "../src/decisions";
 import { claimDraft, copyPosted, rejectDraft, restoreDraft, undoCopyPosted } from "../src/desk";
@@ -154,7 +154,7 @@ describe("istDate", () => {
     expect(await propose(d2, { orgId: "00000000-0000-0000-0000-000000000000" })).toBe("failed");
   });
 
-  it("D11: a log write waits at most 500ms on a row lock, and the caller's own lock timeout comes back afterwards", async () => {
+  it("D9: a log write waits about 500ms on a row lock, then gives up; the caller's own lock timeout comes back afterwards", async () => {
     const d = await s.draft("ताला");
     await propose(d);
     const other = await h.pool.connect();
@@ -168,8 +168,12 @@ describe("istDate", () => {
         const lt = (await tx.execute(sql`SELECT current_setting('lock_timeout') AS lt`)).rows[0] as { lt: string };
         return [st, lt.lt] as const;
       });
+      const waited = Date.now() - started;
       expect(status).toBe("failed");
-      expect(Date.now() - started).toBeLessThan(3000);
+      // LOG_LOCK_TIMEOUT (500ms), not the caller's 7s and not at once
+      expect(LOG_LOCK_TIMEOUT).toBe("500ms");
+      expect(waited).toBeGreaterThanOrEqual(300);
+      expect(waited).toBeLessThan(1500);
       expect(after).toBe("7s");
     } finally {
       await other.query("ROLLBACK");

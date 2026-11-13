@@ -6,7 +6,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { TypeBoxValidatorCompiler, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import type { PaceStore } from "@socia/core";
-import { DeskError, readIngestStatus, readWorkerHeartbeat, workerLiveness, type Db } from "@socia/db";
+import { DeskError, readIngestStatus, readWorkerHeartbeat, setDecisionLogger, workerLiveness, type Db } from "@socia/db";
 import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyServerOptions } from "fastify";
@@ -22,6 +22,7 @@ import { ownerRoutes, type OwnerLimits } from "./routes/owner";
 import { statusRoutes } from "./routes/status";
 import { templateRoutes } from "./routes/templates";
 import { trendRoutes } from "./routes/trends";
+import { setSuggestionLogger } from "./suggestions";
 
 export interface AppDeps {
   db: Db;
@@ -74,6 +75,9 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   const tp = deps.config.trustProxy;
   const trustProxy = typeof tp === "number" ? (_address: string, hop: number) => hop < tp : tp;
   const app = Fastify({ logger, trustProxy }).withTypeProvider<TypeBoxTypeProvider>();
+  // Decision-log writes that fail (dropped, never failing the desk action) and unusable stored suggestions are logged here
+  setDecisionLogger(app.log);
+  setSuggestionLogger(app.log);
   // Strict bodies, querystrings and params (headers always carry extra keys)
   app.setValidatorCompiler((route) => TypeBoxValidatorCompiler(route.httpPart === "headers" ? route : { ...route, schema: strictSchema(route.schema) }));
 

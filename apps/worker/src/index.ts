@@ -9,7 +9,8 @@
 // does not start, and Samvadia ingest is refused at config load.
 
 import {
-  OpsLog, SamvadiaReader, WORKER_HEARTBEAT_MS, WORKER_STAGE_SYSTEMS, createDb, opsLogSettings, readApiPhase, recordDataFileStatus, recordIngestPoll, recordWorkerHeartbeat, workerSystemOf,
+  OpsLog, SamvadiaReader, WORKER_HEARTBEAT_MS, WORKER_STAGE_SYSTEMS, createDb, opsLogSettings, readApiPhase, recordDataFileStatus, recordIngestPoll, recordWorkerHeartbeat,
+  setDecisionLogger, workerSystemOf,
 } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
@@ -23,7 +24,7 @@ import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
 import { phaseOneData } from "./data-files";
 import { convertNext } from "./stages/convert";
-import { housekeeping, syncHandles } from "./stages/crons";
+import { NightlyFeatures, housekeeping, syncHandles } from "./stages/crons";
 import { Ingest } from "./stages/ingest";
 import { Publisher } from "./stages/publish";
 import { renderNext } from "./stages/render";
@@ -76,7 +77,9 @@ async function main(): Promise<void> {
   const once = onceIndex >= 0 ? args[onceIndex + 1] : null;
   const cfg = loadConfig(once ? [once] : args.filter((a) => !a.startsWith("--")));
   // A dropped idle connection (Postgres restarted) is logged and replaced, not fatal
-  const { db, close } = createDb(cfg.databaseUrl, 5, { log });
+  const { db, pool, close } = createDb(cfg.databaseUrl, 5, { log });
+  // A decision-log write that fails is dropped and never holds up a draft; it is logged here
+  setDecisionLogger(log);
 
   if (once === "handles") {
     await syncHandles(db, cfg.orgId, cfg.wikidataUserAgent, stageLog("crons"));
@@ -177,7 +180,7 @@ async function main(): Promise<void> {
     const log = stageLog("ingest");
     const dictionaries = new Dictionaries(db, cfg.orgId);
     const data = phaseOneData(log, (status) => recordDataFileStatus(db, status));
-    const composeOpts = { cardOnDemand: cfg.phase === 1, data };
+    const composeOpts = { cardOnDemand: cfg.phase === 1, data, exploreRate: cfg.reporterPrior.exploreRate };
     loops.start({ name: "convert", idleMs: 1000, log, tick: () => convertNext(db, storage!, log, data) });
     loops.start({ name: "compose", idleMs: 1000, log, tick: () => composeNext(db, dictionaries, log, composeOpts) });
   }
@@ -222,6 +225,9 @@ async function main(): Promise<void> {
   if (cfg.roles.includes("maintenance")) {
     const log = stageLog("crons");
     loops.start({ name: "maintenance", idleMs: 30_000, log, tick: () => housekeeping(db, log) });
+    // Its own loop: a slow snapshot never holds up the housekeeping above
+    const features = new NightlyFeatures(db, pool, cfg.orgId, log, cfg.reporterPrior.smoothingM);
+    loops.start({ name: "reporter-features", idleMs: 60_000, log, tick: () => features.tick() });
   }
 
   let stopping = false;

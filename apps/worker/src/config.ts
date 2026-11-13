@@ -45,6 +45,30 @@ export interface WorkerConfig {
   xRate: { tokens: number; windowSeconds: number };
   redisUrl: string | null;
   wikidataUserAgent: string;
+  /** The reporter prior (reporter-prior brief §7). Nothing reads `cap` yet: it is a setting only. */
+  reporterPrior: ReporterPriorSettings;
+}
+
+export interface ReporterPriorSettings {
+  /** REPORTER_PRIOR_CAP: the most of a post's handles the prior may ever supply (brief §7.2), 0..1; default 0.3 */
+  cap: number;
+  /** REPORTER_PRIOR_EXPLORE: the share of posts whose proposals carry explore: true (brief §7.2.3), 0..1; default 0.1 */
+  exploreRate: number;
+  /** The nightly features' smoothing weight (brief §7.1) */
+  smoothingM: number;
+}
+
+/** A share between 0 and 1 from the environment, or the fallback; anything else is a startup error */
+function share(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (v === undefined || v.trim() === "") return fallback;
+  const x = Number(v);
+  if (!Number.isFinite(x) || x < 0 || x > 1) throw new Error(`${name} must be a number from 0 to 1 (got "${v}")`);
+  return x;
+}
+
+export function reporterPriorSettings(): ReporterPriorSettings {
+  return { cap: share("REPORTER_PRIOR_CAP", 0.3), exploreRate: share("REPORTER_PRIOR_EXPLORE", 0.1), smoothingM: 20 };
 }
 
 export function loadConfig(argvRoles?: string[]): WorkerConfig {
@@ -68,6 +92,7 @@ export function loadConfig(argvRoles?: string[]): WorkerConfig {
     xRate: { tokens: num("X_RATE_TOKENS", 100), windowSeconds: num("X_RATE_WINDOW_SECONDS", 900) },
     redisUrl: process.env.REDIS_URL ?? null,
     wikidataUserAgent: process.env.WIKIDATA_USER_AGENT ?? "Socia/0.1 (handle directory seed; contact: tech@dorefin.ai)",
+    reporterPrior: reporterPriorSettings(),
   };
 }
 

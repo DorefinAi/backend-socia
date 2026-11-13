@@ -7,6 +7,7 @@ import {
 } from "@socia/db";
 import { asFileTags } from "@socia/core";
 import type { Storage } from "@socia/providers";
+import { hashtagSuggestionsView, mentionSuggestionsView } from "./suggestions";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 type Draft = typeof postDrafts.$inferSelect;
@@ -104,10 +105,14 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
     bodyText: draft.bodyText,
     cardHeadline: draft.cardHeadline,
     hashtags: draft.hashtags,
-    /** Topic tags the org's rules matched, for one-click accept; never applied on their own */
-    hashtagSuggestions: draft.hashtagSuggestions,
+    /**
+     * Tags offered for one-click accept; never applied on their own. A plain string, or { tag, source, reason,
+     * score?, n? } when the rule behind it is known (suggestions.ts)
+     */
+    hashtagSuggestions: hashtagSuggestionsView(draft.hashtagSuggestions, draft.handlePick, draft.id),
     mentions: draft.mentions,
-    mentionSuggestions: draft.mentionSuggestions,
+    /** Each may carry source (the rule id), reason (the line to show), and for the reporter prior score and n */
+    mentionSuggestions: mentionSuggestionsView(draft.mentionSuggestions, draft.id),
     postText: text,
     check: { length: check.length, limit: X_LIMIT, problems: check.problems },
     card: {

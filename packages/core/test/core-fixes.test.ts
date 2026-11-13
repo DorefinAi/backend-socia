@@ -3,7 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BRAND_RAJASTHAN, PlaceBook, composeBreaking, isHeadlineLabel, parseBeatHandles, parseBreaking, parseHashtagNormalise, slotFromTags, type BreakingDraft, parseDistricts, parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, reporterPrior } from "../src";
+import { BRAND_NATIONAL, BRAND_RAJASTHAN, PlaceBook, composePostTags, deskPlacePrefix, inferHeadlineDistrict, composeBreaking, isHeadlineLabel, parseBeatHandles, parseBreaking, parseHashtagNormalise, slotFromTags, type BreakingDraft, parseDistricts, parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, reporterPrior } from "../src";
 import { WORD_CHAR, wholeWord } from "../src/breaking/syntax";
 
 const cfg = (f: string) => JSON.parse(readFileSync(new URL(`../../../apps/worker/config/${f}`, import.meta.url), "utf8"));
@@ -16,7 +16,6 @@ const parties = parsePartyHandles(cfg("party-handles.json"));
 const directory = new Set([...(rules.all ?? []), ...(subjects.handles ?? []), ...(parties.handles ?? []), ...(reporters.handles ?? [])].map((h) => h.toLowerCase()));
 const beats = parseBeatHandles(cfg("beat-handles.json"), directory);
 const normaliser = parseHashtagNormalise(cfg("hashtag-normalise.json"), undefined, book.districts.map((d) => d.tag));
-void places;
 
 /** A breaking file as the desk saves it: the name on line 1, then the headline and the points */
 const fileText = (name: string, lines: string[]) => `${name.replace(/\.txt$/, "")}\r\n\r\n${lines.join("\r\n")}\r\n`;
@@ -136,5 +135,58 @@ describe("O1: a label before the colon is not a place: the desk rule still puts 
     const lines = ["पंचायत चुनाव: सुबह 10 बजे तक 20 प्रतिशत मतदान", "मतदान केंद्रों पर लंबी कतारें"];
     expect(draft(RITURAJ, lines).hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
     expect(draft(RITURAJ, lines).hashtags).toEqual(draft(NARESH, lines).hashtags);
+  });
+});
+
+// ─── O3: the reference composer follows the same desk rule ───────────────────
+
+describe("O3: composePostTags applies rituraj's rule as composeBreaking does", () => {
+  const ctx = {
+    places, normaliser, reporterPolicy: "Jaipur",
+    inferDistrict: (h: string) => inferHeadlineDistrict(book, h)?.tag ?? null,
+    deskPlacePrefix: (h: string) => { const p = deskPlacePrefix(book, h); return !!p && !isHeadlineLabel(p); },
+  };
+  const { reporterPolicy: _drop, ...without } = ctx;
+
+  it("a district the gazetteer infers no longer blocks it: #Jaipur leads, the inferred district is offered", () => {
+    const t = composePostTags("डूंगरपुर में ACB कार्रवाई\n\nप्रभारी को रिश्वत लेते दबोचा\n\n#RajasthanWithFirstIndia", ctx);
+    expect([t.lead, t.policy]).toEqual([["Jaipur"], "emit"]);
+    expect(t.suggest).toContain("Dungarpur");
+  });
+  it("it never changes the brand: a national story keeps #FirstIndiaNews with or without the rule", () => {
+    const text = "फ्रांस में सरकार के खिलाफ प्रदर्शन\n\nपेरिस में हजारों लोग सड़कों पर उतरे";
+    const withRule = composePostTags(text, ctx);
+    expect(withRule.lead).toEqual(["Jaipur"]);
+    expect(withRule.trail).toEqual([BRAND_NATIONAL]);
+    expect(withRule.trail).toEqual(composePostTags(text, without).trail);
+  });
+  it("what the desk wrote blocks it: a place tag (#JodhpurNews), its own tag run (#BJP:), a place before the colon", () => {
+    for (const text of [
+      "ग्राम पंचायत में पुनर्मतदान\n\nमतपत्र चोरी के चलते फैसला #JodhpurNews\n\n#RajasthanWithFirstIndia",
+      "#BJP: प्रदेश कार्यकारिणी की बैठक\n\nनेताओं ने भाग लिया\n\n#RajasthanWithFirstIndia",
+      "रामपुरा खुर्द: ग्रामीणों का प्रदर्शन\n\nपानी की समस्या\n\n#RajasthanWithFirstIndia",
+    ]) {
+      const t = composePostTags(text, ctx);
+      expect(t.policy, text).toBeNull();
+      expect(t.lead, text).not.toContain("Jaipur");
+    }
+    // A label before the colon does not
+    expect(composePostTags("पंचायत चुनाव: सुबह 10 बजे तक 20 प्रतिशत मतदान\n\nलंबी कतारें\n\n#RajasthanWithFirstIndia", ctx).lead).toEqual(["Jaipur"]);
+  });
+  it("parity: on the same copy the reference composer and composeBreaking fire (or not) together", () => {
+    const cases: string[][] = [
+      ["सरकार ने जारी किए नए दिशा-निर्देश", "सभी विभागों को भेजे गए आदेश"],
+      ["डूंगरपुर में ACB कार्रवाई", "प्रभारी को रिश्वत लेते दबोचा"],
+      ["ग्राम पंचायत में पुनर्मतदान", "मतपत्र चोरी के चलते फैसला #JodhpurNews"],
+      ["केजरीवाल ने की प्रेस कॉन्फ्रेंस #DelhiNews", "भाजपा पर साधा निशाना"],
+      ["रामपुरा खुर्द: ग्रामीणों का प्रदर्शन", "पानी की समस्या"],
+      ["पंचायत चुनाव: सुबह 10 बजे तक 20 प्रतिशत मतदान", "लंबी कतारें"],
+      ["#BJP: प्रदेश कार्यकारिणी की बैठक", "नेताओं ने भाग लिया"],
+    ];
+    for (const [h, pt] of cases) {
+      const live = draft(RITURAJ, [h!, pt!]).districtSource === "reporter_policy";
+      const ref = composePostTags(`${h}\n\n${pt}\n\n#RajasthanWithFirstIndia`, ctx).policy === "emit";
+      expect(ref, h).toBe(live);
+    }
   });
 });

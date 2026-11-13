@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { hashPassword } from "../src/auth";
 import type { ApiConfig } from "../src/config";
-import { hashtagSuggestionsView, mentionSuggestionsView } from "../src/suggestions";
+import { hashtagSuggestionsView, mentionSuggestionsView, setSuggestionLogger } from "../src/suggestions";
 
 const URL_ = process.env.TEST_DATABASE_URL;
 
@@ -37,6 +37,29 @@ describe("suggestion views (no database)", () => {
     expect(mentionSuggestionsView(MENTIONS)).toEqual(MENTIONS);
   });
 
+  it("reports unusable or malformed items once per draft, and never throws", () => {
+    const warned: { obj: Record<string, unknown>; msg: string }[] = [];
+    setSuggestionLogger({ warn: (obj, msg) => void warned.push({ obj, msg }) });
+    try {
+      const bad = [null, { handleId: "x", handle: "@X", exact: true, score: "high" }];
+      expect(mentionSuggestionsView(bad, "draft-1")).toEqual([{ handleId: "x", handle: "@X", exact: true }]);
+      mentionSuggestionsView(bad, "draft-1");
+      expect(warned).toHaveLength(1);
+      expect(warned[0]!.obj).toMatchObject({ draftId: "draft-1", dropped: 1, malformedFields: expect.arrayContaining(["item", "score"]) });
+      // Not a list at all
+      expect(mentionSuggestionsView({ not: "a list" }, "draft-2")).toEqual([]);
+      expect(warned).toHaveLength(2);
+      // A stored value that blows up while being read: the arrays go out as stored
+      const hostile = [new Proxy({}, { get: () => { throw new Error("boom"); } })];
+      expect(mentionSuggestionsView(hostile, "draft-3")).toBe(hostile);
+      const pick = { get tagSuggestions(): never { throw new Error("boom"); } };
+      expect(hashtagSuggestionsView(["#A"], pick as never, "draft-4")).toEqual(["#A"]);
+      expect(warned.map((w) => w.obj.draftId)).toEqual(["draft-1", "draft-2", "draft-3", "draft-4"]);
+    } finally {
+      setSuggestionLogger({ warn: () => {} });
+    }
+  });
+
   it("passes core's detail through and drops a malformed score or n", () => {
     const m = { handleId: "suggest:prior:X", entity: "prior", handle: "@X", exact: false, source: "reporter_prior", reason: "r", detail: "rituraj files @X 40% (30 posts)", score: "high", n: 30 };
     expect(mentionSuggestionsView([m])).toEqual([{ handleId: "suggest:prior:X", entity: "prior", handle: "@X", exact: false, source: "reporter_prior", reason: "r", detail: "rituraj files @X 40% (30 posts)", n: 30 }]);
@@ -44,12 +67,14 @@ describe("suggestion views (no database)", () => {
 
   it("gives an older stored suggestion its rule id from the reason code in its handleId, and adds nothing else", () => {
     const old = { handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true };
-    expect(mentionSuggestionsView([old])).toEqual([{ ...old, source: "district.police" }]);
+    expect(mentionSuggestionsView([old])).toEqual([{ ...old, source: "district.police", sourceDerived: true }]);
     // Not a rule's suggestion (Samvadia composer, a desk handle id): left exactly as stored
     const other = { handleId: "h1", entity: "JDA", handle: "@JDAJaipur", exact: true };
     expect(mentionSuggestionsView([other])).toEqual([other]);
     expect(mentionSuggestionsView(null)).toEqual([]);
     expect(mentionSuggestionsView([null, 5, { handle: 1 }])).toEqual([]);
+    // No entity stored: none invented
+    expect(mentionSuggestionsView([{ handleId: "h2", handle: "@A", exact: false }])).toEqual([{ handleId: "h2", handle: "@A", exact: false }]);
   });
 
   it("makes a hashtag suggestion an object when its rule is known, a plain string otherwise, in stored order", () => {
@@ -128,6 +153,6 @@ describe("suggestion views (no database)", () => {
   it("an older draft keeps its shape, plus the rule id its reason code implies", async () => {
     const d = await get(oldDraftId);
     expect(d.hashtagSuggestions).toEqual(["#Kota"]);
-    expect(d.mentionSuggestions).toEqual([{ handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true, source: "district.police" }]);
+    expect(d.mentionSuggestions).toEqual([{ handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true, source: "district.police", sourceDerived: true }]);
   });
 });

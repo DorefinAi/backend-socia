@@ -109,10 +109,10 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
      * Tags offered for one-click accept; never applied on their own. A plain string, or { tag, source, reason,
      * score?, n? } when the rule behind it is known (suggestions.ts)
      */
-    hashtagSuggestions: hashtagSuggestionsView(draft.hashtagSuggestions, draft.handlePick),
+    hashtagSuggestions: hashtagSuggestionsView(draft.hashtagSuggestions, draft.handlePick, draft.id),
     mentions: draft.mentions,
     /** Each may carry source (the rule id), reason (the line to show), and for the reporter prior score and n */
-    mentionSuggestions: mentionSuggestionsView(draft.mentionSuggestions),
+    mentionSuggestions: mentionSuggestionsView(draft.mentionSuggestions, draft.id),
     postText: text,
     check: { length: check.length, limit: X_LIMIT, problems: check.problems },
     card: {

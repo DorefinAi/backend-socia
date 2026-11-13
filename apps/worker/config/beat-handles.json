@@ -1,0 +1,16 @@
+{
+  "_note": "Desk-declared beats (reporter-prior brief 2026-11-13 §3.3), read by packages/core/src/breaking/prior.ts. A reporter whose `beats` in reporter-handles.json names one of these keys is OFFERED the beat's handles, never tagged, and ONLY when the beat's keywords (a pattern, matched as whole words) are in the copy: reporter identity alone never offers a beat. Every handle must already be in a directory file (subject-, party-, district- or reporter-handles.json), or the whole file is refused. No 'cm' or 'state-government' beat: CM mentions go through subject-handles.json `offices`, which carries the other-state and former-CM exclusions, and @RajGovOfficial comes from the measured prior only.",
+  "_todo": "Not added until the desk supplies the handles, never guessed: 'mining' (Nirmal Tiwari's second minister, 'Hari...'), 'rca-cricket' (an RCA handle for Dinesh Kasana).",
+  "education": {
+    "keywords": "शिक्षा|स्कूल|विद्यालय|विश्वविद्यालय|परीक्षा|RPSC|RSSB|छात्र|शिक्षक|बोर्ड",
+    "handles": ["@rajeduofficial"]
+  },
+  "tourism": {
+    "keywords": "पर्यटन|पर्यटक|टूरिज्म|Tourism",
+    "handles": ["@KumariDiya"]
+  },
+  "jda": {
+    "keywords": "JDA|जेडीए|विकास प्राधिकरण",
+    "handles": ["@jdajaipur"]
+  }
+}

@@ -13,3 +13,5 @@ export * from "./parties";
 export * from "./reporters";
 export * from "./post-tags";
 export * from "./proposals";
+export * from "./prior";
+export * from "./offices";

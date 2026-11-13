@@ -1,6 +1,20 @@
 {
   "version": 2,
   "_note": "The people and organisations a breaking story is about, and their X handles. Edited without a code change; the worker reads it again within a minute. Only entries with \"verified\": true are tagged, never kind \"party\". kind: person | department | party | company | institution | police. names_* / keywords_* are matched as whole words (Hindi and English) in the headline (first) or the points. District police and collectors stay in district-handles.json.",
+  "offices": {
+    "_note": "An office named WITHOUT its holder ('CM ने भी स्वयं दी आहुतियां'): its handles are OFFERED, never tagged (reporter-prior brief 2026-11-13 §6). Resolved through the office, not the person, so it survives a change of officeholder. In 2,476 published posts an unnamed CM mention occurred 66 times, the desk tagged the CM on 0, and 26 were another state's CM or a former one. An alias is a whole word ('CM' never inside CMO, CMHO, ACM; 'मुख्यमंत्री' never inside 'उपमुख्यमंत्री'). exclude_same_sentence: any of these in the same sentence makes it another office. 'डिप्टी' / 'Deputy' / 'उप' were added to the brief's list so 'डिप्टी सीएम दिया कुमारी' is not the CM. Handles must be entries of this file.",
+    "rajasthan_cm": {
+      "aliases_hi": ["मुख्यमंत्री", "सीएम"],
+      "aliases_en": ["CM"],
+      "handles": ["@BhajanlalBjp", "@RajCMO"],
+      "holder_since": "2023-12-15",
+      "exclude_same_sentence": [
+        "पूर्व", "दिल्ली", "मध्यप्रदेश", "मध्य प्रदेश", "MP", "यूपी", "उत्तर प्रदेश", "पंजाब", "गुजरात", "हरियाणा", "महाराष्ट्र", "बिहार",
+        "मोहन यादव", "योगी", "रेखा गुप्ता", "भगवंत मान", "फडणवीस", "नीतीश", "गहलोत",
+        "डिप्टी", "Deputy", "उप"
+      ]
+    }
+  },
   "entries": [
     {
       "handle": "@BhajanlalBjp",

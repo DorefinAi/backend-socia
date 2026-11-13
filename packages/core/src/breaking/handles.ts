@@ -529,6 +529,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     if (noted) return;
     noted = true;
     unmatchedReporter = rep.unmatchedToken;
+    if (rep.collision) warnings.push(`the file name's "${rep.collision}" names more than one reporter, so nobody was tagged; the full name in the file name decides`);
     if (rep.match && districtMismatch(rep.match, district)) {
       warnings.push(`@${rep.match.handle} usually files from ${rep.match.districts.join("/")}, not ${district}`);
     }

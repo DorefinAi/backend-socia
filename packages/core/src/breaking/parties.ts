@@ -82,7 +82,24 @@ export const EMPTY_PARTY_RULES: PartyRules = { rules: [], count: 0 };
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : []);
 
-/** Checks a parsed party-handles.json. Throws on a malformed root; skips and reports a bad entry. */
+/**
+ * Every scope the file may carry. Anything else rejects its entry (M1): an unknown scope used to fall through to the
+ * party's own rules, so a typo such as "MLA " or "mla_" on a member's entry would have put that member on the post.
+ */
+export const PARTY_SCOPES = ["state", "national", "wing", "youth", "media", "mla"] as const;
+export type PartyScope = (typeof PARTY_SCOPES)[number];
+const SCOPES: ReadonlySet<string> = new Set(PARTY_SCOPES);
+
+/** A keyword list that is present must be an array of strings; absent is fine (the other language may carry them) */
+const badKeywords = (v: unknown): boolean => v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== "string"));
+
+/**
+ * Checks a parsed party-handles.json. Throws on a malformed root; a bad or missing field rejects THAT entry only,
+ * reported through `problem` with the entry's index and handle, and the rest still load (decision O2, M1).
+ * Required: handle, party, scope (one of PARTY_SCOPES, matched trimmed and case-insensitively), verified, and at
+ * least one keyword. A scope "mla" entry goes to `mla` only, whatever its spelling and whether verified or not, and
+ * never into `rules`: nothing an MLA entry carries can reach the post.
+ */
 export function parsePartyHandles(json: unknown, problem: (message: string) => void = () => undefined): PartyRules {
   const root = json as Partial<PartyHandlesData> | null;
   if (!root || typeof root !== "object" || !Array.isArray(root.entries)) {
@@ -94,22 +111,32 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
   root.entries.forEach((raw, i) => {
     const e = raw as Partial<PartyHandleEntry> | null;
     const where = `entries[${i}]`;
-    if (!e || typeof e !== "object") return problem(`${where}: not an object`);
+    if (!e || typeof e !== "object") return problem(`${where}: not an object, entry rejected`);
     if (typeof e.handle !== "string" || !HANDLE.test(e.handle.trim())) {
-      return problem(`${where}: "${String(e.handle)}" is not an X handle`);
+      return problem(`${where}: "${String(e.handle)}" is not an X handle, entry rejected`);
     }
+    // Into the guard set before any other check: a rejected entry's handle is still never a desk keyword's to tag
     handles.add(e.handle.trim().replace(/^@/, "").toLowerCase());
-    if (typeof e.verified !== "boolean") return problem(`${where} (${e.handle}): "verified" must be true or false`);
-    const member = e.scope === "mla";
+    const who = `${where} (${e.handle.trim()})`;
+    if (typeof e.scope !== "string" || !e.scope.trim()) return problem(`${who}: "scope" is missing, entry rejected (one of ${PARTY_SCOPES.join(", ")})`);
+    const scope = e.scope.trim().toLowerCase();
+    if (!SCOPES.has(scope)) return problem(`${who}: unknown scope "${e.scope}", entry rejected (one of ${PARTY_SCOPES.join(", ")})`);
+    if (typeof e.party !== "string" || !e.party.trim()) return problem(`${who}: "party" is missing, entry rejected`);
+    if (typeof e.verified !== "boolean") return problem(`${who}: "verified" must be true or false, entry rejected`);
+    if (badKeywords(e.keywords_hi)) return problem(`${who}: "keywords_hi" must be a list of strings, entry rejected`);
+    if (badKeywords(e.keywords_en)) return problem(`${who}: "keywords_en" must be a list of strings, entry rejected`);
+    if (e.name !== undefined && typeof e.name !== "string") return problem(`${who}: "name" must be a string, entry rejected`);
+    const member = scope === "mla";
     // An MLA is only ever offered, so an unverified one is offered too; any other unverified entry is left out
     if (!e.verified && !member) return;
     const keys = [...strings(e.keywords_hi), ...strings(e.keywords_en)].map(fold).filter(Boolean);
-    if (!keys.length) return problem(`${where} (${e.handle}): no keywords to match on`);
+    if (!keys.length) return problem(`${who}: no keywords to match on, entry rejected`);
+    const party = e.party.trim().toLowerCase();
     (member ? mla : rules).push({
       handle: e.handle.trim().replace(/^@/, ""),
-      name: typeof e.name === "string" && e.name.trim() ? e.name.trim() : String(e.party ?? "other"),
-      party: String(e.party ?? "other"),
-      scope: String(e.scope ?? "state"),
+      name: typeof e.name === "string" && e.name.trim() ? e.name.trim() : party,
+      party,
+      scope,
       tokens: keys.filter((k) => !k.includes(" ")),
       phrases: keys.filter((k) => k.includes(" ")),
     });

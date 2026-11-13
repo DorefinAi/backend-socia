@@ -8,6 +8,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { and, count, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { audit } from "./audit";
+import { recordOutcome, voidOutcome } from "./decisions";
 import type { Db, Executor } from "./client";
 import { notify } from "./events";
 import { REPORTER_SOURCE, handleDirectory, hashtagStaging, orgs, postDrafts, publishJobs, publishedPosts, users, type DraftHandlePick } from "./schema";
@@ -484,6 +485,8 @@ export async function approveDraft(db: Db, actor: Actor, draftId: string, versio
       .where(eq(postDrafts.id, draftId))
       .returning();
 
+    // The decision log's outcome half (never throws; a draft with no proposal logs nothing)
+    await recordOutcome(tx, { draftId, decision: "approved", finalText: postText(draft), decidedBy: actor.id });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.approve", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { status, jobId: job!.id, text: postText(draft) } });
     await notify(tx, actor.orgId, { type: "post.queued", draftId, jobId: job!.id, sendAt: job!.nextAttemptAt.toISOString() });
     await notify(tx, actor.orgId, { type: "cap.changed", platform: draft.platform, used: cap.used + 1, cap: cap.cap });
@@ -512,6 +515,7 @@ export async function undoPost(db: Db, actor: Actor, jobId: string): Promise<Dra
       .where(eq(postDrafts.id, draft.id))
       .returning();
 
+    await voidOutcome(tx, draft.id, actor.id);
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "post.undo", entityType: "publish_job", entityId: jobId, before: { status: "pending" }, after: { status: "cancelled" } });
     await notify(tx, actor.orgId, { type: "post.cancelled", draftId: draft.id, jobId });
     return updated!;
@@ -528,6 +532,7 @@ export async function rejectDraft(db: Db, actor: Actor, draftId: string, reason:
       .set({ status, rejectReason: reason, rejectNote: note, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId))
       .returning();
+    await recordOutcome(tx, { draftId, decision: "rejected", finalText: postText(draft), decidedBy: actor.id, rejectReason: reason });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.reject", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { status, reason, note } });
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status, version: updated!.version });
     return updated!;
@@ -543,6 +548,7 @@ export async function restoreDraft(db: Db, actor: Actor, draftId: string): Promi
       .set({ status, rejectReason: null, rejectNote: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId))
       .returning();
+    await voidOutcome(tx, draftId, actor.id);
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.restore", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { status } });
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status, version: updated!.version });
     return updated!;
@@ -573,6 +579,7 @@ export async function markPosted(db: Db, actor: Actor, draftId: string, version:
       .update(postDrafts)
       .set({ status, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId));
+    await recordOutcome(tx, { draftId, decision: "mark_posted", finalText: row.text, decidedBy: actor.id });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.mark_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { permalink: post.permalink, cardKey } });
     await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row.id, permalink: post.permalink });
     const cap = await capUsage(tx, actor.orgId, draft.platform);
@@ -674,6 +681,7 @@ export async function copyPosted(db: Db, actor: Actor, draftId: string, version:
       .update(postDrafts)
       .set({ status, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId));
+    await recordOutcome(tx, { draftId, decision: "copy_posted", finalText: text, decidedBy: actor.id });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.copy_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status, version }, after: { status, postId: row!.id, text } });
     await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row!.id, permalink: null });
     const cap = await capUsage(tx, actor.orgId, draft.platform);
@@ -717,6 +725,7 @@ export async function undoCopyPosted(db: Db, actor: Actor, draftId: string, canU
       .set({ status, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId))
       .returning();
+    await voidOutcome(tx, draftId, actor.id);
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.copy_posted_undo", entityType: "post_draft", entityId: draftId, before: { status: draft.status, postId: post.id, postedBy: post.publishedBy }, after: { status } });
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status, version: updated!.version });
     return updated!;

@@ -4,7 +4,7 @@
 import type { DistrictFrom, FileTags, HandlePick, StoryClass } from "@socia/core";
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn, bigint, bigserial, boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid,
+  type AnyPgColumn, bigint, bigserial, boolean, check, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
@@ -579,6 +579,10 @@ export interface DraftHandlePick {
   handles: { handle: string; reason: HandlePick["reason"]; title?: string }[];
   /** The reporter token read from the file name, matched or not — the roster's to-do list */
   reporterToken?: string | null;
+  /** Offered, not in the post: each with its reason (core HandlePick) */
+  suggested?: { handle: string; reason: HandlePick["reason"]; title?: string }[];
+  /** hashtag_suggestions with the rule id and reason line behind each (reporter-prior brief §2.3); absent before */
+  tagSuggestions?: { tag: string; source: string; reason: string; score?: number; n?: number }[];
 }
 
 export interface DraftRewrite {
@@ -804,3 +808,161 @@ export const opsHeartbeat = pgTable("ops_heartbeat", {
   beatAt: timestamp("beat_at", { withTimezone: true }).notNull(),
   info: jsonb("info"),
 });
+
+// ─── Decision log (reporter-prior brief §2, §7; migration 0024) ──────────────
+
+/** One item's fate once the desk decided (brief §2.4) */
+export const ITEM_OUTCOMES = ["kept", "removed", "accepted", "ignored", "desk_added"] as const;
+export type ItemOutcome = (typeof ITEM_OUTCOMES)[number];
+
+/** How the desk decided a draft: Copy & Posted, a recorded manual post with its link, an API post, or Reject */
+export const DECISIONS = ["copy_posted", "mark_posted", "approved", "rejected"] as const;
+export type Decision = (typeof DECISIONS)[number];
+
+/** One proposed item as the log stores it: core's Proposal (source and reason), plus explore */
+export interface LoggedProposal {
+  item: string;
+  kind: "hashtag" | "handle";
+  layer: "emit" | "suggest";
+  source: string;
+  reason: string;
+  score?: number;
+  n?: number;
+  explore?: boolean;
+}
+
+/** One item in item_outcomes: a proposal's fate, or an item the desk added that no rule proposed */
+export interface LoggedItemOutcome {
+  item: string;
+  kind: "hashtag" | "handle";
+  /** null for desk_added */
+  layer: "emit" | "suggest" | null;
+  /** The rule id; "desk" for desk_added */
+  source: string;
+  outcome: ItemOutcome;
+}
+
+/** An outcome taken back (Copy & Posted undone, a rejected draft restored), kept rather than overwritten */
+export interface VoidedOutcome {
+  decision: Decision;
+  decidedAt: string;
+  decidedBy: string | null;
+  voidedAt: string;
+  voidedBy: string | null;
+  finalText: string | null;
+  itemOutcomes: LoggedItemOutcome[] | null;
+  reworkRatio: number | null;
+}
+
+/**
+ * The decision log: what the composer proposed for a breaking draft and, once, what the desk did with it.
+ *
+ * Two halves. The proposal half is written by the worker when it composes the draft (and refreshed only while
+ * nobody has decided). The outcome half is written once when the desk decides: Copy & Posted, Mark posted or
+ * Reject. Nothing ever rewrites a decided row's proposal or outcome; an undo or a restore moves the outcome
+ * into `voided` and the next decision is written fresh. A trigger in migration 0024 enforces this.
+ *
+ * Writing here never blocks or fails a draft or a desk action: every write is in a savepoint, caught and logged.
+ */
+export const postDecisions = pgTable(
+  "post_decisions",
+  {
+    id: id(),
+    orgId: orgId(),
+    draftId: uuid("draft_id").notNull().references(() => postDrafts.id),
+    storyId: uuid("story_id").notNull().references(() => stories.id),
+    proposedAt: timestamp("proposed_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Bumped when a re-saved file rewrites an undecided draft */
+    proposalRev: integer("proposal_rev").notNull().default(1),
+    // What the file name said about the reporter (brief §2.2, core resolveReporterStatus): file name only (L1)
+    filenameRaw: text("filename_raw"),
+    slotRaw: text("slot_raw"),
+    reporterToken: text("reporter_token"),
+    bureauCode: text("bureau_code"),
+    bureauDistrict: text("bureau_district"),
+    reporterHandle: text("reporter_handle"),
+    /** matched, unknown_token, collision, bureau_code, unknown_bureau_code, no_slot, no_filename */
+    reporterStatus: text("reporter_status").notNull(),
+    storyClass: text("story_class"),
+    district: text("district"),
+    districtFrom: text("district_from"),
+    /** The tagging logic that proposed ("tags-v3+prior-1") and the data files behind it (compose_version) */
+    logicVersion: text("logic_version").notNull(),
+    composeVersion: text("compose_version").notNull(),
+    /** The post as composed (postText): the rework ratio's baseline */
+    draftText: text("draft_text").notNull(),
+    proposals: jsonb("proposals").$type<LoggedProposal[]>().notNull(),
+    /**
+     * A re-saved file rewrote the draft after the desk decided (a rejected draft is rewritten in place), so the
+     * proposal no longer describes the draft. Set once, never cleared on a decided row; a later outcome then
+     * records the final post but no item outcomes or rework ratio, which would measure the re-save, not the desk.
+     */
+    proposalStale: boolean("proposal_stale").notNull().default(false),
+    /** One post in ten is an exploration post (brief §7.2.3); its proposals carry explore: true */
+    explore: boolean("explore").notNull().default(false),
+    // The outcome half: null until the desk decides
+    decision: text("decision").$type<Decision>(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: uuid("decided_by").references(() => users.id),
+    rejectReason: text("reject_reason"),
+    finalText: text("final_text"),
+    finalHashtags: text("final_hashtags").array(),
+    finalHandles: text("final_handles").array(),
+    itemOutcomes: jsonb("item_outcomes").$type<LoggedItemOutcome[]>(),
+    /** Edit distance (tags, handles and links stripped) over the stripped draft's length (brief §2.5) */
+    reworkRatio: real("rework_ratio"),
+    voided: jsonb("voided").$type<VoidedOutcome[]>().notNull().default(sql`'[]'::jsonb`),
+  },
+  (t) => [
+    uniqueIndex("post_decisions_draft_key").on(t.draftId),
+    // The nightly features read decided rows by reporter, oldest first
+    index("post_decisions_reporter_idx").on(t.orgId, t.reporterToken, t.decidedAt),
+    // The weekly reporter-status report reads a week of proposals
+    index("post_decisions_proposed_idx").on(t.orgId, t.proposedAt),
+    check("post_decisions_outcome_whole", sql`(${t.decidedAt} IS NULL) = (${t.decision} IS NULL)`),
+    check("post_decisions_rework_range", sql`${t.reworkRatio} IS NULL OR ${t.reworkRatio} >= 0`),
+  ],
+);
+
+/**
+ * Per-reporter features, one snapshot per IST day (brief §7.1). A snapshot is never overwritten: a second run
+ * on the same day inserts nothing. Built only from decisions made before the start of that day (L5). NOTHING
+ * reads these yet.
+ */
+export const reporterFeatures = pgTable(
+  "reporter_features",
+  {
+    orgId: orgId(),
+    /** The IST day the snapshot was taken for; it uses decisions before that day's start */
+    snapshotDate: date("snapshot_date", { mode: "string" }).notNull(),
+    /** The reporter token from the file name (post_decisions.reporter_token) */
+    reporter: text("reporter").notNull(),
+    /** The posts the features rest on */
+    n: integer("n").notNull(),
+    features: jsonb("features").$type<ReporterFeatureSet>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.snapshotDate, t.reporter] })],
+);
+
+/** One item's rate for one reporter: raw count over n, and smoothed toward the desk's overall rate with m */
+export interface ReporterItemFeature {
+  count: number;
+  rate: number;
+  /** (count + m · base) / (n + m) */
+  smoothed: number;
+  /** The desk's overall rate for the item across every reporter in the window */
+  base: number;
+}
+
+export interface ReporterFeatureSet {
+  m: number;
+  /** Decisions before this instant only (L5) */
+  cutoff: string;
+  /** "#Jaipur", "@RajGovOfficial": on the final post */
+  items: Record<string, ReporterItemFeature & { kind: "hashtag" | "handle" }>;
+  /** Per rule id: how often the desk kept or accepted what the rule proposed for this reporter */
+  sources: Record<string, { proposed: number; taken: number; rate: number; smoothed: number; base: number }>;
+  /** Mean rework ratio of this reporter's posts */
+  reworkMean: number | null;
+}

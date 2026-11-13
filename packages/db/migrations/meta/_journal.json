@@ -169,6 +169,13 @@
       "when": 1794492058216,
       "tag": "0023_story_district_from",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794558377333,
+      "tag": "0024_decision_log",
+      "breakpoints": true
     }
   ]
 }

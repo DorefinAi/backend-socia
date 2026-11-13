@@ -6,7 +6,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { TypeBoxValidatorCompiler, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import type { PaceStore } from "@socia/core";
-import { DeskError, readIngestStatus, readWorkerHeartbeat, workerLiveness, type Db } from "@socia/db";
+import { DeskError, readIngestStatus, readWorkerHeartbeat, setDecisionLogErrorHandler, workerLiveness, type Db } from "@socia/db";
 import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyServerOptions } from "fastify";
@@ -75,6 +75,8 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   const trustProxy = typeof tp === "number" ? (_address: string, hop: number) => hop < tp : tp;
   const app = Fastify({ logger, trustProxy }).withTypeProvider<TypeBoxTypeProvider>();
   // Strict bodies, querystrings and params (headers always carry extra keys)
+  // A decision-log write that fails is dropped and never fails the desk action; it is logged here
+  setDecisionLogErrorHandler((err, context) => app.log.warn({ err, ...context }, "decision log write failed; the desk action went through"));
   app.setValidatorCompiler((route) => TypeBoxValidatorCompiler(route.httpPart === "headers" ? route : { ...route, schema: strictSchema(route.schema) }));
 
   await app.register(cookie);

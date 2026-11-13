@@ -179,16 +179,37 @@ export function inferHeadlineDistrict(book: PlaceBook, headline: string): Distri
   return null;
 }
 
+/** "#JodhpurNews", "#Jodhpur_News", "#जोधपुरन्यूज़", "#जोधपुरन्यूज", "#जोधपुरसमाचार": the place a "<Place>News" tag names */
+const NEWS_STEM = /^(.+?)_?(?:News|NEWS|news|न्यूज़?|समाचार)$/u;
 /**
- * The Rajasthan districts the desk TAGGED in a headline ("#BJP #Kota: ...", "#JhalawarNews"), in order, each once.
+ * The place a hashtag names, its "<Place>News" form included, Latin or Hindi (C-c). One reading for the headline's
+ * district tags here and for composeBreaking's "the desk tagged a place" check, so the two never disagree.
+ */
+export function placeOfTag(book: PlaceBook, raw: string): Place | null {
+  const t = raw.normalize("NFC");
+  const stem = NEWS_STEM.exec(t)?.[1];
+  return book.hashtag(t) ?? (stem ? book.hashtag(stem) : null);
+}
+
+/**
+ * For the replay reference (post-tags.ts PostTagContext.hindiPlace): the Latin tag of the district or national place a
+ * Hindi name is ("जोधपुर" → "Jodhpur"), so "#जोधपुरन्यूज़" reads there as "#JodhpurNews". A town has no Latin tag on
+ * districts.json: null.
+ */
+export const hindiPlaceTag = (book: PlaceBook) => (name: string): string | null => {
+  const p = book.hashtag(name);
+  return p && p.kind !== "town" ? (p.districts[0]?.tag ?? null) : null;
+};
+
+/**
+ * The Rajasthan districts the desk TAGGED in a headline ("#BJP #Kota: ...", "#JhalawarNews", "#जोधपुरन्यूज़"), in order, each once.
  * Only Rajasthan districts: "#Pakistan" or "#Delhi" is a topic tag in a Rajasthan desk's copy, not where the story
  * is, and taking it would flip the footer to #FirstIndiaNews. Only the headline: a tag in a point is commentary.
  */
 export function headlineDistrictTags(book: PlaceBook, headline: string): DistrictInfo[] {
   const out = new Map<string, DistrictInfo>();
-  for (const m of headline.matchAll(/#([\p{L}\p{M}\p{N}_]+)/gu)) {
-    const raw = m[1]!;
-    const p = book.hashtag(raw) ?? (/^.+News$/u.test(raw) ? book.hashtag(raw.slice(0, -4)) : null);
+  for (const m of headline.normalize("NFC").matchAll(/#([\p{L}\p{M}\p{N}_]+)/gu)) {
+    const p = placeOfTag(book, m[1]!);
     const d = p && p.kind === "district" ? p.districts[0] : null;
     if (d?.rajasthan) out.set(d.name, d);
   }

@@ -1,9 +1,10 @@
-// C-b of the 13 Nov fix prompt: a label is matched as a whole word, never part of a place's name.
+// C-b and C-c of the 13 Nov fix prompt: a label is matched as a whole word, never part of a place's name; a Hindi
+// "#<स्थान>न्यूज़" tag is a district tag, read the same on the live path and in the replay reference.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  PlaceBook, composeBreaking, composePostTags, deskPlacePrefix, inferHeadlineDistrict, isHeadlineLabel,
+  PlaceBook, composeBreaking, composePostTags, deskPlacePrefix, headlineDistrictTags, hindiPlaceTag, inferHeadlineDistrict, isHeadlineLabel,
   notAPlace, parseBreaking, parseDistricts, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles,
   parseSubjectHandles, slotFromTags, type BreakingDraft,
 } from "../src";
@@ -35,8 +36,9 @@ const ctx = {
   places, normaliser, reporterPolicy: "Jaipur",
   inferDistrict: (h: string) => inferHeadlineDistrict(book, h)?.tag ?? null,
   deskPlacePrefix: (h: string) => { const p = deskPlacePrefix(book, h); return !!p && !isHeadlineLabel(p); },
+  hindiPlace: hindiPlaceTag(book),
 };
-const refFires = (lines: string[], c: typeof ctx = ctx) => composePostTags(`${lines.join("\n\n")}\n\n#RajasthanWithFirstIndia`, c).policy === "emit";
+const refFires = (lines: string[], c: typeof ctx | Omit<typeof ctx, "hindiPlace"> = ctx) => composePostTags(`${lines.join("\n\n")}\n\n#RajasthanWithFirstIndia`, c).policy === "emit";
 
 // ─── C-b: whole words / whole labels ─────────────────────────────────────────
 
@@ -93,5 +95,63 @@ describe("C-b: a label word never matches inside a place's name", () => {
     ]) {
       expect(refFires(lines), lines[0]).toBe(draft(RITURAJ, lines).districtSource === "reporter_policy");
     }
+  });
+});
+
+// ─── C-c: "#जोधपुरन्यूज़" is a district tag ───────────────────────────────────
+
+describe("C-c: a Hindi '#<स्थान>न्यूज़' tag is a district tag, like '#<Place>News'", () => {
+  it("the headline's district tags read '#जोधपुरन्यूज़' and '#जोधपुरन्यूज' as Jodhpur, as '#JodhpurNews'", () => {
+    for (const tag of ["#जोधपुरन्यूज़", "#जोधपुरन्यूज", "#JodhpurNews"]) {
+      expect(headlineDistrictTags(book, `ग्राम पंचायत में पुनर्मतदान ${tag}`).map((d) => d.name), tag).toEqual(["Jodhpur"]);
+    }
+    // A Hindi news tag of a word that is no place, and a national place, are no Rajasthan district tag
+    expect(headlineDistrictTags(book, "मौसम का हाल #ताजान्यूज़")).toEqual([]);
+    expect(headlineDistrictTags(book, "प्रदूषण बढ़ा #दिल्लीन्यूज़")).toEqual([]);
+  });
+
+  it("parseBreaking: '#जोधपुरन्यूज़' in the headline states the district, the same as '#JodhpurNews'", () => {
+    for (const tag of ["#जोधपुरन्यूज़", "#JodhpurNews"]) {
+      const p = parseBreaking(fileText(RITURAJ, [`ग्राम पंचायत में पुनर्मतदान ${tag}`, "मतपत्र चोरी के चलते फैसला"]), RITURAJ, book);
+      expect([p.district, p.districtFrom], tag).toEqual(["Jodhpur", "tag"]);
+    }
+  });
+
+  it("composeBreaking: it blocks rituraj's #Jaipur and drafts exactly what '#JodhpurNews' drafts (line 1, handles, footer)", () => {
+    const latin = draft(RITURAJ, ["ग्राम पंचायत में पुनर्मतदान #JodhpurNews", "मतपत्र चोरी के चलते फैसला"]);
+    for (const tag of ["#जोधपुरन्यूज़", "#जोधपुरन्यूज"]) {
+      const d = draft(RITURAJ, [`ग्राम पंचायत में पुनर्मतदान ${tag}`, "मतपत्र चोरी के चलते फैसला"]);
+      expect(policyFired(d), tag).toBe(false);
+      expect(d.bodyText.startsWith("#Jodhpur: "), d.bodyText).toBe(true);
+      expect([d.districtSource, d.mentions, d.hashtags, d.hashtagSuggestions], tag).toEqual([latin.districtSource, latin.mentions, latin.hashtags, latin.hashtagSuggestions]);
+    }
+  });
+
+  it("composeBreaking without the parser (the headline only): it still blocks the desk rule", () => {
+    const d = composeBreaking({ headline: "ग्राम पंचायत में पुनर्मतदान #जोधपुरन्यूज़", points: ["मतपत्र चोरी के चलते फैसला"], district: null, town: null, rajasthan: true, leaderPost: false, reporterToken: "RITURAJ" }, rules, book, { subjects, reporters, parties });
+    expect(policyFired(d)).toBe(false);
+  });
+
+  it("a tag is not a guess, but the text still is: 'जोधपुर में पुनर्मतदान' with no tag states no district", () => {
+    const d = draft(RITURAJ, ["जोधपुर में पुनर्मतदान", "मतपत्र चोरी के चलते फैसला"]);
+    expect(d.bodyText.startsWith("#Jodhpur")).toBe(false);
+    expect(d.districtSource).not.toMatch(/^district\./);
+  });
+
+  it("the replay reference reads it identically: the desk rule is blocked in the headline and in a point", () => {
+    const { hindiPlace: _drop, ...without } = ctx;
+    for (const lines of [["ग्राम पंचायत में पुनर्मतदान #जोधपुरन्यूज़", "मतपत्र चोरी के चलते फैसला"], ["ग्राम पंचायत में पुनर्मतदान", "मतपत्र चोरी के चलते फैसला #जोधपुरन्यूज"]]) {
+      expect(refFires(lines), lines.join(" | ")).toBe(false);
+      expect(refFires(lines), lines.join(" | ")).toBe(draft(RITURAJ, lines).districtSource === "reporter_policy");
+      // Without the places file the reference cannot read it (the gap this closes)
+      expect(refFires(lines, without), lines.join(" | ")).toBe(true);
+    }
+  });
+
+  it("the replay reference: a trailing '#जोधपुरन्यूज़' counts as '#JodhpurNews' (district slot and brand)", () => {
+    const hi = composePostTags("ग्राम पंचायत में पुनर्मतदान\n\nमतपत्र चोरी के चलते फैसला\n\n#जोधपुरन्यूज़", ctx);
+    const en = composePostTags("ग्राम पंचायत में पुनर्मतदान\n\nमतपत्र चोरी के चलते फैसला\n\n#JodhpurNews", ctx);
+    expect([hi.district, hi.trail, hi.policy]).toEqual([en.district, en.trail, en.policy]);
+    expect(hi.district).toBe("Jodhpur");
   });
 });

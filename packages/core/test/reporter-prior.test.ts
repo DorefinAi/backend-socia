@@ -502,6 +502,39 @@ describe("Step 6: an office named without its holder", () => {
   });
 });
 
+// ─── review fixes (13 Nov): CM alias exclusions ──────────────────────────────
+
+describe("B1–B3: the CM alias and its exclusions", () => {
+  const cm = subjects.offices!.find((o) => o.key === "rajasthan_cm")!;
+  it("B1: an abbreviation's dot does not end the sentence, so the exclusion still applies", () => {
+    expect(namesOffice(cm, "मुख्यमंत्री डॉ. मोहन यादव ने किया दौरा")).toBe(false);
+    expect(namesOffice(cm, "CM Dr. Mohan Yadav reached Ujjain")).toBe(false);
+    expect(namesOffice(cm, "पूर्व विधायक श्री. रामलाल ने CM से की मुलाकात")).toBe(false);
+    // A real full stop still ends a sentence
+    expect(namesOffice(cm, "Former sarpanch complained. CM ordered a probe")).toBe(true);
+  });
+  it("B2: English exclusions, without case", () => {
+    for (const t of ["UP CM Yogi inaugurated the expressway", "Delhi CM Rekha Gupta reached Jaipur", "Former CM Gehlot attacked the government", "FORMER CM spoke", "Deputy CM visited", "Bihar CM Nitish met the PM"]) {
+      expect(namesOffice(cm, t), t).toBe(false);
+    }
+    expect(namesOffice(cm, "CM inaugurated the new hospital")).toBe(true);
+  });
+  it("B3: the other states, in Hindi and English", () => {
+    for (const t of ["गोवा के मुख्यमंत्री ने", "मप्र के सीएम ने की घोषणा", "छत्तीसगढ़ के मुख्यमंत्री पहुंचे", "Karnataka CM met the delegation", "असम के CM ने कहा"]) {
+      expect(namesOffice(cm, t), t).toBe(false);
+    }
+  });
+  it("B3: 'MP' blocks only beside the CM word — 'MP CM', 'MP के मुख्यमंत्री'; an MP (सांसद) meeting the CM still offers the CM", () => {
+    for (const t of ["MP CM ने किया शुभारंभ", "MP के मुख्यमंत्री ने कहा", "MP के CM पहुंचे", "UP के सीएम ने कहा"]) expect(namesOffice(cm, t), t).toBe(false);
+    for (const t of ["MP ने CM से मुलाकात की", "सांसद/MP ने CM से मुलाकात की"]) expect(namesOffice(cm, t), t).toBe(true);
+    const { d } = draft(fileFor(null, "JPR3"), ["MP ने CM से मुलाकात की", "क्षेत्र की समस्याओं से अवगत कराया"]);
+    expect(suggested(d, "office")).toEqual(["BhajanlalBjp", "RajCMO"]);
+  });
+  it("the alias itself stays case-sensitive: 'cm' (centimetres) is not the CM", () => {
+    expect(namesOffice(cm, "बारिश 5 cm दर्ज की गई")).toBe(false);
+  });
+});
+
 // ─── review fixes (13 Nov): beats and reporter config ────────────────────────
 
 describe("C1–C6: what a reporter's suggestions may carry", () => {

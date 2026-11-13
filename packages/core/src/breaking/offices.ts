@@ -25,6 +25,8 @@ export interface OfficeData {
    * ONLY right beside the alias ("MP CM", "MP के मुख्यमंत्री", "CM of MP"), matched with case as written.
    */
   exclude_next_to_alias?: string[];
+  /** The line shown with the offered handle; default "CM mentioned without a name" */
+  detail?: string;
 }
 
 export interface Office {
@@ -39,6 +41,7 @@ export interface Office {
   handles: string[];
   /** The stable rule id: "office_alias.rajasthan_cm" */
   source: OfficeRuleId;
+  detail?: string;
 }
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -82,7 +85,15 @@ export function parseOffices(json: unknown, directory: ReadonlySet<string>): { o
     const near = words(strings(o.exclude_next_to_alias));
     // "MP CM", "MP के मुख्यमंत्री", "CM of MP": the code beside the alias, at most a postposition between them
     const excludeNear = near ? whole(`(?:${near})\\s*(?:(?:के|की|का)\\s+)?(?:${alias})|(?:${alias})\\s+of\\s+(?:${near})`) : null;
-    offices.push({ key, alias: whole(alias), exclude: ex ? whole(ex, "iu") : null, excludeNear, handles, source: `office_alias.${key}` });
+    offices.push({
+      key,
+      alias: whole(alias),
+      exclude: ex ? whole(ex, "iu") : null,
+      excludeNear,
+      handles,
+      source: `office_alias.${key}`,
+      ...(typeof o.detail === "string" && o.detail.trim() && { detail: o.detail.trim() }),
+    });
   }
   return { offices, problems };
 }
@@ -134,7 +145,7 @@ export function officeSuggestions(offices: readonly Office[], text: string, take
     if (namesHolder(o) || o.handles.some((h) => taken.has(h.toLowerCase()))) continue;
     for (const h of o.handles) {
       if (taken.has(h.toLowerCase()) || out.some((x) => x.handle.toLowerCase() === h.toLowerCase())) continue;
-      out.push({ handle: h, reason: "office", source: o.key === "rajasthan_cm" ? PROPOSAL_SOURCES.officeCm : o.source, detail: "CM mentioned without a name" });
+      out.push({ handle: h, reason: "office", source: o.key === "rajasthan_cm" ? PROPOSAL_SOURCES.officeCm : o.source, detail: o.detail ?? "CM mentioned without a name" });
     }
   }
   return out;

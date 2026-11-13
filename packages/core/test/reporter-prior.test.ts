@@ -203,15 +203,10 @@ describe("Step 3.4: exactly the firing table, on the seed data", () => {
       });
     });
   }
-  for (const who of ["svoruganti1466", "naresh_jsharma", "satyatv99_news", "dineshdangi84", "ashvinigokul", "kunwarraghav", "bhanwar_83", "vyaskamalkant"]) {
+  // svoruganti1466 left the table on 13 Nov: it is the Chief Secretary's account, not a reporter
+  for (const who of ["naresh_jsharma", "satyatv99_news", "dineshdangi84", "ashvinigokul", "kunwarraghav", "bhanwar_83", "vyaskamalkant"]) {
     it(`${who} is silent`, () => expect(priorOf(who).handles).toEqual([]));
   }
-  it("svoruganti1466: RajGov 0.22 and RajCMO 0.13, both under 0.25", () => {
-    const s = reporters.prior!;
-    expect(smoothedRate(0.29, 34, s.base.get("rajgovofficial")!, s.m)).toBeCloseTo(0.22, 2);
-    // 0.136: the brief's table truncates to 0.13
-    expect(smoothedRate(0.21, 34, s.base.get("rajcmo")!, s.m)).toBeCloseTo(0.136, 2);
-  });
   it("what does NOT fire although the raw rate looks high", () => {
     const s = reporters.prior!;
     expect(smoothedRate(0.26, 58, s.base.get("rajgovofficial")!, s.m)).toBeCloseTo(0.22, 2); // Aishwarya → RajGov

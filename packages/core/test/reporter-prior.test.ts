@@ -429,9 +429,15 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.proposals.filter((p) => p.source === "reporter_policy")).toEqual([expect.objectContaining({ item: "#Jaipur", layer: "suggest" })]);
   });
   it("A4: a place the desk wrote before the colon that Socia does not know ('आकोला: ...') stays as written: no #Jaipur", () => {
-    const { d } = draft(fileFor("RITURAJ"), ["आकोला: पंचायत समिति की बैठक", "विकास कार्यों पर चर्चा"]);
+    const lines = ["आकोला: पंचायत समिति की बैठक", "विकास कार्यों पर चर्चा"];
+    const { d } = draft(fileFor("RITURAJ"), lines);
     expect(d.bodyText).not.toContain("#Jaipur");
     expect(d.bodyText).toContain("आकोला");
+    // The desk's place stands: nothing from the reporter's rule anywhere, and the footer is the story's own
+    expect(d.districtSource).toBeNull();
+    expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
+    expect(d.hashtags).toEqual(draft(fileFor("NARESH"), lines).d.hashtags);
   });
   it("a policy district the places file does not know is not applied, and the draft says why", () => {
     const r = parseReporterHandles({ version: 1, entries: [{ handle: "@rituraj9999", names_en: ["RITURAJ"], verified: true, policy: { district_when_missing: "Jaipurr" } }] });

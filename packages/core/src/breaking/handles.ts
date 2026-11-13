@@ -41,7 +41,7 @@ import { fold } from "../fold";
 import { HANDLE } from "./syntax";
 import type { PlainRuleId, PriorRuleId } from "./proposals";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
-import { EMPTY_PARTY_RULES, namesAnyParty, pickPartyHandles, type PartyRules } from "./parties";
+import { EMPTY_PARTY_RULES, namesAnyParty, pickMlaHandles, pickPartyHandles, type PartyRules } from "./parties";
 import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
 import { classify, type StoryClass } from "./storyclass";
 import type { GazetteerMatch } from "../gazetteer";
@@ -622,6 +622,9 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
       }
     }
   }
+  // An MLA's own handle (party-handles.json, scope "mla") the copy names is OFFERED whatever the class, never tagged
+  // (user decision, 13 Nov 2026). When a verified subject entry tags the same handle, done() drops the offer.
+  for (const m of pickMlaHandles(all, parties)) suggested.push({ handle: m.handle, reason: "party", title: m.name });
 
   // Handles the desk added with keywords, computed here because they ride on every class except the two
   // where the district force stands alone. Never a handle of the files (verified or not) nor a lookalike

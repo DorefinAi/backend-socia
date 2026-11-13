@@ -30,6 +30,7 @@ export interface PartyHandleEntry {
    * "state" | "national" | "wing" | "media" ... — the state handle is preferred for a Rajasthan story. A "wing"
    * (NSUI, the youth congress) is never tagged on its own: it is OFFERED when the copy names it literally
    * (pickPartyHandles). No wing-specific rule: @NSUIRajasthan is once in 2,476 posts (b6 fix brief P4).
+   * An "mla" (a member's own handle) is only ever OFFERED, verified or not, and is not the party (pickMlaHandles).
    */
   scope?: string;
   keywords_hi?: string[];
@@ -63,8 +64,16 @@ export interface PartyRule {
 }
 
 export interface PartyRules {
+  /** The party's own handles (every scope but "mla"): the clash rule, the political hint and the post's party tag */
   rules: PartyRule[];
   count: number;
+  /**
+   * scope "mla": a member's own handle, OFFERED when the copy names them and never tagged (user decision,
+   * 13 Nov 2026). Kept out of `rules` on purpose, so naming an MLA neither counts as naming the party (the
+   * clash rule, the political hint that keeps the police and the collector off) nor tags anything. An
+   * unverified MLA entry is offered too: an unticked suggestion is the desk's check.
+   */
+  mla?: PartyRule[];
   /** Every handle in the file, verified or not, lower-cased without the @ (the desk-handles guard) */
   handles?: ReadonlySet<string>;
 }
@@ -80,6 +89,7 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
     throw new Error("party handles: expected { version, entries: [...] }");
   }
   const rules: PartyRule[] = [];
+  const mla: PartyRule[] = [];
   const handles = new Set<string>();
   root.entries.forEach((raw, i) => {
     const e = raw as Partial<PartyHandleEntry> | null;
@@ -90,10 +100,12 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
     }
     handles.add(e.handle.trim().replace(/^@/, "").toLowerCase());
     if (typeof e.verified !== "boolean") return problem(`${where} (${e.handle}): "verified" must be true or false`);
-    if (!e.verified) return;
+    const member = e.scope === "mla";
+    // An MLA is only ever offered, so an unverified one is offered too; any other unverified entry is left out
+    if (!e.verified && !member) return;
     const keys = [...strings(e.keywords_hi), ...strings(e.keywords_en)].map(fold).filter(Boolean);
     if (!keys.length) return problem(`${where} (${e.handle}): no keywords to match on`);
-    rules.push({
+    (member ? mla : rules).push({
       handle: e.handle.trim().replace(/^@/, ""),
       name: typeof e.name === "string" && e.name.trim() ? e.name.trim() : String(e.party ?? "other"),
       party: String(e.party ?? "other"),
@@ -102,15 +114,28 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
       phrases: keys.filter((k) => k.includes(" ")),
     });
   });
-  return { rules, count: rules.length, handles };
+  return { rules, count: rules.length, mla, handles };
+}
+
+/** The rules of a list the text names: tokens as whole words, phrases as substrings of the folded text */
+function hitsIn(text: string, list: readonly PartyRule[]): PartyRule[] {
+  if (!list.length) return [];
+  const f = fold(text.normalize("NFC"));
+  const words = new Set(f.split(" ").filter(Boolean));
+  return list.filter((r) => r.tokens.some((k) => words.has(k)) || r.phrases.some((p) => f.includes(p)));
 }
 
 /** Every party rule the text names */
 function partyHits(text: string, rules: PartyRules): PartyRule[] {
-  if (!rules.count) return [];
-  const f = fold(text.normalize("NFC"));
-  const words = new Set(f.split(" ").filter(Boolean));
-  return rules.rules.filter((r) => r.tokens.some((k) => words.has(k)) || r.phrases.some((p) => f.includes(p)));
+  return rules.count ? hitsIn(text, rules.rules) : [];
+}
+
+/**
+ * The MLA handles the text names, in file order, each once: OFFERED on the draft, never tagged on the post
+ * (user decision, 13 Nov 2026). They play no part in the party picks or the clash rule.
+ */
+export function pickMlaHandles(text: string, rules: PartyRules): PartyRule[] {
+  return hitsIn(text, rules.mla ?? []);
 }
 
 /**

@@ -7,7 +7,7 @@ import {
   CATEGORY_SEED_RULES, EMPTY_HANDLE_RULES, LINKING_WORDS, PlaceBook, actingAgents, assemblePostText, composeBreaking, daysToScan, dayFolderName,
   fileTags, hashtagGazetteer, isBreakingFileName, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
   parsePlacesData, parseSubjectHandles, phaseFeatures, phaseFrom, pickCategoryTags, pickHandles, xLen,
-  breakingDots, crispPoints, plainHeadline, BREAKING_BODY_FLOOR, BREAKING_BODY_MAX, BREAKING_BODY_MIN, BREAKING_POST_MAX,
+  breakingDots, crispPoints, plainHeadline, BREAKING_BODY_FLOOR, BREAKING_BODY_MAX, BREAKING_BODY_MIN,
 } from "../src";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/breaking/${name}`, import.meta.url), "utf8");
@@ -287,15 +287,11 @@ describe("composeBreaking", () => {
     expect(xLen(text)).toBeLessThanOrEqual(280);
   });
 
-  it("cuts a headline only past the post's limit: 1,000 by default, or a limit the caller sets", () => {
-    const long = parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(40)}\nबिंदु`, "x_breaking.txt", book);
-    expect(composeBreaking(long, rules, book, { topics }).headlineCut).toBe(false);
-    const huge = composeBreaking(parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(80)}\nबिंदु`, "x_breaking.txt", book), rules, book, { topics });
-    expect(huge.headlineCut).toBe(true);
-    expect(xLen(assemblePostText(huge.bodyText, huge.hashtags, huge.mentions))).toBeLessThanOrEqual(BREAKING_POST_MAX);
-    const capped = composeBreaking(long, rules, book, { topics, limit: 280 });
-    expect(capped.headlineCut).toBe(true);
-    expect(xLen(assemblePostText(capped.bodyText, capped.hashtags, capped.mentions))).toBeLessThanOrEqual(280);
+  it("stays within 280 even for a huge headline", () => {
+    const s = parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(40)}\nबिंदु`, "x_breaking.txt", book);
+    const d = composeBreaking(s, rules, book, { topics });
+    expect(d.headlineCut).toBe(true);
+    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(280);
   });
 
   it("uses #FirstIndiaNews outside Rajasthan, only national-safe category tags, and tags nobody there", () => {
@@ -426,15 +422,24 @@ describe("the catchy cut (b8 crispPoints scoring)", () => {
   });
 });
 
-describe("the whole breaking post (b8 decisions §1)", () => {
-  it("keeps line 2 at 100–130 when a long headline and many handles push the post past 280", () => {
-    const head = "जयपुर में राज्य सरकार के मंत्री ने विधानसभा में बजट घोषणाओं की समीक्षा बैठक में अधिकारियों को दिए सख्त निर्देश और समय पर काम पूरा करने को कहा";
-    const points = Array.from({ length: 6 }, (_, i) => `बैठक में ${i} विभागों के अधिकारियों ने अपनी योजनाओं की प्रगति रिपोर्ट पेश की और लंबित कामों की जानकारी दी`);
-    const d = composeBreaking(parseBreaking(`जयपुर\n${head}\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics });
+describe("the whole breaking post (within 280, owner's decision 14 Nov)", () => {
+  const points = Array.from({ length: 6 }, (_, i) => `बैठक में ${i} विभागों के अधिकारियों ने अपनी योजनाओं की प्रगति रिपोर्ट पेश की और लंबित कामों की जानकारी दी`);
+
+  it("keeps line 2 at 100–130 when the post has room for it", () => {
+    const d = composeBreaking(parseBreaking(`जयपुर\nसमीक्षा बैठक में दिए निर्देश\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics });
     const line2 = d.bodyText.split("\n\n")[1]!;
     expect(xLen(line2)).toBeGreaterThanOrEqual(BREAKING_BODY_MIN);
     expect(xLen(line2)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
-    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(BREAKING_POST_MAX);
+  });
+
+  it("shortens line 2 so a long headline still fits 280, and drops it rather than leave a stub", () => {
+    const head = "जयपुर में राज्य सरकार के मंत्री ने विधानसभा में बजट घोषणाओं की समीक्षा बैठक में अधिकारियों को दिए सख्त निर्देश और समय पर काम पूरा करने को कहा";
+    const d = composeBreaking(parseBreaking(`जयपुर\n${head}\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics });
+    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(280);
+    const line2 = d.bodyText.split("\n\n")[1] ?? "";
+    expect(line2 === "" || xLen(line2) >= BREAKING_BODY_FLOOR).toBe(true);
+    const tight = composeBreaking(parseBreaking(`जयपुर\n${head}\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics, limit: xLen(head) + 70 });
+    expect(tight.bodyText.split("\n\n")[1]).toBeUndefined();
   });
 
   it("uses the bodyMax option as line 2's ceiling", () => {

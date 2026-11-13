@@ -4,6 +4,7 @@
 // file can be dropped in as it is.
 
 import { fold } from "../fold";
+import { HANDLE } from "./syntax";
 import { Gazetteer, type GazetteerEntry, type GazetteerMatch } from "../gazetteer";
 import { DataFileRejected } from "./post-tags";
 import { parseOffices, type Office } from "./offices";
@@ -104,7 +105,6 @@ export interface SubjectRules {
 
 export const EMPTY_SUBJECT_RULES: SubjectRules = { gazetteer: new SubjectGazetteer([]), count: 0 };
 
-const HANDLE = /^@?\w{1,15}$/;
 const KINDS = new Set<string>(SUBJECT_KINDS);
 
 /** Every key an entry may carry: a misspelt one ("suggestonly") must not be ignored, it rejects the file */

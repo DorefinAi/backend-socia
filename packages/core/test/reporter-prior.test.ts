@@ -97,6 +97,18 @@ describe("Step 1: V1–V11 hold before the prior is added", () => {
     const { d } = draft(fileFor(null, "JPR3"), ["मतदाता सूची में नाम जुड़वाने का अभियान शुरू", "ग्राम पंचायत स्तर पर लगेंगे शिविर"]);
     expect(all(d)).not.toContain("ceorajasthan");
   });
+  it("V9 positive control: the same voter-list story without 'पंचायत' does reach @CeoRajasthan", () => {
+    const { d } = draft(fileFor(null, "JPR3"), ["मतदाता सूची में नाम जुड़वाने का अभियान शुरू", "सभी मतदान केंद्रों पर लगेंगे शिविर"]);
+    expect(all(d)).toContain("ceorajasthan");
+  });
+  it("V2 negative: a danda that ends the headline (nothing after it) is not a video headline; through segmentPost", () => {
+    expect(isVideoHeadline("उज्जैन में नई योजना का शुभारंभ।")).toBe(false);
+    expect(isVideoHeadline(segmentPost("उज्जैन में नई योजना का शुभारंभ।\n\nमुख्यमंत्री ने किया लोकार्पण\n\n#FirstIndiaNews").headline)).toBe(false);
+    const s = segmentPost("उज्जैन में नई योजना का शुभारंभ। Madhya Pradesh News\n\n#FINVideo #FirstIndiaNews");
+    expect(s.headline).toBe("उज्जैन में नई योजना का शुभारंभ। Madhya Pradesh News");
+    expect(isVideoHeadline(s.headline)).toBe(true);
+    expect(s.trail).toEqual(["FINVideo", "FirstIndiaNews"]);
+  });
   it("V10 'कांग्रेस' only in the points: @INCRajasthan offered, not tagged", () => {
     const { d } = draft(fileFor(null, "JPR3"), ["जयपुर में पूर्व मंत्री का धरना प्रदर्शन", "कांग्रेस कार्यकर्ताओं ने की नारेबाजी"]);
     expect(d.mentions).not.toContain("@INCRajasthan");
@@ -163,12 +175,13 @@ const priorOf = (handle: string, text = "", taken: string[] = []) =>
   reporterPrior({ profile: profileOf(handle), text, taken: new Set(taken.map((t) => t.toLowerCase())), takenTags: new Set(), districtBound, directory }, reporters, beats);
 
 describe("Step 3.4: exactly the firing table, on the seed data", () => {
-  const TABLE: [string, [string, number][]][] = [
+  const TABLE: [string, [string, number, "trunc"?][]][] = [
     ["rituraj9999", [["RajGovOfficial", 0.53]]],
     ["ml_vikas", [["RajGovOfficial", 0.48]]],
     ["DineshKasana15", [["RajGovOfficial", 0.43]]],
     ["Nirmaltiwaribki", [["RajGovOfficial", 0.43]]],
-    ["parmarshivendra", [["RajGovOfficial", 0.27]]],
+    // The one row the brief truncates rather than rounds (0.2751 printed 0.27)
+    ["parmarshivendra", [["RajGovOfficial", 0.27, "trunc"]]],
     ["aishwaryam99", [["BhajanlalBjp", 0.54], ["BJP4Rajasthan", 0.35]]],
     ["yogesh2727sh1", [["BJP4Rajasthan", 0.39]]],
   ];
@@ -176,11 +189,16 @@ describe("Step 3.4: exactly the firing table, on the seed data", () => {
     it(`${who} → ${fires.map(([h, s]) => `@${h} ${s}`).join(", ")}`, () => {
       const out = priorOf(who).handles;
       expect(out.map((h) => h.handle)).toEqual(fires.map(([h]) => h));
+      const p = profileOf(who)!.prior!;
+      const s = reporters.prior!;
       out.forEach((h, i) => {
-        // The brief's table truncates (parmarshivendra 0.2751 is printed 0.27)
-        expect(Math.abs(h.score! - fires[i]![1])).toBeLessThan(0.011);
+        // The unrounded smoothed rate, printed to 2 places as the brief's table prints it
+        const raw = smoothedRate(p.handles[h.handle]!, p.n, s.base.get(h.handle.toLowerCase()) ?? 0, s.m);
+        const shown = (fires[i]![2] === "trunc" ? Math.trunc(raw * 100) : Math.round(raw * 100)) / 100;
+        expect(Math.abs(shown - fires[i]![1])).toBeLessThan(0.005);
+        expect(h.score).toBe(Math.round(raw * 100) / 100);
         expect(h).toMatchObject({ reason: "prior", source: "reporter_prior" });
-        expect(h.n).toBe(profileOf(who)!.prior!.n);
+        expect(h.n).toBe(p.n);
         expect(h.detail).toMatch(/upper bound/);
       });
     });
@@ -284,14 +302,22 @@ describe("L7: emit layer identical with the prior on and off", () => {
   }
   const corpus = [...posts, ...extra];
   const TOKENS = ["RITURAJ", "AISHWARYA", "NIRMAL", "DIMPLE", "DINESH_KASANA", "YOGESH", "NARESH", null];
-  it(`over ${posts.length} fixture posts${extra.length ? ` + ${extra.length} from oct30` : ""}, for ${TOKENS.length} file-name reporters`, () => {
+  // The no-district case, and (F2) a resolved district, a story outside Rajasthan, and a leader's post
+  const VARIANTS = [
+    { name: "no district", district: null, rajasthan: true, leaderPost: false },
+    { name: "a resolved district (Kota, stated)", district: "Kota", districtFrom: "place_line" as const, rajasthan: true, leaderPost: false },
+    { name: "rajasthan false", district: null, rajasthan: false, leaderPost: false },
+    { name: "leaderPost true", district: null, rajasthan: true, leaderPost: true },
+  ];
+  it.each(VARIANTS)(`over ${posts.length} fixture posts${extra.length ? ` + ${extra.length} from oct30` : ""}, for ${TOKENS.length} file-name reporters: $name`, (variant) => {
     expect(corpus.length).toBeGreaterThan(0);
     let compared = 0;
     for (const text of corpus) {
       const s = segmentPost(text);
       if (!s.headline) continue;
       for (const token of TOKENS) {
-        const input = { headline: s.headline, points: s.points, district: null, town: null, rajasthan: true, leaderPost: false, reporterToken: token };
+        const { name: _name, ...v } = variant;
+        const input = { headline: s.headline, points: s.points, town: null, ...v, reporterToken: token };
         const opts = { subjects, reporters, parties, normaliser, suggestRules, beats, at: AT };
         const on = composeBreaking(input, rules, book, opts);
         const off = composeBreaking(input, rules, book, { ...opts, reporterPrior: false });
@@ -304,6 +330,22 @@ describe("L7: emit layer identical with the prior on and off", () => {
       }
     }
     expect(compared).toBeGreaterThan(0);
+  });
+  it("V11 (F3): over the corpus × every reporter token, every handle tagged or offered is in a directory file", () => {
+    const opts = { subjects, reporters, parties, normaliser, suggestRules, beats, at: AT };
+    let checked = 0;
+    for (const text of corpus) {
+      const s = segmentPost(text);
+      if (!s.headline) continue;
+      for (const token of TOKENS) {
+        const d = composeBreaking({ headline: s.headline, points: s.points, district: null, town: null, rajasthan: true, leaderPost: false, reporterToken: token }, rules, book, opts);
+        for (const h of all(d)) expect(directory.has(h), `${h} on "${s.headline}" (${token})`).toBe(true);
+        // A reporter's suggestions never bring a police or collector handle, verified or not
+        for (const h of d.handleSuggestions.filter((x) => x.reason === "prior" || x.reason === "beat")) expect(rules.bound!.has(h.handle.toLowerCase()), h.handle).toBe(false);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
 
@@ -334,12 +376,17 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.bodyText.startsWith("#Jaipur: ")).toBe(true);
     for (const h of [...jaipur.police, ...jaipur.collector, ...jodhpur.police, ...jodhpur.collector]) expect(all(d)).not.toContain(h.toLowerCase());
   });
-  it("…but when the places file DOES place it (पंचायत समिति बिलाड़ा → Jodhpur) the post resolves, and the policy stays out", () => {
-    // "It must never override a district that resolves from the post itself" (§4.2): the gazetteer's Jodhpur is
-    // offered, as any inferred district is, and line 1 carries nothing
-    const { d } = draft(fileFor("RITURAJ"), ["पंचायत समिति बिलाड़ा की ग्राम पंचायत भावी में पुनर्मतदान", "मतपत्र चोरी के चलते फैसला"]);
-    expect(d.bodyText.startsWith("#")).toBe(false);
-    expect(d.hashtagSuggestions[0]).toBe("#Jodhpur");
+  it("A5: a place the gazetteer finds in the text (पंचायत समिति बिलाड़ा → Jodhpur) does NOT block it; Jodhpur stays offered, no Jodhpur handle", () => {
+    // User decision (13 Nov): only a district the DESK wrote (a tag, the place line, the file code) blocks the rule
+    const { d } = draft(fileFor("RITURAJ"), ["पंचायत समिति बिलाड़ा की ग्राम पंचायत भावी में पुनर्मतदान", "मतपत्र चोरी के चलते फैसला", "पुलिस ने मौके पर पहुंचकर लोगों को समझाया"]);
+    expect(d.bodyText.startsWith("#Jaipur: ")).toBe(true);
+    expect(d.districtSource).toBe("reporter_policy");
+    expect(d.hashtagSuggestions).toContain("#Jodhpur");
+    for (const h of [...jaipur.police, ...jaipur.collector, ...jodhpur.police, ...jodhpur.collector]) expect(all(d)).not.toContain(h.toLowerCase());
+    // …and as a video, the same story offers #Jaipur in the trailing run instead
+    const v = draft(fileFor("RITURAJ"), ["पंचायत समिति बिलाड़ा में पुनर्मतदान | Rajasthan News", "मतपत्र चोरी के चलते फैसला"]).d;
+    expect(v.bodyText.startsWith("#")).toBe(false);
+    expect(v.hashtagSuggestions).toContain("#Jaipur");
   });
   it("12. a post that already names Kota keeps Kota; no #Jaipur", () => {
     const { d } = draft(fileFor("RITURAJ", "KTA4"), NONE);
@@ -347,10 +394,55 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.bodyText).not.toContain("#Jaipur");
     expect(d.hashtagSuggestions).not.toContain("#Jaipur");
   });
-  it("a district the headline infers resolves the post too: no policy over it", () => {
+  it("A5: a district only the headline's text names (डूंगरपुर) does not block it either; Dungarpur is offered", () => {
     const { d } = draft(fileFor("RITURAJ"), ["डूंगरपुर में ACB कार्रवाई", "प्रभारी को रिश्वत लेते दबोचा"]);
-    expect(d.bodyText.startsWith("#Jaipur")).toBe(false);
+    expect(d.bodyText.startsWith("#Jaipur: ")).toBe(true);
+    expect(d.hashtagSuggestions).toContain("#Dungarpur");
+  });
+  it("A1: a place TAG outside Rajasthan blocks it (#Delhi in the copy, #Bhopal: before the headline); the footer is never changed", () => {
+    for (const lines of [["केंद्रीय मंत्रियों की बैठक", "राज्यों के मंत्री शामिल हुए #Delhi"], ["#Bhopal: मुख्यमंत्रियों की बैठक", "राज्यों के मंत्री शामिल हुए"]]) {
+      const { d } = draft(fileFor("RITURAJ"), lines);
+      expect(d.bodyText.startsWith("#Jaipur"), lines[0]).toBe(false);
+      expect(d.districtSource, lines[0]).not.toBe("reporter_policy");
+    }
+    // A place only NAMED (दिल्ली, MP) does not block: the real corpus post
+    const mp = draft(fileFor("RITURAJ"), ["ACS अभय कुमार के ससुर MP के पूर्व CS का निधन", "प्रशासनिक अधिकारियों ने जताया शोक"]).d;
+    expect(mp.bodyText.startsWith("#Jaipur: ")).toBe(true);
+    // The rule never moves the footer: an NWS story (rajasthan false) keeps the national brand with or without it
+    const input = { headline: "दिल्ली में केंद्रीय मंत्रियों की बैठक", points: ["राज्यों के मंत्री शामिल हुए"], district: null, town: null, rajasthan: false, leaderPost: false };
+    const withRule = composeBreaking({ ...input, reporterToken: "RITURAJ" }, rules, book, { subjects, reporters, parties, beats });
+    const without = composeBreaking({ ...input, reporterToken: "NARESH" }, rules, book, { subjects, reporters, parties, beats });
+    expect(withRule.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
+    expect(withRule.hashtags).toEqual(without.hashtags);
+  });
+  it("A2: the desk's own tag run ('#BJP: ...') is left as written: no #Jaipur, no reporter_policy, footer by the story", () => {
+    const { d } = draft(fileFor("RITURAJ"), ["#BJP: प्रदेश कार्यकारिणी की बैठक", "नेताओं ने भाग लिया"]);
+    expect(d.bodyText.startsWith("#BJP: ")).toBe(true);
+    expect(d.bodyText).not.toContain("#Jaipur");
     expect(d.districtSource).toBeNull();
+    expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
+    const nws = composeBreaking({ headline: "#BJP: दिल्ली में बैठक", points: ["नेताओं ने भाग लिया"], district: null, town: null, rajasthan: false, leaderPost: false, reporterToken: "RITURAJ" }, rules, book, { subjects, reporters, parties, beats });
+    expect(nws.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
+    expect(nws.districtSource).toBeNull();
+  });
+  it("A3: a video-format breaking headline takes no leading tag; #Jaipur is offered, marked reporter_policy", () => {
+    const { d } = draft(fileFor("RITURAJ"), ["नए दिशा-निर्देश जारी | Rajasthan News", "सभी विभागों को आदेश"]);
+    expect(d.bodyText.startsWith("#")).toBe(false);
+    expect(d.hashtagSuggestions[0]).toBe("#Jaipur");
+    expect(d.hashtagSuggestionItems[0]).toMatchObject({ tag: "#Jaipur", source: "reporter_policy" });
+    expect(d.districtSource).toBeNull();
+    expect(d.proposals.filter((p) => p.source === "reporter_policy")).toEqual([expect.objectContaining({ item: "#Jaipur", layer: "suggest" })]);
+  });
+  it("A4: a place the desk wrote before the colon that Socia does not know ('आकोला: ...') stays as written: no #Jaipur", () => {
+    const { d } = draft(fileFor("RITURAJ"), ["आकोला: पंचायत समिति की बैठक", "विकास कार्यों पर चर्चा"]);
+    expect(d.bodyText).not.toContain("#Jaipur");
+    expect(d.bodyText).toContain("आकोला");
+  });
+  it("a policy district the places file does not know is not applied, and the draft says why", () => {
+    const r = parseReporterHandles({ version: 1, entries: [{ handle: "@rituraj9999", names_en: ["RITURAJ"], verified: true, policy: { district_when_missing: "Jaipurr" } }] });
+    const d = composeBreaking({ headline: "सरकार ने जारी किए नए दिशा-निर्देश", points: ["सभी विभागों को भेजे गए आदेश"], district: null, town: null, rajasthan: true, leaderPost: false, reporterToken: "RITURAJ" }, rules, book, { reporters: r });
+    expect(d.bodyText.startsWith("#")).toBe(false);
+    expect(d.warnings.join(" ")).toMatch(/Jaipurr.*not a district/);
   });
   it("13. a reporter without a policy block, no district: nothing in line 1 (V7 unchanged)", () => {
     const { d } = draft(fileFor("NARESH"), NONE);
@@ -407,5 +499,85 @@ describe("Step 6: an office named without its holder", () => {
   it("an office handle not in the file fails it", () => {
     const json = cfg("subject-handles.json");
     expect(() => parseSubjectHandles({ ...json, offices: { rajasthan_cm: { aliases_en: ["CM"], handles: ["@NotAnEntry"] } } })).toThrow(DataFileRejected);
+  });
+});
+
+// ─── review fixes (13 Nov): beats and reporter config ────────────────────────
+
+describe("C1–C6: what a reporter's suggestions may carry", () => {
+  const nirmal = profileOf("Nirmaltiwaribki")!;
+  it("C1: declared beats only when beats_source is 'desk' ('observed' or missing: no beat suggestion)", () => {
+    const text = "पर्यटन विभाग की नई योजना";
+    expect(reporterPrior({ profile: nirmal, text, taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles.map((h) => h.handle)).toContain("KumariDiya");
+    for (const beatsSource of ["observed", null] as const) {
+      const p = { ...nirmal, beatsSource };
+      expect(reporterPrior({ profile: p, text, taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles.filter((h) => h.reason === "beat"), String(beatsSource)).toEqual([]);
+    }
+  });
+  it("C2: a forbidden beat under another spelling, or any beat listing a CM or state-government handle, fails the file", () => {
+    for (const key of ["state_government", "State Government", "chief_minister", "CMO", "Chief-Minister"]) {
+      expect(() => parseBeatHandles({ [key]: { keywords: "सरकार", handles: ["@rajeduofficial"] } }, directory), key).toThrow(DataFileRejected);
+    }
+    for (const h of ["@BhajanlalBjp", "@RajCMO", "@RajGovOfficial"]) {
+      expect(() => parseBeatHandles({ politics: { keywords: "राजनीति", handles: [h] } }, directory), h).toThrow(/CM or state-government/);
+    }
+  });
+  it("C2: beat keys are compared without case; two spellings of one key fail the file", () => {
+    const b = parseBeatHandles({ Education: { keywords: "स्कूल", handles: ["@rajeduofficial"] } }, directory);
+    expect([...b.beats.keys()]).toEqual(["education"]);
+    expect(() => parseBeatHandles({ Education: { keywords: "स्कूल", handles: ["@rajeduofficial"] }, education: { keywords: "स्कूल", handles: ["@rajeduofficial"] } }, directory)).toThrow(/listed twice/);
+  });
+  it("C3: a police or collector handle, verified or not, fails a beat file and never comes from the measured prior", () => {
+    const unverified = parseHandleRules({ version: 1, districts: { Salumbar: [{ handle: "@DMSalumbar", role: "collector", verified: false }] } });
+    expect(unverified.bound!.has("dmsalumbar")).toBe(true);
+    const dir = new Set([...directory, "dmsalumbar"]);
+    expect(() => parseBeatHandles({ admin: { keywords: "प्रशासन", handles: ["@DMSalumbar"] } }, dir, { bound: unverified.bound! })).toThrow(/police, collector/);
+    // At load: a prior naming one fails the reporters file
+    const entry = { handle: "@a_rep", names_en: ["A_REP"], verified: true, prior: { n: 50, handles: { DMSalumbar: 0.9 } } };
+    expect(() => parseReporterHandles({ version: 1, entries: [entry] }, undefined, { bound: unverified.bound! })).toThrow(DataFileRejected);
+    // At compose: filtered even when the file was never checked
+    const fake = { ...profileOf("rituraj9999")!, prior: { n: 100, handles: { DMSalumbar: 0.9 }, hashtags: {}, source: null } };
+    expect(reporterPrior({ profile: fake, text: "", taken: new Set(), takenTags: new Set(), districtBound: unverified.bound!, directory: dir }, reporters, beats).handles).toEqual([]);
+  });
+  it("C4: a keyword pattern that matches empty text fails the file", () => {
+    expect(() => parseBeatHandles({ education: { keywords: "स्कूल|", handles: ["@rajeduofficial"] } }, directory)).toThrow(/matches empty text/);
+  });
+  it("C5: a bad prior or prior settings fail the reporters file loudly", () => {
+    const base = { handle: "@a_rep", names_en: ["A_REP"], verified: true };
+    for (const prior of [{ n: 50, handles: { RajGovOfficial: 1.5 } }, { n: Number.NaN }, { n: "50" }, { n: 50, handles: { NotAHandleAnywhere: 0.5 } }]) {
+      expect(() => parseReporterHandles({ version: 1, entries: [{ ...base, prior }] }, undefined, { directory }), JSON.stringify(prior)).toThrow(DataFileRejected);
+    }
+    expect(() => parseReporterHandles({ version: 1, prior_settings: "m=20", entries: [base] })).toThrow(DataFileRejected);
+    expect(() => parseReporterHandles({ version: 1, prior_settings: { min_score: 2 }, entries: [base] })).toThrow(DataFileRejected);
+    expect(() => parseReporterHandles({ version: 1, ambiguous_tokens: "DINESH", entries: [base] })).toThrow(DataFileRejected);
+    const problems: string[] = [];
+    parseReporterHandles({ version: 1, entries: [{ ...base, beats: ["education"], beats_source: "desk-ish" }] }, (m) => problems.push(m));
+    expect(problems.join(" ")).toMatch(/beats_source "desk-ish"/);
+    // The prior's records cannot be polluted through their keys
+    const r = parseReporterHandles({ version: 1, entries: [{ ...base, prior: { n: 50, handles: JSON.parse('{"__proto__": 0.5}') } }] });
+    expect(Object.getPrototypeOf(r.profiles!.get("a_rep")!.prior!.handles)).toBeNull();
+  });
+  it("C5: a desk-declared beat with no key in beat-handles.json is a warning, not a rejection", () => {
+    const problems: string[] = [];
+    parseBeatHandles(cfg("beat-handles.json"), directory, { reporters, problem: (m) => problems.push(m) });
+    expect(problems.join(" ")).toMatch(/"mining", which beat-handles.json has no key for/);
+  });
+  it("C6: an empty or missing directory allows NOTHING, and says so", () => {
+    for (const dir of [new Set<string>(), undefined, null]) {
+      const out = reporterPrior({ profile: profileOf("DineshKasana15"), text: "JDA ने हटाए अतिक्रमण", taken: new Set(), takenTags: new Set(), districtBound, directory: dir }, reporters, beats);
+      expect(out.handles).toEqual([]);
+      expect(out.warnings.join(" ")).toMatch(/fail closed/);
+    }
+  });
+  it("equal scores are ordered by handle name, whatever the file's key order", () => {
+    const p = (handles: Record<string, number>) => ({ ...profileOf("rituraj9999")!, prior: { n: 100, handles, hashtags: {}, source: null } });
+    const run = (handles: Record<string, number>) => reporterPrior({ profile: p(handles), text: "", taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles.map((h) => h.handle);
+    expect(run({ BJP4Rajasthan: 0.6, BhajanlalBjp: 0.6 })).toEqual(run({ BhajanlalBjp: 0.6, BJP4Rajasthan: 0.6 }));
+    expect(run({ BJP4Rajasthan: 0.6, BhajanlalBjp: 0.6 })).toHaveLength(2);
+  });
+  it("tags are offered once, compared without case", () => {
+    const { d } = draft(fileFor("RITURAJ"), ["सरकार ने जारी किए नए दिशा-निर्देश", "सभी विभागों को भेजे गए आदेश"]);
+    const lower = d.hashtagSuggestions.map((t) => t.toLowerCase());
+    expect(new Set(lower).size).toBe(lower.length);
   });
 });

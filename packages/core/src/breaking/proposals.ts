@@ -2,43 +2,17 @@
 //
 // THE CONTRACT the decision log, the API and the desk read: one Proposal per item, `layer` "emit" (on the post
 // by itself) or "suggest" (one click to add, never applied), `source` a STABLE rule id so the log can score each
-// rule on its own, `reason` the line the desk sees. A reporter-prior item also carries its smoothed `score` and
-// the reporter's sample size `n`. Rule ids are listed here and nowhere else; renaming one breaks the log's history.
+// rule on its own, `reason` the line the desk sees. A reporter-prior item, and only one, also carries its smoothed
+// `score` and the reporter's sample size `n`. Rule ids are listed here and nowhere else; renaming one breaks the
+// log's history.
 
 import type { HandlePick } from "./handles";
 
 export type ProposalKind = "hashtag" | "handle";
 export type ProposalLayer = "emit" | "suggest";
 
-export interface Proposal {
-  /** "#Jaipur", "@RajGovOfficial" */
-  item: string;
-  kind: ProposalKind;
-  layer: ProposalLayer;
-  /** A stable rule id (SOURCES below, or "district.<from>" / "beat.<key>") */
-  source: string;
-  /** Why, in words the desk can agree or disagree with */
-  reason: string;
-  /** reporter_prior only: the smoothed rate the threshold was read against */
-  score?: number;
-  /** reporter_prior only: the reporter's posts the rate rests on */
-  n?: number;
-  /** Phase 2 exploration (brief §7.2.3): shown regardless of the reporter's rate. Unused in phase 1. */
-  explore?: boolean;
-}
-
-/** A hashtag offered to the desk, with its rule: the structured form of BreakingDraft.hashtagSuggestions */
-export interface TagSuggestion {
-  /** "#Jaipur" */
-  tag: string;
-  source: string;
-  reason: string;
-  score?: number;
-  n?: number;
-}
-
-/** The rule ids. Hashtags first, then handles. */
-export const SOURCES = {
+/** The fixed rule ids. Hashtags first, then handles. */
+export const PROPOSAL_SOURCES = {
   /** The footer: #RajasthanWithFirstIndia / #FirstIndiaNews by the story's geography */
   brand: "brand.geo",
   /** The Hindi town tag after the district in line 1 */
@@ -57,14 +31,70 @@ export const SOURCES = {
   officeCm: "office_alias.rajasthan_cm",
 } as const;
 
+/** The rule ids of the handle picker's own reasons (handleSource) */
+export type HandleRuleId =
+  | "cm.name" | "district.police" | "district.collector" | "state.government" | "state.police" | "subject" | "desk" | "party"
+  | "reporter.byline" | "beat";
+
+/** "district.place_line", "district.inferred.headline", ... */
+export type DistrictRuleId = `district.${string}`;
+/** A declared beat: "beat.education" */
+export type BeatRuleId = `beat.${string}`;
+/** An office named without its holder: "office_alias.rajasthan_cm" */
+export type OfficeRuleId = `office_alias.${string}`;
+
+/** Every rule id a Proposal may carry */
+export type RuleId = (typeof PROPOSAL_SOURCES)[keyof typeof PROPOSAL_SOURCES] | HandleRuleId | DistrictRuleId | BeatRuleId | OfficeRuleId;
+/** The reporter prior's id: the only rule whose items carry a score and a sample size */
+export type PriorRuleId = typeof PROPOSAL_SOURCES.reporterPrior;
+/** Every other rule id */
+export type PlainRuleId = Exclude<RuleId, PriorRuleId>;
+
+interface ProposalBase {
+  /** "#Jaipur", "@RajGovOfficial" */
+  item: string;
+  kind: ProposalKind;
+  layer: ProposalLayer;
+  /** Why, in words the desk can agree or disagree with */
+  reason: string;
+}
+
+/** A reporter-prior item: the smoothed rate the threshold was read against, and the posts it rests on */
+export interface PriorProposal extends ProposalBase {
+  source: PriorRuleId;
+  score: number;
+  n: number;
+}
+
+/** Any other rule's item: never a score */
+export interface RuleProposal extends ProposalBase {
+  source: PlainRuleId;
+  score?: never;
+  n?: never;
+}
+
+export type Proposal = PriorProposal | RuleProposal;
+
+/** The Proposal fields a hashtag suggestion carries, with `item` called `tag`, per variant (so the two cannot drift) */
+type AsTagSuggestion<P> = P extends Proposal ? Omit<P, "item" | "kind" | "layer"> & { /** "#Jaipur" */ tag: string } : never;
+
+/** A hashtag offered to the desk, with its rule: the structured form of BreakingDraft.hashtagSuggestions */
+export type TagSuggestion = AsTagSuggestion<Proposal>;
+
 /** The district hashtag's rule id: "district.place_line", "district.tag", "district.file_code", "district.inferred.headline" */
-export const districtSource = (from: string, inferred: boolean): string => `district.${inferred ? "inferred." : ""}${from}`;
+export const districtSource = (from: string, inferred: boolean): DistrictRuleId => `district.${inferred ? "inferred." : ""}${from}`;
 
 /** A declared beat's rule id: "beat.education" */
-export const beatSource = (beat: string): string => `beat.${beat}`;
+export const beatSource = (beat: string): BeatRuleId => `beat.${beat}`;
 
-/** The rule id of a handle the picker chose, from its HandlePick (an explicit `source` wins) */
-export function handleSource(h: HandlePick): string {
+function assertNever(x: never): never {
+  throw new Error(`unhandled handle reason: ${String(x)}`);
+}
+
+type PlainHandlePick = Exclude<HandlePick, { reason: "prior" }>;
+
+/** The rule id of any handle but a prior one: an explicit `source` wins, else the picker's reason */
+function plainHandleSource(h: PlainHandlePick): PlainRuleId {
   if (h.source) return h.source;
   switch (h.reason) {
     case "cm": return "cm.name";
@@ -76,23 +106,26 @@ export function handleSource(h: HandlePick): string {
     case "desk": return "desk";
     case "party": return "party";
     case "reporter": return "reporter.byline";
-    case "prior": return SOURCES.reporterPrior;
     case "beat": return "beat";
-    case "office": return SOURCES.officeCm;
+    case "office": return PROPOSAL_SOURCES.officeCm;
+    default: return assertNever(h.reason);
   }
 }
+
+/** The rule id of a handle the picker chose, from its HandlePick (an explicit `source` wins) */
+export const handleSource = (h: HandlePick): RuleId => (h.reason === "prior" ? h.source : plainHandleSource(h));
 
 /** The line shown for a handle: its own detail, else its title, else the rule */
 export const handleReason = (h: HandlePick): string => h.detail ?? h.title ?? handleSource(h);
 
 /** A HandlePick as a Proposal */
-export const handleProposal = (h: HandlePick, layer: ProposalLayer): Proposal => ({
-  item: `@${h.handle}`, kind: "handle", layer, source: handleSource(h), reason: handleReason(h),
-  ...(h.score !== undefined && { score: h.score }), ...(h.n !== undefined && { n: h.n }),
-});
+export function handleProposal(h: HandlePick, layer: ProposalLayer): Proposal {
+  const base = { item: `@${h.handle}`, kind: "handle" as const, layer, reason: handleReason(h) };
+  return h.reason === "prior" ? { ...base, source: h.source, score: h.score, n: h.n } : { ...base, source: plainHandleSource(h) };
+}
 
 /** A TagSuggestion as a Proposal */
-export const tagProposal = (t: TagSuggestion): Proposal => ({
-  item: t.tag, kind: "hashtag", layer: "suggest", source: t.source, reason: t.reason,
-  ...(t.score !== undefined && { score: t.score }), ...(t.n !== undefined && { n: t.n }),
-});
+export function tagProposal(t: TagSuggestion): Proposal {
+  const base = { item: t.tag, kind: "hashtag" as const, layer: "suggest" as const, reason: t.reason };
+  return t.source === PROPOSAL_SOURCES.reporterPrior ? { ...base, source: t.source, score: t.score, n: t.n } : { ...base, source: t.source };
+}

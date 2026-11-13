@@ -26,6 +26,8 @@
 // those learned tokens are merged in by `mergeReporterTokens`. The list completes itself from use.
 
 import { fold } from "../fold";
+import { HANDLE } from "./syntax";
+import { DataFileRejected } from "./post-tags";
 
 /** One entry of reporter-handles.json */
 export interface ReporterHandleEntry {
@@ -100,10 +102,10 @@ export interface PriorSettings {
   minScore: number;
   minN: number;
   /** Lower-cased handle (no @) or "#tag" → base rate */
-  base: Map<string, number>;
+  base: ReadonlyMap<string, number>;
 }
 
-export const DEFAULT_PRIOR_SETTINGS: PriorSettings = { m: 20, minScore: 0.25, minN: 20, base: new Map() };
+export const DEFAULT_PRIOR_SETTINGS: Readonly<PriorSettings> = Object.freeze({ m: 20, minScore: 0.25, minN: 20, base: new Map<string, number>() });
 
 export interface ReporterMatch {
   /** Handle without the @ */
@@ -141,8 +143,9 @@ export const reporterProfile = (rules: ReporterRules, m: ReporterMatch | null | 
   (m && rules.profiles?.get(m.handle.toLowerCase())) ?? null;
 
 const rate = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+/** A prior's rates, by handle (no @) or "#Tag": a null-prototype record, so "constructor" or "__proto__" is only ever a key */
 const rates = (v: unknown, where: string, problem: (m: string) => void): Record<string, number> => {
-  const out: Record<string, number> = {};
+  const out: Record<string, number> = Object.create(null) as Record<string, number>;
   if (v === undefined) return out;
   if (!v || typeof v !== "object" || Array.isArray(v)) {
     problem(`${where}: must be { "Handle": 0.62, ... }`);
@@ -156,12 +159,39 @@ const rates = (v: unknown, where: string, problem: (m: string) => void): Record<
   return out;
 };
 
-function parseProfile(e: ReporterHandleEntry, handle: string, name: string, where: string, problem: (m: string) => void): ReporterProfile {
+/**
+ * What a reporter's `prior` may name, beyond being well-formed (parseReporterHandles' `check`). Both lower-cased
+ * without the @. A handle outside `directory`, or inside `bound`, rejects the whole file.
+ */
+export interface ReporterPriorCheck {
+  /** Every handle the OTHER directory files carry (this file's own handles are added) */
+  directory?: ReadonlySet<string>;
+  /** Every police and collector handle, verified or not (HandleRules.bound): a reporter never brings one */
+  bound?: ReadonlySet<string>;
+}
+
+/**
+ * A reporter's profile. A malformed `prior` (no finite sample size, a rate outside 0..1, a handle outside the
+ * directory or a police / collector handle) goes to `reject` and fails the whole file; an unknown beats_source is
+ * a warning.
+ */
+function parseProfile(e: ReporterHandleEntry, handle: string, name: string, where: string, problem: (m: string) => void, reject: (m: string) => void, check: ReporterPriorCheck): ReporterProfile {
   let prior: ReporterProfile["prior"] = null;
   if (e.prior !== undefined) {
     const p = e.prior as Partial<ReporterPriorData> | null;
-    if (!p || typeof p !== "object" || typeof p.n !== "number" || !(p.n >= 0)) problem(`${where}: "prior" needs a sample size "n"`);
-    else prior = { n: p.n, handles: rates(p.handles, `${where}.prior.handles`, problem), hashtags: rates(p.hashtags, `${where}.prior.hashtags`, problem), source: typeof p.source === "string" ? p.source : null };
+    if (!p || typeof p !== "object" || Array.isArray(p) || typeof p.n !== "number" || !Number.isFinite(p.n) || p.n < 0) reject(`${where}: "prior" needs a finite sample size "n" of 0 or more`);
+    else {
+      const handles = rates(p.handles, `${where}.prior.handles`, reject);
+      for (const h of Object.keys(handles)) {
+        const lc = h.toLowerCase();
+        if (check.bound?.has(lc)) reject(`${where}.prior.handles: @${h} is a district police, collector or state police handle — a reporter never brings one (brief §3.5)`);
+        else if (check.directory && !check.directory.has(lc)) reject(`${where}.prior.handles: @${h} is in no directory file — a handle is never invented`);
+      }
+      prior = { n: p.n, handles, hashtags: rates(p.hashtags, `${where}.prior.hashtags`, reject), source: typeof p.source === "string" ? p.source : null };
+    }
+  }
+  if (e.beats_source !== undefined && e.beats_source !== "desk" && e.beats_source !== "observed") {
+    problem(`${where}: beats_source "${String(e.beats_source)}" is neither "desk" nor "observed"; its beats offer nothing`);
   }
   const dwm = e.policy?.district_when_missing;
   return {
@@ -170,16 +200,18 @@ function parseProfile(e: ReporterHandleEntry, handle: string, name: string, wher
   };
 }
 
-function parsePriorSettings(root: Partial<ReporterHandlesData>, problem: (m: string) => void): PriorSettings {
-  const s = root.prior_settings ?? {};
+function parsePriorSettings(root: Partial<ReporterHandlesData>, reject: (m: string) => void): PriorSettings {
+  const raw: unknown = root.prior_settings;
+  if (raw !== undefined && (!raw || typeof raw !== "object" || Array.isArray(raw))) reject(`prior_settings: must be { "m": 20, "min_score": 0.25, "min_n": 20 }`);
+  const s = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as NonNullable<ReporterHandlesData["prior_settings"]>) : {};
   const num = (v: unknown, d: number, ok: (x: number) => boolean, k: string) => {
     if (v === undefined) return d;
-    if (typeof v === "number" && ok(v)) return v;
-    problem(`prior_settings.${k}: ${String(v)} is not valid; ${d} used`);
+    if (typeof v === "number" && Number.isFinite(v) && ok(v)) return v;
+    reject(`prior_settings.${k}: ${String(v)} is not valid`);
     return d;
   };
   const base = new Map<string, number>();
-  for (const [k, v] of Object.entries(rates(root.prior_base_rates, "prior_base_rates", problem))) base.set(k.toLowerCase(), v);
+  for (const [k, v] of Object.entries(rates(root.prior_base_rates, "prior_base_rates", reject))) base.set(k.toLowerCase(), v);
   return {
     m: num(s.m, DEFAULT_PRIOR_SETTINGS.m, (x) => x >= 0, "m"),
     minScore: num(s.min_score, DEFAULT_PRIOR_SETTINGS.minScore, rate, "min_score"),
@@ -188,7 +220,6 @@ function parsePriorSettings(root: Partial<ReporterHandlesData>, problem: (m: str
   };
 }
 
-const HANDLE = /^@?\w{1,15}$/;
 /**
  * Honorifics the desk types after a name — "ASHOK SIR" (75 files) is the same person as "ASHOK". Dropped
  * so one reporter is not two roster entries.
@@ -235,19 +266,32 @@ function claim(rules: ReporterRules, spelling: string, match: ReporterMatch, pro
  * worker keeps its last good copy. A malformed entry is skipped and reported through `problem`; an
  * unverified entry is left out silently; a token claimed by two reporters is REMOVED and reported.
  */
-export function parseReporterHandles(json: unknown, problem: (message: string) => void = () => undefined): ReporterRules {
+export function parseReporterHandles(json: unknown, problem: (message: string) => void = () => undefined, check: ReporterPriorCheck = {}): ReporterRules {
   const root = json as Partial<ReporterHandlesData> | null;
   if (!root || typeof root !== "object" || !Array.isArray(root.entries)) {
     throw new Error("reporter handles: expected { version, entries: [...] }");
   }
+  // The prior and its settings are rejected WHOLE (b6 fix brief P5): a wrong rate or an invented handle is never
+  // quietly skipped or defaulted
+  const rejects: string[] = [];
+  const reject = (m: string) => rejects.push(m);
   const handles = new Set<string>();
   const verifiedHandles = new Set<string>();
   const profiles = new Map<string, ReporterProfile>();
+  if (root.ambiguous_tokens !== undefined && (!Array.isArray(root.ambiguous_tokens) || root.ambiguous_tokens.some((t) => typeof t !== "string" || !t.trim()))) {
+    reject(`ambiguous_tokens: must be a list of file-name tokens, ["DINESH", ...]`);
+  }
   // Ambiguous tokens are conflicts from the start, so no entry can claim them (§5.1: DINESH is Dangi and Kasana)
   const ambiguous = new Set(strings(root.ambiguous_tokens).map(reporterKey).filter(Boolean));
   const rules: ReporterRules = {
-    byToken: new Map(), conflicts: new Set(ambiguous), count: 0, handles, verifiedHandles, profiles, ambiguous, prior: parsePriorSettings(root, problem),
+    byToken: new Map(), conflicts: new Set(ambiguous), count: 0, handles, verifiedHandles, profiles, ambiguous, prior: parsePriorSettings(root, reject),
   };
+  // This file's own handles are part of the directory a prior may name
+  for (const raw of root.entries) {
+    const h = (raw as Partial<ReporterHandleEntry> | null)?.handle;
+    if (typeof h === "string" && HANDLE.test(h.trim())) handles.add(h.trim().replace(/^@/, "").toLowerCase());
+  }
+  const priorCheck: ReporterPriorCheck = { ...(check.bound && { bound: check.bound }), ...(check.directory && { directory: new Set([...check.directory, ...handles]) }) };
 
   root.entries.forEach((raw, i) => {
     const e = raw as Partial<ReporterHandleEntry> | null;
@@ -264,7 +308,7 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     verifiedHandles.add(handle.toLowerCase());
     const name = typeof e.name === "string" && e.name.trim() ? e.name.normalize("NFC").trim() : handle;
     const match: ReporterMatch = { handle, name, districts: strings(e.districts) };
-    profiles.set(handle.toLowerCase(), parseProfile(e as ReporterHandleEntry, handle, name, `${where} (${e.handle})`, problem));
+    profiles.set(handle.toLowerCase(), parseProfile(e as ReporterHandleEntry, handle, name, `${where} (${e.handle})`, problem, reject, priorCheck));
     let added = 0;
     for (const spelling of strings(e.names_en)) {
       if (ambiguous.has(reporterKey(spelling))) {
@@ -279,6 +323,7 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     rules.count++;
   });
 
+  if (rejects.length) throw new DataFileRejected("reporter-handles", rejects);
   return rules;
 }
 

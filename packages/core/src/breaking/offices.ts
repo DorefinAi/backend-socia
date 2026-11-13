@@ -7,7 +7,8 @@
 // and this adds nothing beside it.
 
 import type { HandlePick } from "./handles";
-import { SOURCES } from "./proposals";
+import { PROPOSAL_SOURCES, type OfficeRuleId } from "./proposals";
+import { HANDLE } from "./syntax";
 
 export interface OfficeData {
   aliases_hi?: string[];
@@ -29,7 +30,7 @@ export interface Office {
   /** Without the @ */
   handles: string[];
   /** The stable rule id: "office_alias.rajasthan_cm" */
-  source: string;
+  source: OfficeRuleId;
 }
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -37,7 +38,6 @@ const words = (list: string[]) => list.map((w) => esc(w.normalize("NFC").trim())
 /** A whole word in Hindi or English: no letter, mark or digit on either side */
 const whole = (alt: string) => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])(?:${alt})(?![\\p{L}\\p{M}\\p{N}])`, "u");
 
-const HANDLE = /^@?\w{1,15}$/;
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : []);
 
 /**
@@ -95,7 +95,7 @@ export function officeSuggestions(offices: readonly Office[], text: string, take
     if (namesHolder(o) || o.handles.some((h) => taken.has(h.toLowerCase()))) continue;
     for (const h of o.handles) {
       if (taken.has(h.toLowerCase()) || out.some((x) => x.handle.toLowerCase() === h.toLowerCase())) continue;
-      out.push({ handle: h, reason: "office", source: o.key === "rajasthan_cm" ? SOURCES.officeCm : o.source, detail: "CM mentioned without a name" });
+      out.push({ handle: h, reason: "office", source: o.key === "rajasthan_cm" ? PROPOSAL_SOURCES.officeCm : o.source, detail: "CM mentioned without a name" });
     }
   }
   return out;

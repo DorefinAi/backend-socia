@@ -8,8 +8,8 @@
 // - hashtagSuggestions: plain strings, except a tag whose rule is known (handle_pick.tagSuggestions), which goes
 //   out as { tag, source, reason, score?, n? }. Reporter and policy tags always have one.
 //
-// A stored item that is not usable is left out and reported once per draft; anything unexpected while mapping
-// falls back to the arrays as stored, so a draft always opens.
+// A stored item that is not usable is left out and reported once per draft and view; anything unexpected while
+// mapping falls back to the well-formed items alone (never raw ones), so a draft always opens.
 
 import { handleSource, PROPOSAL_SOURCES, type RuleHandlePick } from "@socia/core";
 import type { DraftHandlePick } from "@socia/db";
@@ -42,14 +42,23 @@ export function setSuggestionLogger(next: SuggestionLogger): void {
   logger = next;
 }
 
-/** Drafts already reported, so a draft opened all day is reported once (bounded) */
+type View = "mention" | "hashtag";
+
+/**
+ * Draft views already reported ("<draftId>:mention", "<draftId>:hashtag"), so a draft opened all day is reported
+ * once per view and a problem in one view never hides one in the other (bounded). Without a draft id there is
+ * nothing to tell drafts apart by, so each problem is reported.
+ */
 const reported = new Set<string>();
-function report(draftId: string, obj: Record<string, unknown>, msg: string): void {
-  if (reported.has(draftId)) return;
-  if (reported.size >= 5000) reported.clear();
-  reported.add(draftId);
+function report(draftId: string | undefined, view: View, obj: Record<string, unknown>, msg: string): void {
+  if (draftId !== undefined) {
+    const key = `${draftId}:${view}`;
+    if (reported.has(key)) return;
+    if (reported.size >= 5000) reported.clear();
+    reported.add(key);
+  }
   try {
-    logger?.warn({ draftId, ...obj }, msg);
+    logger?.warn({ draftId: draftId ?? null, view, ...obj }, msg);
   } catch {
     // a broken logger never breaks a draft view
   }
@@ -91,10 +100,56 @@ function mentionView(raw: unknown): { view: MentionSuggestionView | null; malfor
   return { view, malformed };
 }
 
-export function mentionSuggestionsView(stored: unknown, draftId = "?"): MentionSuggestionView[] {
+/**
+ * The fallback when mapping failed: only the items that are objects with a string handle and handleId, each
+ * rebuilt from its well-formed contract fields (never passed on raw); [] when the value is not a list. Never throws.
+ */
+function wellFormedMentions(stored: unknown): MentionSuggestionView[] {
+  const out: MentionSuggestionView[] = [];
+  try {
+    if (!Array.isArray(stored)) return out;
+    for (const raw of stored) {
+      try {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+        const m = raw as Record<string, unknown>;
+        if (typeof m.handle !== "string" || typeof m.handleId !== "string") continue;
+        const entity = typeof m.entity === "string" ? m.entity : undefined;
+        const source = str(m.source);
+        const reason = str(m.reason);
+        const detail = str(m.detail);
+        const score = num(m.score);
+        const n = num(m.n);
+        out.push({
+          handleId: m.handleId, handle: m.handle, exact: m.exact === true,
+          ...(entity !== undefined && { entity }), ...(source && { source }), ...(reason && { reason }), ...(detail && { detail }),
+          ...(score !== undefined && { score }), ...(n !== undefined && { n }),
+        });
+      } catch {
+        // an item that cannot even be read is left out
+      }
+    }
+  } catch {
+    // a list that cannot be walked: whatever was rebuilt before it broke
+  }
+  return out;
+}
+
+/** The stored tags that are strings, in order; [] when the value is not a list. Never throws. */
+function wellFormedTags(tags: unknown): string[] {
+  const out: string[] = [];
+  try {
+    if (!Array.isArray(tags)) return out;
+    for (const t of tags) if (typeof t === "string") out.push(t);
+  } catch {
+    // a list that cannot be walked: whatever was read before it broke
+  }
+  return out;
+}
+
+export function mentionSuggestionsView(stored: unknown, draftId?: string): MentionSuggestionView[] {
   try {
     if (!Array.isArray(stored)) {
-      if (stored !== null && stored !== undefined) report(draftId, { type: typeof stored }, "mention suggestions are not a list; none shown");
+      if (stored !== null && stored !== undefined) report(draftId, "mention", { type: typeof stored }, "mention suggestions are not a list; none shown");
       return [];
     }
     const out: MentionSuggestionView[] = [];
@@ -106,19 +161,20 @@ export function mentionSuggestionsView(stored: unknown, draftId = "?"): MentionS
       else dropped++;
       for (const f of malformed) fields.add(f);
     }
-    if (dropped || fields.size) report(draftId, { dropped, malformedFields: [...fields] }, "mention suggestions: unusable items left out or malformed fields dropped");
+    if (dropped || fields.size) report(draftId, "mention", { dropped, malformedFields: [...fields] }, "mention suggestions: unusable items left out or malformed fields dropped");
     return out;
   } catch (err) {
-    report(draftId, { err }, "mention suggestions could not be mapped; sent as stored");
-    return stored as MentionSuggestionView[];
+    const out = wellFormedMentions(stored);
+    report(draftId, "mention", { err, kept: out.length }, "mention suggestions could not be mapped; only the well-formed items sent");
+    return out;
   }
 }
 
 /** The hashtag suggestions, each tag with its rule when handle_pick knows it; the order and the strings as stored */
-export function hashtagSuggestionsView(tags: readonly string[], pick: DraftHandlePick | null | undefined, draftId = "?"): HashtagSuggestionView[] {
+export function hashtagSuggestionsView(tags: readonly string[], pick: DraftHandlePick | null | undefined, draftId?: string): HashtagSuggestionView[] {
   try {
     const items = pick?.tagSuggestions;
-    if (items !== undefined && !Array.isArray(items)) report(draftId, {}, "handle_pick.tagSuggestions is not a list; tags sent as plain strings");
+    if (items !== undefined && !Array.isArray(items)) report(draftId, "hashtag", {}, "handle_pick.tagSuggestions is not a list; tags sent as plain strings");
     const byTag = new Map<string, Record<string, unknown>>();
     let bad = 0;
     for (const it of Array.isArray(items) ? items : []) {
@@ -126,7 +182,7 @@ export function hashtagSuggestionsView(tags: readonly string[], pick: DraftHandl
         if (!byTag.has(it.tag.toLowerCase())) byTag.set(it.tag.toLowerCase(), it as unknown as Record<string, unknown>);
       } else bad++;
     }
-    if (bad) report(draftId, { dropped: bad }, "hashtag suggestion rules: unusable items left out");
+    if (bad) report(draftId, "hashtag", { dropped: bad }, "hashtag suggestion rules: unusable items left out");
     return tags.map((tag) => {
       const it = byTag.get(tag.toLowerCase());
       const source = str(it?.source);
@@ -137,7 +193,8 @@ export function hashtagSuggestionsView(tags: readonly string[], pick: DraftHandl
       return { tag, source, ...(reason && { reason }), ...(score !== undefined && { score }), ...(n !== undefined && { n }) };
     });
   } catch (err) {
-    report(draftId, { err }, "hashtag suggestions could not be mapped; sent as stored");
-    return [...tags];
+    const out = wellFormedTags(tags);
+    report(draftId, "hashtag", { err, kept: out.length }, "hashtag suggestions could not be mapped; only the stored strings sent, as plain tags");
+    return out;
   }
 }

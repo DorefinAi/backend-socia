@@ -49,12 +49,62 @@ describe("suggestion views (no database)", () => {
       // Not a list at all
       expect(mentionSuggestionsView({ not: "a list" }, "draft-2")).toEqual([]);
       expect(warned).toHaveLength(2);
-      // A stored value that blows up while being read: the arrays go out as stored
+      // A stored value that blows up while being read: only well-formed items go out (here none)
       const hostile = [new Proxy({}, { get: () => { throw new Error("boom"); } })];
-      expect(mentionSuggestionsView(hostile, "draft-3")).toBe(hostile);
+      expect(mentionSuggestionsView(hostile, "draft-3")).toEqual([]);
       const pick = { get tagSuggestions(): never { throw new Error("boom"); } };
       expect(hashtagSuggestionsView(["#A"], pick as never, "draft-4")).toEqual(["#A"]);
       expect(warned.map((w) => w.obj.draftId)).toEqual(["draft-1", "draft-2", "draft-3", "draft-4"]);
+    } finally {
+      setSuggestionLogger({ warn: () => {} });
+    }
+  });
+
+  it("reports the mention and the hashtag view of one draft each once (T2), and every problem of a draft with no id", () => {
+    const warned: { obj: Record<string, unknown>; msg: string }[] = [];
+    setSuggestionLogger({ warn: (obj, msg) => void warned.push({ obj, msg }) });
+    try {
+      const badMentions = [null];
+      const badPick = { cls: "x", why: "", warnings: [], handles: [], tagSuggestions: [5] };
+      mentionSuggestionsView(badMentions, "draft-t2");
+      hashtagSuggestionsView(["#A"], badPick as never, "draft-t2");
+      // Opened again: neither is reported twice
+      mentionSuggestionsView(badMentions, "draft-t2");
+      hashtagSuggestionsView(["#A"], badPick as never, "draft-t2");
+      expect(warned.map((w) => [w.obj.draftId, w.obj.view])).toEqual([["draft-t2", "mention"], ["draft-t2", "hashtag"]]);
+      // No draft id: nothing to tell drafts apart by, so each is reported, and none hides a draft id'd "?"
+      warned.length = 0;
+      mentionSuggestionsView(badMentions);
+      mentionSuggestionsView(badMentions);
+      hashtagSuggestionsView(["#A"], badPick as never);
+      mentionSuggestionsView(badMentions, "?");
+      expect(warned.map((w) => [w.obj.draftId, w.obj.view])).toEqual([[null, "mention"], [null, "mention"], [null, "hashtag"], ["?", "mention"]]);
+    } finally {
+      setSuggestionLogger({ warn: () => {} });
+    }
+  });
+
+  it("falls back to the well-formed items only when mapping breaks (T3), and never throws", () => {
+    const warned: { obj: Record<string, unknown>; msg: string }[] = [];
+    setSuggestionLogger({ warn: (obj, msg) => void warned.push({ obj, msg }) });
+    try {
+      const boom = new Proxy({}, { get: () => { throw new Error("boom"); } });
+      const good = { handleId: "rule:police:KotaPolice", entity: "police", handle: "@KotaPolice", exact: true, source: "district.police", reason: "r" };
+      const stored = [good, boom, null, 7, "x", { handle: 1, handleId: "h" }, { handle: "@X" }, { handleId: "y", handle: "@Y", exact: "yes", score: "high", n: 3, source: "", extra: { raw: true } }];
+      const out = mentionSuggestionsView(stored, "draft-t3");
+      expect(out).toEqual([good, { handleId: "y", handle: "@Y", exact: false, n: 3 }]);
+      expect(out[0]).not.toBe(good);
+      expect(warned).toEqual([expect.objectContaining({ obj: expect.objectContaining({ draftId: "draft-t3", view: "mention", kept: 2 }) })]);
+      // A list that cannot even be walked: nothing, not the raw value
+      const unwalkable = new Proxy([good], { get: (t, k) => { if (k === "length" || k === Symbol.iterator) throw new Error("boom"); return Reflect.get(t, k); } });
+      expect(mentionSuggestionsView(unwalkable, "draft-t3b")).toEqual([]);
+
+      // Hashtags: the stored strings only, as plain tags; [] when the tags are not a list
+      const pick = { get tagSuggestions(): never { throw new Error("boom"); } };
+      expect(hashtagSuggestionsView(["#A", 5, null, { tag: "#B" }, "#C"] as never, pick as never, "draft-t3")).toEqual(["#A", "#C"]);
+      expect(hashtagSuggestionsView(null as never, pick as never, "draft-t3c")).toEqual([]);
+      expect(hashtagSuggestionsView({ length: 2 } as never, null, "draft-t3d")).toEqual([]);
+      expect(hashtagSuggestionsView(new Proxy([], { get: () => { throw new Error("boom"); } }) as never, null, "draft-t3e")).toEqual([]);
     } finally {
       setSuggestionLogger({ warn: () => {} });
     }

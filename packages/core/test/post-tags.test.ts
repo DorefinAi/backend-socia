@@ -63,6 +63,44 @@ describe("normalisation (§2.7)", () => {
     expect(t.trail[0]).toBe("FINVideo");
     expect(t.flags).toContain("#FINVido → #FINVideo");
   });
+
+  // FL1: the spellings the desk actually wrote in the replay exports (Sep–Nov 2026)
+  const fixed = (typos: string[], to: string) => {
+    for (const typo of typos) expect(normaliseTag(typo, normaliser), typo).toEqual({ tag: to, flag: `#${typo} → #${to}` });
+  };
+  it("FL1: the desk's Rajasthan-brand typos become #RajasthanWithFirstIndia", () => {
+    fixed([
+      "RajasthnaWithFirstIndia", "RajastahnWithFirstIndia", "RajasthanwithFirstIndia", "RajasthanWithFristIndia",
+      "RajasthaWithFirstIndia", "RajashanWithFirstIndia", "RajsthanWithFirstIndia", "RajasthanWithFirstndia",
+      "RajathanWithFirstIndia", "RajasthanWthFirstIndia", "RajasthanWithFIrstIndia", "RjasthanWithFirstIndia",
+    ], BRAND_RAJASTHAN);
+  });
+  it("FL1: the desk's national-brand and video typos", () => {
+    fixed(["FirstIndianews"], BRAND_NATIONAL);
+    fixed(["FINVIdeo", "FINVieo", "FINViedo"], "FINVideo");
+  });
+  it("FL1: the desk's district and place typos", () => {
+    fixed(["Dhiolpur"], "Dholpur");
+    fixed(["Chittirgarh"], "Chittorgarh");
+    fixed(["Jaislamer"], "Jaisalmer");
+    fixed(["Rajsamnd"], "Rajsamand");
+    fixed(["Dehi"], "Delhi");
+    fixed(["SawaimadhopurNews"], "SawaiMadhopurNews");
+  });
+  it("FL1: a misspelt lead district and brand are corrected in the composed run", () => {
+    const t = composePostTags("#Jaislamer: नगर निगम की बैठक में हंगामा\n\n#RajasthnaWithFirstIndia", ctx);
+    expect([t.district, t.lead, t.trail]).toEqual(["Jaisalmer", ["Jaisalmer"], [BRAND_RAJASTHAN]]);
+    expect(t.flags).toEqual(["#RajasthnaWithFirstIndia → #RajasthanWithFirstIndia", "#Jaislamer → #Jaisalmer"]);
+  });
+  it("FL1: a misspelt video tag on a video headline is corrected", () => {
+    const t = composePostTags("नगर निगम की बैठक में हंगामा | Jaisalmer News\n\n#FINVieo #RajasthnaWithFirstIndia #Jaislamer", ctx);
+    expect(t.trail).toEqual(["FINVideo", BRAND_RAJASTHAN]);
+    expect(t.flags).toContain("#FINVieo → #FINVideo");
+  });
+  it("FL1: the shipped table loads whole, every target known-good", () => {
+    expect(() => parseHashtagNormalise(cfg("hashtag-normalise.json"), undefined, placeTags)).not.toThrow();
+    expect(normaliser.variants.size).toBeGreaterThanOrEqual(33);
+  });
 });
 
 describe("hashtag characters (§2.6)", () => {

@@ -302,6 +302,31 @@ export function isVideoHeadline(line1: string): boolean {
   return /[|।]\s/u.test(h) || /^[A-Za-z0-9][A-Za-z0-9 .'&-]{3,60}:\s/u.test(h);
 }
 
+/**
+ * The brand a video headline's channel label names, or null when it names none (§2.2). The label is what follows
+ * the LAST "|" or "।" separator: "<title> | Rajasthan News" and "<title> | Jaipur News" are Rajasthan (a label that
+ * starts with "Rajasthan" or with a Rajasthan district: "Sikar Crime News", "Sawai Madhopur"); "| Madhya Pradesh
+ * News", "| India News", "| Delhi News", "| Hindi News" — any other "<…> News" label, or a place on the outside
+ * list — are national. Anything else ("| BJP Padyatra", a Hindi clause after a danda, the colon form) is not a
+ * channel label, and the caller keeps its own default.
+ */
+export function videoLabelBrand(line1: string, places: TagPlaces = EMPTY_TAG_PLACES): typeof BRAND_RAJASTHAN | typeof BRAND_NATIONAL | null {
+  const h = stripLinks(line1).replace(new RegExp(`(?:\\s+#${TAG_CHAR}+)+\\s*$`, "u"), "").trim();
+  const cut = Math.max(h.lastIndexOf("|"), h.lastIndexOf("।"));
+  if (cut < 0) return null;
+  const label = h.slice(cut + 1).trim();
+  // A Latin label only: a Hindi clause after a danda is the headline going on, not the channel's label
+  if (!/^[A-Za-z][A-Za-z0-9 .&'-]*$/.test(label)) return null;
+  const words = label.replace(/\s+news$/i, "").split(/\s+/).filter(Boolean);
+  if (/^rajasthan$/i.test(words[0] ?? "")) return BRAND_RAJASTHAN;
+  // The longest run of leading words that is a place tag: "Sawai Madhopur", "SriGanganagar", "Sikar" (of "Sikar Crime")
+  for (let n = words.length; n >= 1; n--) {
+    const p = tagPlace(words.slice(0, n).join(""), places);
+    if (p) return p.kind === "rajasthan" ? BRAND_RAJASTHAN : BRAND_NATIONAL;
+  }
+  return /\snews$/i.test(label) ? BRAND_NATIONAL : null;
+}
+
 export type PostFormat = "A" | "B" | "C";
 
 export function postFormat(text: string): PostFormat {
@@ -323,6 +348,11 @@ export interface BrandInput {
    * composer passes the parser's judgement instead: a Rajasthan desk's file with no place is Rajasthan copy.
    */
   fallback?: typeof BRAND_RAJASTHAN | typeof BRAND_NATIONAL;
+  /**
+   * A video post's line 1: its channel label ("| Madhya Pradesh News") replaces the video default at step 6 only
+   * (videoLabelBrand). A place tag in any slot still decides first.
+   */
+  headline?: string;
 }
 
 export interface BrandResult {
@@ -348,7 +378,8 @@ export function resolveBrand(input: BrandInput, places: TagPlaces): BrandResult 
   if (trail.some((t) => tagPlace(t, places)?.kind === "rajasthan")) return out({ brand: BRAND_RAJASTHAN, step: 3 });
   if ((lead && isRajasthanSignal(lead, places)) || trail.some((t) => isRajasthanSignal(t, places))) return out({ brand: BRAND_RAJASTHAN, step: 4 });
   if (trail.some((t) => tagPlace(t, places)?.kind === "outside")) return out({ brand: BRAND_NATIONAL, step: 5 });
-  return out({ brand: input.fallback ?? (input.video ? BRAND_RAJASTHAN : BRAND_NATIONAL), step: 6 });
+  const videoDefault = () => (input.headline ? videoLabelBrand(input.headline, places) : null) ?? BRAND_RAJASTHAN;
+  return out({ brand: input.fallback ?? (input.video ? videoDefault() : BRAND_NATIONAL), step: 6 });
 }
 
 // ─── suggestion rules (§4.1, §5.4) ───────────────────────────────────────────
@@ -523,8 +554,9 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
     if (r.flag && !flags.includes(r.flag)) flags.push(r.flag);
     return r.tag;
   };
-  const format: PostFormat = s.lead.length ? "A" : isVideoHeadline(stripLinks(text).split("\n")[0] ?? "") ? "B" : "C";
-  const video = isVideoHeadline(stripLinks(text).split("\n")[0] ?? "");
+  const line1 = stripLinks(text).split("\n")[0] ?? "";
+  const format: PostFormat = s.lead.length ? "A" : isVideoHeadline(line1) ? "B" : "C";
+  const video = isVideoHeadline(line1);
   const trailNorm = [...s.trail, ...s.inline].map(n);
   const leadNorm = s.lead.map((t, i) => (i === 0 && !isDevanagari(t) ? n(t) : t));
   // The district with its provenance: the slots are what the desk wrote (explicit); §2.8 inference is not,
@@ -544,7 +576,7 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
     lead.push(leadNorm[0]!);
     if (leadNorm[1] && isDevanagari(leadNorm[1])) lead.push(leadNorm[1]);
   } else if (policy === "emit") lead.push(policyTag!);
-  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : policy === "emit" ? policyTag : null, trail: trailNorm, video }, ctx.places);
+  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : policy === "emit" ? policyTag : null, trail: trailNorm, video, headline: line1 }, ctx.places);
   if (brand.unknownDistrict) flags.push(`unknown_district:${brand.unknownDistrict}`);
 
   const trail: string[] = [];

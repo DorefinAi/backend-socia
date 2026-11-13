@@ -236,7 +236,7 @@ describe("S2: the CS and the CM read one shared list of other states", () => {
     const before = [
       "पूर्व", "दिल्ली", "मध्यप्रदेश", "मध्य प्रदेश", "मप्र", "यूपी", "उत्तर प्रदेश", "पंजाब", "गुजरात", "हरियाणा", "महाराष्ट्र", "बिहार", "छत्तीसगढ़", "कर्नाटक",
       "बंगाल", "पश्चिम बंगाल", "गोवा", "तमिलनाडु", "केरल", "असम", "ओडिशा", "झारखंड", "उत्तराखंड", "हिमाचल", "तेलंगाना", "आंध्र", "आंध्र प्रदेश", "मोहन यादव", "योगी",
-      "रेखा गुप्ता", "भगवंत मान", "फडणवीस", "नीतीश", "गहलोत", "डिप्टी", "Deputy", "उप", "Former", "Ex", "Delhi", "Madhya Pradesh", "Uttar Pradesh", "Bihar",
+      "रेखा गुप्ता", "भगवंत मान", "फडणवीस", "नीतीश", "गहलोत", "डिप्टी", "Deputy", "उप", "Former", "Delhi", "Madhya Pradesh", "Uttar Pradesh", "Bihar",
       "Punjab", "Gujarat", "Haryana", "Maharashtra", "Chhattisgarh", "Karnataka", "Bengal", "West Bengal", "Goa", "Tamil Nadu", "Kerala", "Assam", "Odisha",
       "Jharkhand", "Uttarakhand", "Himachal", "Telangana", "Andhra", "Andhra Pradesh", "Yogi", "Rekha Gupta", "Mohan Yadav", "Gehlot", "Nitish", "Mann",
       "Bhagwant Mann", "Fadnavis",
@@ -244,6 +244,8 @@ describe("S2: the CS and the CM read one shared list of other states", () => {
     const json = cfg("subject-handles.json");
     const now = [...json.offices.rajasthan_cm.exclude_same_sentence, ...json.office_exclusion_lists.other_states];
     expect(new Set(now)).toEqual(new Set(before));
+    // C-a: "Ex" left the sentence-wide list for exclude_next_to_alias; MP / UP are unchanged
+    expect(json.offices.rajasthan_cm.exclude_next_to_alias).toEqual(["MP", "UP", "एमपी", "यूपी", "Ex", "EX", "ex"]);
   });
   it("a list an office names that does not exist, or a malformed shared list, rejects the file", () => {
     const json = cfg("subject-handles.json");
@@ -261,6 +263,35 @@ describe("S4: the CM next to a code with a hyphen, a slash or the Hindi code", (
   });
   it("an MP (सांसद) meeting the CM still offers the CM", () => {
     for (const t of ["MP ने CM से मुलाकात की", "सांसद/MP ने CM से मुलाकात की", "एमपी ने सीएम से की मुलाकात"]) expect(namesOffice(cm, t), t).toBe(true);
+  });
+});
+
+describe("C-a: the former-CM 'Ex' is a whole word right before the CM, as MP / UP", () => {
+  const cm = subjects.offices!.find((o) => o.key === "rajasthan_cm")!;
+  const cs = subjects.offices!.find((o) => o.key === "rajasthan_cs")!;
+  const offered = (lines: string[]) => draft(fileFor(null, "JPR3"), lines).handleSuggestions.filter((h) => h.reason === "office").map((h) => h.handle);
+  it("'Ex CM', 'Ex-CM', 'EX CM', 'ex CM', 'Ex - CM', 'Ex सीएम': no CM suggestion", () => {
+    for (const t of ["Ex CM ने कहा", "Ex-CM ने कहा", "EX CM का बयान", "ex CM पहुंचे", "Ex - CM ने कहा", "Ex सीएम ने कहा", "Ex–CM का दौरा"]) expect(namesOffice(cm, t), t).toBe(false);
+    expect(offered(["Ex-CM ने कहा", "किसानों को मिलेगा लाभ"])).toEqual([]);
+  });
+  it("'next', 'expected', 'Mexico', 'Exam', 'EXPO' in the sentence never make it a former CM", () => {
+    for (const t of ["CM next week visit करेंगे", "CM expected to arrive today", "CM Mexico दौरे से लौटे", "CM ने Exam की तारीख घोषित की", "CM ने EXPO का उद्घाटन किया", "Next CM meeting कल"]) expect(namesOffice(cm, t), t).toBe(true);
+  });
+  it("'CM ने ex-servicemen से मुलाकात की': the CM is suggested", () => {
+    for (const t of ["CM ने ex-servicemen से मुलाकात की", "CM ने Ex-servicemen को सम्मानित किया", "EX-servicemen से मिले CM", "CM ने कहा, ex servicemen का सम्मान"]) expect(namesOffice(cm, t), t).toBe(true);
+    expect(offered(["CM ने ex-servicemen से मुलाकात की", "किसानों को मिलेगा लाभ"]).sort()).toEqual(["BhajanlalBjp", "RajCMO"]);
+  });
+  it("'Former' / 'पूर्व' stay sentence-wide, any case", () => {
+    for (const t of ["पूर्व मुख्यमंत्री ने कहा", "CM रहे पूर्व नेता", "Former CM ने कहा", "FORMER CM", "CM, former minister से मिले"]) expect(namesOffice(cm, t), t).toBe(false);
+  });
+  it("the other CM exclusions are unchanged", () => {
+    for (const t of ["डिप्टी सीएम दिया कुमारी", "Deputy CM ने कहा", "दिल्ली की मुख्यमंत्री रेखा गुप्ता", "MP के CM", "UP/CM का दौरा", "मुख्यमंत्री डॉ. मोहन यादव ने कहा", "Gehlot ने CM पर निशाना साधा"]) expect(namesOffice(cm, t), t).toBe(false);
+    for (const t of ["CM ने भी स्वयं दी आहुतियां", "MP ने CM से मुलाकात की"]) expect(namesOffice(cm, t), t).toBe(true);
+  });
+  it("the Chief Secretary already follows the same rule, and keeps it", () => {
+    expect(cfg("subject-handles.json").offices.rajasthan_cs.exclude_same_sentence).not.toContain("Ex");
+    for (const t of ["Ex CS writes to the CM", "Ex-CS ने कहा", "EX Chief Secretary ने कहा", "Ex मुख्य सचिव"]) expect(namesOffice(cs, t), t).toBe(false);
+    for (const t of ["मुख्य सचिव ने ex-servicemen से मुलाकात की", "CS expected to review", "Next CS meeting कल", "CS Mexico से लौटे"]) expect(namesOffice(cs, t), t).toBe(true);
   });
 });
 

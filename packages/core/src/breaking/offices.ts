@@ -27,7 +27,7 @@ export interface OfficeData {
   exclude_same_sentence_lists?: string[];
   /**
    * Short codes that are also other words ("MP": a state and a Member of Parliament; "Ex" in "ex-servicemen"): they
-   * make it another office ONLY right beside the alias ("MP CM", "MP के मुख्यमंत्री", "MP-CM", "Ex CS", "CM of MP"),
+   * make it another office ONLY right beside the alias ("MP CM", "MP के मुख्यमंत्री", "MP-CM", "Ex CM", "Ex-CS", "CM of MP"),
    * matched with case as written.
    */
   exclude_next_to_alias?: string[];

@@ -14,6 +14,11 @@ export interface ApiConfig {
   host?: string;
   /** REALTIME=true: also serve Socket.IO on the API port. Off by default: the desk polls and nothing connects. */
   realtime?: boolean;
+  /**
+   * LIVE: the /live SSE stream and POSTs (presence, watch mode, queue events; routes/live.ts). On unless LIVE=false,
+   * which turns every /live path into a 404. Same port, no tunnel change.
+   */
+  live?: boolean;
   /** Browser origins allowed to call the API with cookies, e.g. https://digital.<domain> */
   corsOrigins: string[];
   cookieSecure: boolean;
@@ -85,6 +90,7 @@ export function loadConfig(): ApiConfig {
     port: Number(process.env.PORT ?? 4000),
     host: process.env.HOST?.trim() || "127.0.0.1",
     realtime: process.env.REALTIME === "true",
+    live: process.env.LIVE !== "false",
     corsOrigins: (process.env.CORS_ORIGINS ?? "http://localhost:3000").split(",").map((s) => s.trim()).filter(Boolean),
     cookieSecure: process.env.COOKIE_SECURE !== "false",
     sessionHours: Number(process.env.SESSION_HOURS ?? 12),

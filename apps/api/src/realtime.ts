@@ -6,13 +6,12 @@
 // role/platform change) disconnects it at once, and every `recheckMs` the open sockets' sessions are
 // checked again (expired, deleted, user deactivated → disconnected), in case a notify was missed.
 
-import { EVENTS_CHANNEL, sessions, users, type Db, type SociaEventEnvelope } from "@socia/db";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import type { Db } from "@socia/db";
 import type { FastifyBaseLogger } from "fastify";
 import type { Server as HttpServer } from "node:http";
-import pg from "pg";
 import { Server } from "socket.io";
-import { COOKIE, livePlatforms, loadSession, type SessionUser } from "./auth";
+import { COOKIE, liveSessionIds, livePlatforms, loadSession, type SessionUser } from "./auth";
+import { createEventFeed, type EventFeed } from "./events";
 
 function readCookie(header: string | undefined, name: string): string | undefined {
   for (const part of (header ?? "").split(";")) {
@@ -26,23 +25,17 @@ export const room = (orgId: string, platform: string) => `org:${orgId}:${platfor
 
 export const SESSION_RECHECK_MS = 60_000;
 
-/** Which of these sessions may still hold a socket: present, unexpired, verified, user active */
-async function liveSessionIds(db: Db, ids: string[]): Promise<Set<string>> {
-  const live = new Set<string>();
-  for (let i = 0; i < ids.length; i += 500) {
-    const rows = await db
-      .select({ id: sessions.id })
-      .from(sessions)
-      .innerJoin(users, eq(users.id, sessions.userId))
-      .where(and(inArray(sessions.id, ids.slice(i, i + 500)), gt(sessions.expiresAt, sql`now()`), eq(sessions.verified, true), eq(users.active, true)));
-    for (const r of rows) live.add(r.id);
-  }
-  return live;
-}
-
 export function attachRealtime(
   server: HttpServer,
-  opts: { db: Db; databaseUrl: string; corsOrigins: string[]; log: FastifyBaseLogger; recheckMs?: number },
+  opts: {
+    db: Db;
+    databaseUrl: string;
+    corsOrigins: string[];
+    log: FastifyBaseLogger;
+    recheckMs?: number;
+    /** The process's shared LISTEN connection (events.ts); without one, a feed of its own is opened and closed here */
+    events?: EventFeed;
+  },
 ): () => Promise<void> {
   const io = new Server(server, { cors: { origin: opts.corsOrigins, credentials: true } });
 
@@ -76,54 +69,30 @@ export function attachRealtime(
     for (const platform of livePlatforms(user)) void socket.join(room(user.orgId, platform));
   });
 
-  let client: pg.Client | null = null;
-  let closed = false;
-  let retry = 1000;
-
-  const listen = async () => {
-    if (closed) return;
-    try {
-      client = new pg.Client({ connectionString: opts.databaseUrl });
-      client.on("notification", (msg) => {
-        try {
-          const { orgId, platform = "x", ...event } = JSON.parse(msg.payload ?? "{}") as SociaEventEnvelope;
-          if (event.type === "access.changed") {
-            const ids = new Set(event.userIds);
-            const sessionIds = new Set(event.sessionIds ?? []);
-            for (const socket of io.sockets.sockets.values()) {
-              const u = socket.data.user as SessionUser | undefined;
-              if (u && u.orgId === orgId && (ids.has(u.id) || sessionIds.has(socket.data.sessionId as string))) socket.disconnect(true);
-            }
-            return;
-          }
-          io.to(room(orgId, platform)).emit(event.type, event);
-        } catch (err) {
-          opts.log.warn({ err }, "bad event payload");
-        }
-      });
-      client.on("error", (err) => {
-        opts.log.error({ err }, "event listener lost its connection; reconnecting");
-        void client?.end().catch(() => undefined);
-        setTimeout(listen, retry);
-        retry = Math.min(retry * 2, 30_000);
-      });
-      await client.connect();
-      await client.query(`LISTEN ${EVENTS_CHANNEL}`);
-      retry = 1000;
-      // Anything missed while disconnected is picked up by a refetch on the client's reconnect
+  const feed = opts.events ?? createEventFeed({ databaseUrl: opts.databaseUrl, log: opts.log });
+  const unsubscribe = feed.subscribe((event) => {
+    // Anything missed while the listener was down is picked up by a refetch on the client's reconnect
+    if (event.type === "resync") {
       io.emit("resync", {});
-    } catch (err) {
-      opts.log.error({ err }, "could not start the event listener; retrying");
-      setTimeout(listen, retry);
-      retry = Math.min(retry * 2, 30_000);
+      return;
     }
-  };
-  void listen();
+    const { orgId, platform = "x", ...rest } = event;
+    if (rest.type === "access.changed") {
+      const ids = new Set(rest.userIds);
+      const sessionIds = new Set(rest.sessionIds ?? []);
+      for (const socket of io.sockets.sockets.values()) {
+        const u = socket.data.user as SessionUser | undefined;
+        if (u && u.orgId === orgId && (ids.has(u.id) || sessionIds.has(socket.data.sessionId as string))) socket.disconnect(true);
+      }
+      return;
+    }
+    io.to(room(orgId, platform)).emit(rest.type, rest);
+  });
 
   return async () => {
-    closed = true;
     clearInterval(recheck);
-    await client?.end().catch(() => undefined);
+    unsubscribe();
+    if (!opts.events) await feed.close();
     await new Promise<void>((resolve) => io.close(() => resolve()));
   };
 }

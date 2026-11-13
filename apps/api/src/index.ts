@@ -2,6 +2,7 @@ import { OpsLog, createDb, opsLogSettings, recordApiPhase, type DbLogger } from 
 import pino from "pino";
 import { buildApp } from "./app";
 import { loadConfig, makeStorage } from "./config";
+import { createEventFeed } from "./events";
 import { attachRealtime } from "./realtime";
 
 // Until Fastify's logger exists, the console. A crash is logged and the process exits non-zero so the
@@ -45,7 +46,13 @@ const logger = ops.enabled
       ]),
     }
   : true;
-const app = await buildApp({ db, storage: makeStorage(config), config, opsLog }, logger);
+// One LISTEN connection for /live and Socket.IO alike; it opens with the first subscriber. Its log is the app's,
+// which exists before anything subscribes.
+const events =
+  config.live !== false || config.realtime
+    ? createEventFeed({ databaseUrl: config.databaseUrl, log: { warn: (obj, msg) => app.log.warn(obj, msg), error: (obj, msg) => app.log.error(obj, msg) } })
+    : undefined;
+const app = await buildApp({ db, storage: makeStorage(config), config, opsLog, events }, logger);
 log = app.log;
 // The worker compares its own PHASE with this before it starts anything that posts to X
 await recordApiPhase(db, config.phase ?? 2);
@@ -53,13 +60,14 @@ await recordApiPhase(db, config.phase ?? 2);
 await app.listen({ host: config.host ?? "127.0.0.1", port: config.port });
 // Socket.IO only on request (REALTIME=true): the desk polls, and nothing else connects
 const closeRealtime = config.realtime
-  ? attachRealtime(app.server, { db, databaseUrl: config.databaseUrl, corsOrigins: config.corsOrigins, log: app.log })
+  ? attachRealtime(app.server, { db, databaseUrl: config.databaseUrl, corsOrigins: config.corsOrigins, log: app.log, events })
   : async () => {};
 
 const shutdown = async () => {
   app.log.info("stopping");
   await closeRealtime();
   await app.close();
+  await events?.close();
   // Best effort: the last queued lines (at most 3 s), then its own pool
   await opsLog.close();
   await close();

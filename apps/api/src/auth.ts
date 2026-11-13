@@ -8,7 +8,7 @@ import {
   effectivePermissionSet, isPermissionKey, permissionLabel, rolePermissionSet, type PermissionKey, type PermissionSetting,
 } from "@socia/core";
 import { rolePermissions, roles, sessions, userPermissionOverrides, users, type Db } from "@socia/db";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, sql } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { readKeyBindings, type KeyBindings } from "./key-bindings";
 
@@ -142,6 +142,24 @@ export function requirePermission(user: SessionUser, keys: PermissionKey | reado
   if (platform !== undefined && user.platformScoped && !user.platforms.includes(platform)) {
     throw new HttpError(403, "forbidden", "Your role cannot do this on this platform.");
   }
+}
+
+/**
+ * Which of these sessions may still hold a live connection (socket or stream): present, unexpired, verified, user
+ * active. Each comes with the user's platform scope now, so a stream opened under other platforms can be closed.
+ */
+export async function liveSessionIds(db: Db, ids: string[]): Promise<Map<string, { platformScoped: boolean; platforms: string[] }>> {
+  const live = new Map<string, { platformScoped: boolean; platforms: string[] }>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const rows = await db
+      .select({ id: sessions.id, platformScoped: roles.platformScoped, platforms: users.platforms })
+      .from(sessions)
+      .innerJoin(users, eq(users.id, sessions.userId))
+      .innerJoin(roles, and(eq(roles.orgId, users.orgId), eq(roles.key, users.role)))
+      .where(and(inArray(sessions.id, ids.slice(i, i + 500)), gt(sessions.expiresAt, sql`now()`), eq(sessions.verified, true), eq(users.active, true)));
+    for (const r of rows) live.set(r.id, { platformScoped: r.platformScoped, platforms: r.platforms });
+  }
+  return live;
 }
 
 /** The platforms whose live events the user receives: their own for a platform-scoped role, else X. */

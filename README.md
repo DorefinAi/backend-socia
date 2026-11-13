@@ -112,6 +112,7 @@ Names only. Values go in `.env.live`. Full list with comments: `.env.live.exampl
 | `PORT` | API port (8200 in the office setup) |
 | `HOST` | Listen address. Default `127.0.0.1` (only the desk's `/socia-api` proxy on this PC reaches it); `0.0.0.0` when browsers call the API directly |
 | `REALTIME` | `true` to serve Socket.IO on the API port; off by default (the desk polls) |
+| `LIVE` | Live presence and watch mode (`/live`: an SSE stream plus POSTs, same port, through the desk's `/socia-api` proxy). On by default; `LIVE=false` turns it off (every `/live` path is then a 404) |
 | `STORAGE_DIR`, `STORAGE_PUBLIC_BASE` | Where cards and files live, and the address desk browsers use for them |
 | `CORS_ORIGINS` | The desk's origin(s), comma-separated |
 | `COOKIE_SECURE` | `false` on plain http on the LAN |

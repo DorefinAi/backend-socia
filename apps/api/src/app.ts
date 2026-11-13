@@ -13,10 +13,12 @@ import Fastify, { type FastifyServerOptions } from "fastify";
 import { COOKIE, HttpError, guard, loadSession } from "./auth";
 import { ownerKeyFrom, type ApiConfig } from "./config";
 import { orgOwnsKey } from "./dev-files";
+import type { EventFeed } from "./events";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes, type AuthLimits } from "./routes/auth";
 import { deskRoutes } from "./routes/desk";
 import { libraryRoutes } from "./routes/library";
+import { liveRoutes, type LiveOptions } from "./routes/live";
 import { orgTemplateRoutes } from "./routes/org-templates";
 import { ownerRoutes, type OwnerLimits } from "./routes/owner";
 import { searchRoutes } from "./routes/search";
@@ -41,6 +43,10 @@ export interface AppDeps {
   searchTimeoutMs?: number;
   /** This process's ops-log sink (index.ts); GET /owner/logs reports its drop count. Absent (tests): 0 */
   opsLog?: { readonly dropped: number };
+  /** The process's shared LISTEN connection (events.ts). Absent (tests): /live opens its own with the first stream */
+  events?: EventFeed;
+  /** /live timings and limits (routes/live.ts); tests pass small numbers */
+  live?: LiveOptions;
 }
 
 /**
@@ -159,6 +165,8 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   await app.register(orgTemplateRoutes, deps);
   await app.register(trendRoutes, deps);
   await app.register(searchRoutes, deps);
+  // Presence and watch mode over SSE + POST: on unless LIVE=false, which makes every /live path a 404
+  if (deps.config.live !== false) await app.register(liveRoutes, deps);
   // The owner console's API exists only with a long enough OWNER_API_KEY; otherwise every /owner path is a 404
   const ownerKey = ownerKeyFrom(deps.config.ownerApiKey ?? undefined);
   if (ownerKey) await app.register(ownerRoutes, { ...deps, ownerKey });

@@ -1,5 +1,5 @@
 {
-  "id": "0e8eda84-65e0-4560-a0ab-28e161ac35b6",
+  "id": "6a4338ed-83e5-46ae-b381-203514dff13b",
   "prevId": "74adaaaa-973f-4185-b095-4f42e1921aa2",
   "version": "7",
   "dialect": "postgresql",
@@ -1914,8 +1914,8 @@
           "method": "btree",
           "with": {}
         },
-        "post_decisions_reporter_idx": {
-          "name": "post_decisions_reporter_idx",
+        "post_decisions_features_idx": {
+          "name": "post_decisions_features_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -1924,13 +1924,29 @@
               "nulls": "last"
             },
             {
-              "expression": "reporter_token",
+              "expression": "decided_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"post_decisions\".\"decided_at\" IS NOT NULL AND \"post_decisions\".\"reporter_status\" = 'matched'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "post_decisions_reporter_handle_idx": {
+          "name": "post_decisions_reporter_handle_idx",
+          "columns": [
+            {
+              "expression": "org_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "decided_at",
+              "expression": "reporter_handle",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2023,7 +2039,15 @@
       "checkConstraints": {
         "post_decisions_outcome_whole": {
           "name": "post_decisions_outcome_whole",
-          "value": "(\"post_decisions\".\"decided_at\" IS NULL) = (\"post_decisions\".\"decision\" IS NULL)"
+          "value": "(\"post_decisions\".\"decided_at\" IS NULL) = (\"post_decisions\".\"decision\" IS NULL) AND (\"post_decisions\".\"final_text\" IS NULL) = (\"post_decisions\".\"decision\" IS NULL)"
+        },
+        "post_decisions_decision_known": {
+          "name": "post_decisions_decision_known",
+          "value": "\"post_decisions\".\"decision\" IS NULL OR \"post_decisions\".\"decision\" IN ('copy_posted', 'mark_posted', 'approved', 'rejected')"
+        },
+        "post_decisions_proposals_array": {
+          "name": "post_decisions_proposals_array",
+          "value": "jsonb_typeof(\"post_decisions\".\"proposals\") = 'array' AND jsonb_typeof(\"post_decisions\".\"voided\") = 'array'"
         },
         "post_decisions_rework_range": {
           "name": "post_decisions_rework_range",

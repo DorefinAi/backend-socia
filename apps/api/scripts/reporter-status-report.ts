@@ -30,11 +30,14 @@ const until = new Date();
 const since = new Date(until.getTime() - days * 86_400_000);
 const { db, close } = createDb(url, 1);
 try {
-  const rows = await reporterStatusReport(db, orgId, { since, limit });
+  const { rows, dropped, coverage } = await reporterStatusReport(db, orgId, { since, limit });
   if (values.json) {
-    console.log(JSON.stringify({ since, until, rows }, null, 2));
+    console.log(JSON.stringify({ since, until, coverage, dropped, rows }, null, 2));
   } else {
-    console.log(`Reporter status, ${since.toISOString().slice(0, 10)} to ${until.toISOString().slice(0, 10)} (${days} days)\n`);
+    console.log(`Reporter status, ${since.toISOString().slice(0, 10)} to ${until.toISOString().slice(0, 10)} (${days} days)`);
+    // A gap in the log is not a clean week: say how much of the window the log covers
+    console.log(`Coverage: ${coverage.logged} of ${coverage.breakingDrafts} breaking drafts have a decision-log row`);
+    console.log(`Left out: ${dropped} row(s) of these statuses with no token or code to show\n`);
     for (const status of ["unknown_token", "collision", "unknown_bureau_code"] as const) {
       const list = rows.filter((r: StatusReportRow) => r.status === status);
       console.log(`${status} (${list.length})`);

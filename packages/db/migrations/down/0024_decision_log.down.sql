@@ -13,7 +13,7 @@ DO $guard$
 DECLARE newest bigint;
 BEGIN
   SELECT max("created_at") INTO newest FROM "drizzle"."__drizzle_migrations";
-  IF newest IS DISTINCT FROM 1794558377333 THEN
+  IF newest IS DISTINCT FROM 1794561970894 THEN
     RAISE EXCEPTION '0024_decision_log is not the newest applied migration (newest created_at: %). Roll back the newer migrations first.', newest;
   END IF;
 END
@@ -22,6 +22,7 @@ DROP TABLE IF EXISTS "reporter_features";
 DROP TABLE IF EXISTS "post_decisions";
 DROP FUNCTION IF EXISTS "reporter_features_no_update"();
 DROP FUNCTION IF EXISTS "post_decisions_append_only"();
+DROP FUNCTION IF EXISTS "post_decisions_no_delete"();
 -- So the migrator applies 0024 again on the next deploy ("when" of 0024 in meta/_journal.json)
-DELETE FROM "drizzle"."__drizzle_migrations" WHERE "created_at" = 1794558377333;
+DELETE FROM "drizzle"."__drizzle_migrations" WHERE "created_at" = 1794561970894;
 COMMIT;

@@ -9,9 +9,11 @@
 -- and clears it for the next decision, and marking the proposal stale (a re-saved file rewrote the draft
 -- after the decision). Nothing is ever lost or rewritten.
 --
--- reporter_features: one snapshot per reporter per IST day, built by the maintenance worker from decisions
--- made BEFORE that day started (L5). A snapshot is never overwritten (the trigger refuses UPDATE). Nothing
--- reads these yet.
+-- No row of post_decisions is ever deleted (a BEFORE DELETE guard; a maintainer can override per transaction).
+--
+-- reporter_features: one snapshot per reporter HANDLE per IST day, built by the maintenance worker from the
+-- posted decisions of the 90 days before that day started (L5). A snapshot is never overwritten (the trigger
+-- refuses UPDATE); snapshots older than 90 days are deleted. Nothing reads these yet.
 --
 -- post_decision_amendments is NOT created: no source of the desk's published tweets exists in the code
 -- (phase 1 posts by hand, Copy & Posted records no link), so there is nothing to reconcile against.
@@ -54,7 +56,9 @@ CREATE TABLE "post_decisions" (
 	"item_outcomes" jsonb,
 	"rework_ratio" real,
 	"voided" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	CONSTRAINT "post_decisions_outcome_whole" CHECK (("post_decisions"."decided_at" IS NULL) = ("post_decisions"."decision" IS NULL)),
+	CONSTRAINT "post_decisions_outcome_whole" CHECK (("post_decisions"."decided_at" IS NULL) = ("post_decisions"."decision" IS NULL) AND ("post_decisions"."final_text" IS NULL) = ("post_decisions"."decision" IS NULL)),
+	CONSTRAINT "post_decisions_decision_known" CHECK ("post_decisions"."decision" IS NULL OR "post_decisions"."decision" IN ('copy_posted', 'mark_posted', 'approved', 'rejected')),
+	CONSTRAINT "post_decisions_proposals_array" CHECK (jsonb_typeof("post_decisions"."proposals") = 'array' AND jsonb_typeof("post_decisions"."voided") = 'array'),
 	CONSTRAINT "post_decisions_rework_range" CHECK ("post_decisions"."rework_ratio" IS NULL OR "post_decisions"."rework_ratio" >= 0)
 );
 --> statement-breakpoint
@@ -74,12 +78,15 @@ ALTER TABLE "post_decisions" ADD CONSTRAINT "post_decisions_story_id_stories_id_
 ALTER TABLE "post_decisions" ADD CONSTRAINT "post_decisions_decided_by_users_id_fk" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "reporter_features" ADD CONSTRAINT "reporter_features_org_id_orgs_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."orgs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "post_decisions_draft_key" ON "post_decisions" USING btree ("draft_id");--> statement-breakpoint
--- The nightly features read decided rows by reporter
-CREATE INDEX "post_decisions_reporter_idx" ON "post_decisions" USING btree ("org_id","reporter_token","decided_at");--> statement-breakpoint
+-- The nightly features read a window of decided rows of matched reporters
+CREATE INDEX "post_decisions_features_idx" ON "post_decisions" USING btree ("org_id","decided_at") WHERE "post_decisions"."decided_at" IS NOT NULL AND "post_decisions"."reporter_status" = 'matched';--> statement-breakpoint
+-- One reporter's rows (reporter_features is keyed by handle)
+CREATE INDEX "post_decisions_reporter_handle_idx" ON "post_decisions" USING btree ("org_id","reporter_handle");--> statement-breakpoint
 -- The weekly reporter-status report reads a week of proposals
 CREATE INDEX "post_decisions_proposed_idx" ON "post_decisions" USING btree ("org_id","proposed_at");--> statement-breakpoint
 -- A decided row's proposal and outcome never change. Two changes are allowed:
---   void:  decision and every outcome column cleared, the old outcome appended to `voided`, nothing else touched;
+--   void:  every outcome column cleared, and the newest `voided` entry holds exactly the old outcome
+--          (jsonb_build_object of every old outcome column) and the old proposal; nothing else touched;
 --   stale: proposal_stale false -> true, nothing else touched.
 -- `voided` itself only ever grows (its existing entries stay a prefix of the new value).
 CREATE FUNCTION "post_decisions_append_only"() RETURNS trigger LANGUAGE plpgsql AS $fn$
@@ -101,13 +108,18 @@ BEGIN
      AND (to_jsonb(NEW) - 'proposal_stale') = (to_jsonb(OLD) - 'proposal_stale') THEN
     RETURN NEW;
   END IF;
-  -- void: the proposal half untouched, the outcome cleared and kept as the newest voided entry
+  -- void
   IF NEW."decision" IS NULL AND NEW."decided_at" IS NULL AND NEW."decided_by" IS NULL AND NEW."reject_reason" IS NULL
      AND NEW."final_text" IS NULL AND NEW."final_hashtags" IS NULL AND NEW."final_handles" IS NULL
      AND NEW."item_outcomes" IS NULL AND NEW."rework_ratio" IS NULL
      AND jsonb_array_length(NEW."voided") = jsonb_array_length(OLD."voided") + 1
-     AND NEW."voided" -> -1 ->> 'decision' = OLD."decision"
-     AND NEW."voided" -> -1 ->> 'finalText' IS NOT DISTINCT FROM OLD."final_text"
+     AND NEW."voided" -> -1 -> 'outcome' = jsonb_build_object(
+           'decision', OLD."decision", 'decided_at', OLD."decided_at", 'decided_by', OLD."decided_by",
+           'reject_reason', OLD."reject_reason", 'final_text', OLD."final_text", 'final_hashtags', OLD."final_hashtags",
+           'final_handles', OLD."final_handles", 'item_outcomes', OLD."item_outcomes", 'rework_ratio', OLD."rework_ratio")
+     AND NEW."voided" -> -1 -> 'proposal' = jsonb_build_object(
+           'proposals', OLD."proposals", 'draft_text', OLD."draft_text", 'proposal_rev', OLD."proposal_rev",
+           'proposal_stale', OLD."proposal_stale")
      AND (to_jsonb(NEW) - outcome_cols) = (to_jsonb(OLD) - outcome_cols) THEN
     RETURN NEW;
   END IF;
@@ -115,7 +127,19 @@ BEGIN
 END
 $fn$;--> statement-breakpoint
 CREATE TRIGGER "post_decisions_append_only" BEFORE UPDATE ON "post_decisions" FOR EACH ROW EXECUTE FUNCTION "post_decisions_append_only"();--> statement-breakpoint
--- A day's snapshot is what the worker knew that night: never rewritten
+-- The log is a record: no row is deleted, unless a maintainer says so for this transaction with
+--   SET LOCAL socia.allow_decision_delete = 'on';
+-- (TRUNCATE and DROP, as the tests use, do not fire row triggers.)
+CREATE FUNCTION "post_decisions_no_delete"() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF current_setting('socia.allow_decision_delete', true) IS DISTINCT FROM 'on' THEN
+    RAISE EXCEPTION 'post_decisions %: the decision log is never deleted from (SET LOCAL socia.allow_decision_delete = ''on'' to override)', OLD."id";
+  END IF;
+  RETURN OLD;
+END
+$fn$;--> statement-breakpoint
+CREATE TRIGGER "post_decisions_no_delete" BEFORE DELETE ON "post_decisions" FOR EACH ROW EXECUTE FUNCTION "post_decisions_no_delete"();--> statement-breakpoint
+-- A day's snapshot is what the worker knew that night: never rewritten (retention may DELETE old ones)
 CREATE FUNCTION "reporter_features_no_update"() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
   RAISE EXCEPTION 'reporter_features: snapshot % of % is never overwritten', OLD."snapshot_date", OLD."reporter";

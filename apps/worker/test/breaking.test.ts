@@ -26,7 +26,12 @@ describe("explore roll (reporter-prior brief §7.2.3)", () => {
   it("draftProposals keeps core's list and falls back to reason codes without one", async () => {
     const { draftProposals } = await import("../src/stages/compose");
     const core = [{ item: "#X", kind: "hashtag" as const, layer: "emit" as const, source: "brand.geo", reason: "r" }];
-    expect(draftProposals({ hashtags: [], handles: [], handleSuggestions: [], hashtagSuggestions: [], proposals: core })).toEqual(core);
+    let fellBack = 0;
+    expect(draftProposals({ hashtags: [], handles: [], handleSuggestions: [], hashtagSuggestions: [], proposals: core }, () => fellBack++)).toEqual(core);
+    expect(fellBack).toBe(0);
+    draftProposals({ hashtags: [], handles: [], handleSuggestions: [], hashtagSuggestions: [] }, () => fellBack++);
+    // The caller is told (compose logs it at warn)
+    expect(fellBack).toBe(1);
     // An older core with no proposals and no rule ids: each handle's source falls back to its reason code
     expect(
       draftProposals({ hashtags: ["#F"], handles: [{ handle: "JaipurPolice", reason: "police" }], handleSuggestions: [{ handle: "A", reason: "subject", title: "A" }], hashtagSuggestions: ["#S"] }),
@@ -275,6 +280,23 @@ describe("BreakingShareSource (no database)", () => {
     // A restart skips the first-start files and the ingested ones without reading them again
     expect(await settle(ingestFor())).toBe(0);
     expect(await h.db.select().from(stories)).toHaveLength(2);
+  }, 60_000);
+
+  it("D1: when the decision log cannot be written at all, the draft still goes through", async () => {
+    const ingest = ingestFor();
+    await settle(ingest);
+    await h.db.execute(sql`ALTER TABLE post_decisions RENAME TO post_decisions_away`);
+    try {
+      const name = "btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt";
+      await put("29_OCTOBER_2026", name, fixture(name));
+      expect(await settle(ingest)).toBe(1);
+      const [draft] = await h.db.select().from(postDrafts);
+      expect(draft).toMatchObject({ status: "ready" });
+      expect((await h.db.select().from(stories))[0]).toMatchObject({ status: "composed" });
+    } finally {
+      await h.db.execute(sql`ALTER TABLE post_decisions_away RENAME TO post_decisions`);
+    }
+    expect(await h.db.select().from(postDecisions)).toEqual([]);
   }, 60_000);
 
   it("takes a late file in yesterday's folder, even with an old mtime (copied in)", async () => {

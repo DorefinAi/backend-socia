@@ -10,7 +10,7 @@
 
 import {
   OpsLog, SamvadiaReader, WORKER_HEARTBEAT_MS, WORKER_STAGE_SYSTEMS, createDb, opsLogSettings, readApiPhase, recordDataFileStatus, recordIngestPoll, recordWorkerHeartbeat,
-  setDecisionLogErrorHandler, workerSystemOf,
+  setDecisionLogger, workerSystemOf,
 } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
@@ -77,9 +77,9 @@ async function main(): Promise<void> {
   const once = onceIndex >= 0 ? args[onceIndex + 1] : null;
   const cfg = loadConfig(once ? [once] : args.filter((a) => !a.startsWith("--")));
   // A dropped idle connection (Postgres restarted) is logged and replaced, not fatal
-  const { db, close } = createDb(cfg.databaseUrl, 5, { log });
+  const { db, pool, close } = createDb(cfg.databaseUrl, 5, { log });
   // A decision-log write that fails is dropped and never holds up a draft; it is logged here
-  setDecisionLogErrorHandler((err, context) => log.warn({ err, ...context }, "decision log write failed; the draft went through"));
+  setDecisionLogger(log);
 
   if (once === "handles") {
     await syncHandles(db, cfg.orgId, cfg.wikidataUserAgent, stageLog("crons"));
@@ -224,8 +224,10 @@ async function main(): Promise<void> {
 
   if (cfg.roles.includes("maintenance")) {
     const log = stageLog("crons");
-    const features = new NightlyFeatures(db, cfg.orgId, log, cfg.reporterPrior.smoothingM);
-    loops.start({ name: "maintenance", idleMs: 30_000, log, tick: async () => (await features.tick(), housekeeping(db, log)) });
+    loops.start({ name: "maintenance", idleMs: 30_000, log, tick: () => housekeeping(db, log) });
+    // Its own loop: a slow snapshot never holds up the housekeeping above
+    const features = new NightlyFeatures(db, pool, cfg.orgId, log, cfg.reporterPrior.smoothingM);
+    loops.start({ name: "reporter-features", idleMs: 60_000, log, tick: () => features.tick() });
   }
 
   let stopping = false;

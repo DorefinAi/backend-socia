@@ -844,14 +844,27 @@ export interface LoggedItemOutcome {
 
 /** An outcome taken back (Copy & Posted undone, a rejected draft restored), kept rather than overwritten */
 export interface VoidedOutcome {
-  decision: Decision;
-  decidedAt: string;
-  decidedBy: string | null;
-  voidedAt: string;
-  voidedBy: string | null;
-  finalText: string | null;
-  itemOutcomes: LoggedItemOutcome[] | null;
-  reworkRatio: number | null;
+  /** Every outcome column as it stood, built by the database itself (the trigger checks it matches) */
+  outcome: {
+    decision: Decision;
+    decided_at: string;
+    decided_by: string | null;
+    reject_reason: string | null;
+    final_text: string | null;
+    final_hashtags: string[] | null;
+    final_handles: string[] | null;
+    item_outcomes: LoggedItemOutcome[] | null;
+    rework_ratio: number | null;
+  };
+  /** The proposal the outcome was measured against */
+  proposal: { proposals: LoggedProposal[]; draft_text: string; proposal_rev: number; proposal_stale: boolean };
+  voided_at: string;
+  voided_by: string | null;
+  /**
+   * True when the void was not written at the undo or restore itself (that write failed) and the next decision
+   * found the withdrawn one still in place; it is voided then, before the new one is written
+   */
+  late: boolean;
 }
 
 /**
@@ -915,19 +928,25 @@ export const postDecisions = pgTable(
   },
   (t) => [
     uniqueIndex("post_decisions_draft_key").on(t.draftId),
-    // The nightly features read decided rows by reporter, oldest first
-    index("post_decisions_reporter_idx").on(t.orgId, t.reporterToken, t.decidedAt),
+    // The nightly features read a window of decided rows of matched reporters
+    index("post_decisions_features_idx").on(t.orgId, t.decidedAt).where(sql`${t.decidedAt} IS NOT NULL AND ${t.reporterStatus} = 'matched'`),
+    // One reporter's rows (reporter_features is keyed by handle)
+    index("post_decisions_reporter_handle_idx").on(t.orgId, t.reporterHandle),
     // The weekly reporter-status report reads a week of proposals
     index("post_decisions_proposed_idx").on(t.orgId, t.proposedAt),
-    check("post_decisions_outcome_whole", sql`(${t.decidedAt} IS NULL) = (${t.decision} IS NULL)`),
+    check("post_decisions_outcome_whole", sql`(${t.decidedAt} IS NULL) = (${t.decision} IS NULL) AND (${t.finalText} IS NULL) = (${t.decision} IS NULL)`),
+    check("post_decisions_decision_known", sql`${t.decision} IS NULL OR ${t.decision} IN ('copy_posted', 'mark_posted', 'approved', 'rejected')`),
+    check("post_decisions_proposals_array", sql`jsonb_typeof(${t.proposals}) = 'array' AND jsonb_typeof(${t.voided}) = 'array'`),
     check("post_decisions_rework_range", sql`${t.reworkRatio} IS NULL OR ${t.reworkRatio} >= 0`),
   ],
 );
 
 /**
- * Per-reporter features, one snapshot per IST day (brief §7.1). A snapshot is never overwritten: a second run
- * on the same day inserts nothing. Built only from decisions made before the start of that day (L5). NOTHING
- * reads these yet.
+ * Per-reporter features, one snapshot per IST day (brief §7.1), keyed by the reporter's HANDLE (one reporter files
+ * under several file-name tokens). Built from the posted decisions of matched reporters in the 90 days before the
+ * start of that day (L5), at most 200 items per reporter. A snapshot is never overwritten: a second run on the
+ * same day inserts nothing, and UPDATE is refused; snapshots older than 90 days are deleted. NOTHING reads these
+ * yet.
  */
 export const reporterFeatures = pgTable(
   "reporter_features",
@@ -935,7 +954,7 @@ export const reporterFeatures = pgTable(
     orgId: orgId(),
     /** The IST day the snapshot was taken for; it uses decisions before that day's start */
     snapshotDate: date("snapshot_date", { mode: "string" }).notNull(),
-    /** The reporter token from the file name (post_decisions.reporter_token) */
+    /** The reporter's handle, lower-cased, no @ (post_decisions.reporter_handle of matched rows) */
     reporter: text("reporter").notNull(),
     /** The posts the features rest on */
     n: integer("n").notNull(),
@@ -959,7 +978,11 @@ export interface ReporterFeatureSet {
   m: number;
   /** Decisions before this instant only (L5) */
   cutoff: string;
-  /** "#Jaipur", "@RajGovOfficial": on the final post */
+  /** ...and from this instant on (the rolling window, FEATURE_WINDOW_DAYS before the cutoff) */
+  since: string;
+  /** The reporter's items beyond the top FEATURE_MAX_ITEMS by count, left out */
+  itemsDropped: number;
+  /** "#jaipur", "@rajgovofficial" (lower-cased): on the final post */
   items: Record<string, ReporterItemFeature & { kind: "hashtag" | "handle" }>;
   /** Per rule id: how often the desk kept or accepted what the rule proposed for this reporter */
   sources: Record<string, { proposed: number; taken: number; rate: number; smoothed: number; base: number }>;

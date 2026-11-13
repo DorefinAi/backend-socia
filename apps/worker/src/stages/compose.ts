@@ -97,8 +97,12 @@ function mentionSuggestion(h: HandlePick, prefix: "rule" | "suggest", exact: boo
  * The decision log's proposals (reporter-prior brief §2.3) from the composed draft: core's own list when it gives
  * one; otherwise built from the fields, each item's source falling back to the reason code it always had.
  */
-export function draftProposals(out: Pick<BreakingDraft, "hashtags" | "handles" | "handleSuggestions" | "hashtagSuggestions"> & { proposals?: Proposal[]; hashtagSuggestionItems?: TagSuggestion[] }): LoggedProposal[] {
+export function draftProposals(
+  out: Pick<BreakingDraft, "hashtags" | "handles" | "handleSuggestions" | "hashtagSuggestions"> & { proposals?: Proposal[]; hashtagSuggestionItems?: TagSuggestion[] },
+  onFallback?: () => void,
+): LoggedProposal[] {
   if (Array.isArray(out.proposals)) return out.proposals.map((p) => ({ ...p }));
+  onFallback?.();
   const items = out.hashtagSuggestionItems ?? out.hashtagSuggestions.map((tag) => ({ tag, source: "suggestion", reason: "suggestion" }));
   return [
     ...out.hashtags.map((t): LoggedProposal => ({ item: t, kind: "hashtag", layer: "emit", source: "footer", reason: "footer" })),
@@ -218,18 +222,28 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   // The decision log's proposal half (brief §2): what the file name said about the reporter, and every item with
   // its rule. Written in a savepoint that never fails or holds up the draft.
   const logProposal = async (draftId: string) => {
-    const [file] = story.fileId ? await tx.select({ fileName: ingestedFiles.fileName }).from(ingestedFiles).where(eq(ingestedFiles.id, story.fileId)) : [];
-    const who = resolveReporterStatus(file?.fileName ?? null, tags, reporters);
-    const rate = opts.exploreRate ?? EXPLORE_RATE;
-    const ok = await recordProposal(tx, {
-      orgId: story.orgId, draftId, storyId: story.id,
-      filenameRaw: file?.fileName ?? null, slotRaw: who.slotRaw, reporterToken: who.reporterToken, bureauCode: who.bureauCode,
-      bureauDistrict: who.bureauDistrict, reporterHandle: who.reporterHandle, reporterStatus: who.status,
-      storyClass: out.cls, district: story.district, districtFrom: story.districtFrom ?? null, composeVersion: out.composeVersion,
-      draftText: assemblePostText(out.bodyText, out.hashtags, out.mentions), proposals: draftProposals(out),
-      explore: (opts.random ?? Math.random)() < rate,
-    });
-    if (!ok) log.info({ storyId: story.id, draftId }, "decision log: proposal not written (already decided, or the write failed and was logged); the draft is unaffected");
+    // Everything, the file-name lookup included, runs inside the log's savepoint (recordProposal): the log is a
+    // record, and if keeping it fails for any reason the draft still goes through
+    try {
+      // A failure is logged at error by the log itself, and a decided row marked stale at info: nothing to add here
+      await recordProposal(tx, { orgId: story.orgId, draftId }, async (sp) => {
+        const [file] = story.fileId ? await sp.select({ fileName: ingestedFiles.fileName }).from(ingestedFiles).where(eq(ingestedFiles.id, story.fileId)) : [];
+        const who = resolveReporterStatus(file?.fileName ?? null, tags, reporters);
+        const rate = opts.exploreRate ?? EXPLORE_RATE;
+        const proposals = draftProposals(out, () => log.warn({ storyId: story.id, draftId }, "decision log: core gave no proposals; built them from the draft's fields"));
+        return {
+          orgId: story.orgId, draftId, storyId: story.id,
+          filenameRaw: file?.fileName ?? null, slotRaw: who.slotRaw, reporterToken: who.reporterToken, bureauCode: who.bureauCode,
+          bureauDistrict: who.bureauDistrict, reporterHandle: who.reporterHandle, reporterStatus: who.status,
+          storyClass: out.cls, district: story.district, districtFrom: story.districtFrom ?? null, composeVersion: out.composeVersion,
+          draftText: assemblePostText(out.bodyText, out.hashtags, out.mentions), proposals,
+          explore: (opts.random ?? Math.random)() < rate,
+        };
+      });
+    } catch (err) {
+      // recordProposal never throws; this is the belt to its braces
+      log.error({ err, storyId: story.id, draftId }, "decision log: proposal not written; the draft went through");
+    }
   };
 
   // A re-saved file (the ingest stage sent its story back here): rewrite the unposted draft in place

@@ -2,7 +2,7 @@
 // audit row, and the live event commit together or not at all.
 
 import {
-  COPY_UNDO_SECONDS, LEASE_SECONDS, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus, reporterKey,
+  COPY_UNDO_SECONDS, LEASE_SECONDS, NATIONAL_FOOTER, RAJASTHAN_FOOTER, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus, reporterKey,
   type DraftAction, type DraftStatus, type RejectReason,
 } from "@socia/core";
 import { randomUUID } from "node:crypto";
@@ -191,8 +191,6 @@ export async function updateDraft(db: Db, actor: Actor, draftId: string, version
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.edit", entityType: "post_draft", entityId: draftId, before: pickEditable(draft), after: pickEditable(updated!) });
     // An editor putting a reporter's handle on a draft tells us whose byline that file name means
     if (patch.mentions) await learnReporterTokens(tx, actor, draft, patch.mentions, opts.reporterHandles);
-    // A hashtag the editor typed that no rule of ours produced is a rule we are missing
-    if (patch.hashtags) await stageNewHashtags(tx, actor, draft, patch.hashtags);
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
     return updated!;
   });
@@ -214,12 +212,16 @@ const HASHTAG_EXAMPLES = 5;
  * reached for, how often, and on what kind of story. Accepting one of our own suggestions is not staged
  * — that is the rule working, not a gap.
  */
-async function stageNewHashtags(tx: Executor, actor: Actor, draft: Draft, hashtags: string[]): Promise<void> {
+async function stagePostedHashtags(tx: Executor, actor: Actor, draft: Draft): Promise<void> {
+  // Only a post as it went out: the editor autosaves while typing, and a half-typed "#Rajas" is not a tag.
+  // Only breaking drafts composed footer-only (they carry a handle_pick): on an older or a non-breaking
+  // draft the composer applied topic tags itself, and those are not the desk's.
+  if (draft.handlePick === null) return;
   const known = new Set(
-    [...draft.hashtags, ...draft.hashtagSuggestions].map((t) => t.replace(/^#/, "").toLowerCase()),
+    [RAJASTHAN_FOOTER, NATIONAL_FOOTER, ...draft.hashtagSuggestions].map((t) => t.replace(/^#/, "").toLowerCase()),
   );
   const added = new Map<string, string>();
-  for (const raw of hashtags) {
+  for (const raw of draft.hashtags) {
     const tag = raw.trim();
     const key = tag.replace(/^#/, "").toLowerCase();
     if (!key || known.has(key) || added.has(key)) continue;
@@ -234,6 +236,8 @@ async function stageNewHashtags(tx: Executor, actor: Actor, draft: Draft, hashta
       .values({ orgId: actor.orgId, tag, tagKey, uses: 1, examples: [example] })
       .onConflictDoUpdate({
         target: [hashtagStaging.orgId, hashtagStaging.tagKey],
+        // A draft posted, undone and posted again counts once
+        setWhere: sql`NOT (${hashtagStaging.examples} @> ${JSON.stringify([{ draftId: draft.id }])}::jsonb)`,
         set: {
           uses: sql`${hashtagStaging.uses} + 1`,
           lastSeenAt: sql`now()`,
@@ -486,6 +490,7 @@ export async function approveDraft(db: Db, actor: Actor, draftId: string, versio
       .returning();
 
     // The decision log (never throws); a breaking draft (it has a handle_pick) that could not be logged is warned about
+    await stagePostedHashtags(tx, actor, draft);
     noteOutcome(await recordOutcome(tx, { orgId: actor.orgId, draftId, decision: "approved", finalText: postText(draft), decidedBy: actor.id }), { orgId: actor.orgId, draftId: draftId, op: "approved", expectRow: draft.handlePick !== null });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.approve", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { status, jobId: job!.id, text: postText(draft) } });
     await notify(tx, actor.orgId, { type: "post.queued", draftId, jobId: job!.id, sendAt: job!.nextAttemptAt.toISOString() });
@@ -583,6 +588,7 @@ export async function markPosted(db: Db, actor: Actor, draftId: string, version:
       .set({ status, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId));
     // The decision log (never throws); a breaking draft (it has a handle_pick) that could not be logged is warned about
+    await stagePostedHashtags(tx, actor, draft);
     noteOutcome(await recordOutcome(tx, { orgId: actor.orgId, draftId, decision: "mark_posted", finalText: row.text, decidedBy: actor.id }), { orgId: actor.orgId, draftId: draftId, op: "mark_posted", expectRow: draft.handlePick !== null });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.mark_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { permalink: post.permalink, cardKey } });
     await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row.id, permalink: post.permalink });
@@ -686,6 +692,7 @@ export async function copyPosted(db: Db, actor: Actor, draftId: string, version:
       .set({ status, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId));
     // The decision log (never throws); a breaking draft (it has a handle_pick) that could not be logged is warned about
+    await stagePostedHashtags(tx, actor, draft);
     noteOutcome(await recordOutcome(tx, { orgId: actor.orgId, draftId, decision: "copy_posted", finalText: text, decidedBy: actor.id }), { orgId: actor.orgId, draftId: draftId, op: "copy_posted", expectRow: draft.handlePick !== null });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.copy_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status, version }, after: { status, postId: row!.id, text } });
     await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row!.id, permalink: null });

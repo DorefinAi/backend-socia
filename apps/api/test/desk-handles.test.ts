@@ -282,31 +282,37 @@ const URL_ = process.env.TEST_DATABASE_URL;
   // ─── The same loop for hashtags ───────────────────────────────────────────
   // A breaking post carries the footer tag and nothing else automatically, so every other hashtag on it
   // was typed by an editor — the most direct evidence there is of a rule we are missing.
-  it("stages a hashtag the editor types that no rule of ours produced, counting repeats", async () => {
-    const make = async (slug: string) => {
-      const [story] = await h.db
-        .insert(stories)
-        .values({ orgId, slug, status: "composed", headline: "पंचायत चुनाव का परिणाम", body: "", layout: "breaking", mediaState: "none" })
-        .returning();
-      const [draft] = await h.db
-        .insert(postDrafts)
-        .values({
-          orgId, storyId: story!.id, status: "ready", bodyText: "पंचायत चुनाव का परिणाम", cardHeadline: "पंचायत चुनाव का परिणाम",
-          hashtags: ["#RajasthanWithFirstIndia"], hashtagSuggestions: ["#RajasthanElection"], composeVersion: "b5", cardRev: 0,
-        })
-        .returning();
-      return draft!.id;
-    };
-    const staged = () => h.db.select().from(hashtagStaging).where(eq(hashtagStaging.orgId, orgId));
+  // Staged when the post goes out, never on a save: the editor autosaves while the desk is still typing.
+  const PICK = { cls: "political", why: "a party or politician", warnings: [], handles: [] };
+  const makeTagDraft = async (slug: string, opts: { suggestions?: string[]; pick?: boolean } = {}) => {
+    const [story] = await h.db
+      .insert(stories)
+      .values({ orgId, slug, status: "composed", headline: "पंचायत चुनाव का परिणाम", body: "", layout: "breaking", mediaState: "none" })
+      .returning();
+    const [draft] = await h.db
+      .insert(postDrafts)
+      .values({
+        orgId, storyId: story!.id, status: "ready", bodyText: "पंचायत चुनाव का परिणाम", cardHeadline: "पंचायत चुनाव का परिणाम",
+        hashtags: ["#RajasthanWithFirstIndia"], hashtagSuggestions: opts.suggestions ?? ["#RajasthanElection"], composeVersion: "b5", cardRev: 0,
+        handlePick: opts.pick === false ? null : PICK,
+      } as typeof postDrafts.$inferInsert)
+      .returning();
+    return draft!.id;
+  };
+  /** Claim, save the tags, then Copy & posted; returns the save's response */
+  const tagAndPost = async (id: string, hashtags: string[], post = true) => {
+    const claimed = await call(op, "POST", `/drafts/${id}/claim`);
+    const saved = await call(op, "PATCH", `/drafts/${id}`, { version: claimed.body.version, hashtags });
+    expect(saved.status).toBe(200);
+    if (post) expect((await call(op, "POST", `/drafts/${id}/copy-posted`, { version: saved.body.version })).status).toBe(200);
+    return saved;
+  };
+  const staged = () => h.db.select().from(hashtagStaging).where(eq(hashtagStaging.orgId, orgId));
+  const stagedTag = async (key: string) => (await staged()).find((r) => r.tagKey === key);
 
-    const a = await make("hashtag-learn-1");
-    const claimedA = await call(op, "POST", `/drafts/${a}/claim`);
-    const savedA = await call(op, "PATCH", `/drafts/${a}`, {
-      version: claimedA.body.version,
-      // One tag we already have, one we offered, and one the desk reached for that we know nothing about
-      hashtags: ["#RajasthanWithFirstIndia", "#RajasthanElection", "#RajasthanPanchayatElection2026"],
-    });
-    expect(savedA.status).toBe(200);
+  it("stages a hashtag the editor posted that no rule of ours produced, counting repeats", async () => {
+    // One tag we already have, one we offered, and one the desk reached for that we know nothing about
+    await tagAndPost(await makeTagDraft("hashtag-learn-1"), ["#RajasthanWithFirstIndia", "#RajasthanElection", "#RajasthanPanchayatElection2026"]);
     let rows = await staged();
     expect(rows.map((r) => r.tag)).toEqual(["#RajasthanPanchayatElection2026"]);
     expect(rows[0]!.uses).toBe(1);
@@ -314,9 +320,7 @@ const URL_ = process.env.TEST_DATABASE_URL;
     expect((rows[0]!.examples as { headline: string }[])[0]!.headline).toBe("पंचायत चुनाव का परिणाम");
 
     // The same tag on another post counts up rather than making a second row, whatever the casing
-    const b = await make("hashtag-learn-2");
-    const claimedB = await call(op, "POST", `/drafts/${b}/claim`);
-    expect((await call(op, "PATCH", `/drafts/${b}`, { version: claimedB.body.version, hashtags: ["#rajasthanPanchayatElection2026"] })).status).toBe(200);
+    await tagAndPost(await makeTagDraft("hashtag-learn-2"), ["#rajasthanPanchayatElection2026"]);
     rows = await staged();
     expect(rows).toHaveLength(1);
     expect(rows[0]!.uses).toBe(2);
@@ -324,24 +328,30 @@ const URL_ = process.env.TEST_DATABASE_URL;
     expect((await h.db.select().from(auditLog).where(eq(auditLog.action, "hashtag.staged"))).length).toBe(2);
   });
 
+  it("stages nothing on a save: an autosave mid-typing carries half a tag", async () => {
+    await tagAndPost(await makeTagDraft("hashtag-autosave"), ["#RajasthanWithFirstIndia", "#Rajas"], false);
+    expect(await stagedTag("rajas")).toBeUndefined();
+  });
+
   it("stages nothing for a tag we applied or offered ourselves", async () => {
-    const before = (await h.db.select().from(hashtagStaging).where(eq(hashtagStaging.orgId, orgId))).length;
-    const [story] = await h.db
-      .insert(stories)
-      .values({ orgId, slug: "hashtag-noop", status: "composed", headline: "कोई खबर", body: "", layout: "breaking", mediaState: "none" })
-      .returning();
-    const [draft] = await h.db
-      .insert(postDrafts)
-      .values({
-        orgId, storyId: story!.id, status: "ready", bodyText: "कोई खबर", cardHeadline: "कोई खबर",
-        hashtags: ["#RajasthanWithFirstIndia"], hashtagSuggestions: ["#RoadAccident"], composeVersion: "b5", cardRev: 0,
-      })
-      .returning();
-    const claimed = await call(op, "POST", `/drafts/${draft!.id}/claim`);
+    const before = (await staged()).length;
     // Accepting our own suggestion is the rule working, not a gap
-    const saved = await call(op, "PATCH", `/drafts/${draft!.id}`, { version: claimed.body.version, hashtags: ["#RajasthanWithFirstIndia", "#RoadAccident"] });
-    expect(saved.status).toBe(200);
-    expect((await h.db.select().from(hashtagStaging).where(eq(hashtagStaging.orgId, orgId))).length).toBe(before);
+    await tagAndPost(await makeTagDraft("hashtag-noop", { suggestions: ["#RoadAccident"] }), ["#RajasthanWithFirstIndia", "#RoadAccident"]);
+    expect((await staged()).length).toBe(before);
+  });
+
+  it("stages nothing from a draft the old composer tagged, or a non-breaking one", async () => {
+    // No handle_pick: composed before footer-only, when the composer applied topic tags itself
+    await tagAndPost(await makeTagDraft("hashtag-old", { pick: false }), ["#RajasthanWithFirstIndia", "#OldRuleTag"]);
+    expect(await stagedTag("oldruletag")).toBeUndefined();
+  });
+
+  it("counts a draft once when it is posted, undone and posted again", async () => {
+    const id = await makeTagDraft("hashtag-repost");
+    await tagAndPost(id, ["#RajasthanWithFirstIndia", "#RepostOnce"]);
+    expect((await call(op, "POST", `/drafts/${id}/copy-posted/undo`)).status).toBe(200);
+    await tagAndPost(id, ["#RajasthanWithFirstIndia", "#RepostOnce"]);
+    expect((await stagedTag("repostonce"))!.uses).toBe(1);
   });
 
   it("learns nothing from a draft whose file named no reporter", async () => {

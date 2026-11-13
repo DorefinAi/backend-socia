@@ -12,9 +12,31 @@
     "BhajanLalSharma": "BhajanlalSharma",
     "CMbhajanlalSharma": "CMBhajanlalSharma",
     "Diyakumari": "DiyaKumari",
-    "Drjagdeeshchandra": "DrJagdeeshChandra"
+    "Drjagdeeshchandra": "DrJagdeeshChandra",
+    "RajasthnaWithFirstIndia": "RajasthanWithFirstIndia",
+    "RajastahnWithFirstIndia": "RajasthanWithFirstIndia",
+    "RajasthanwithFirstIndia": "RajasthanWithFirstIndia",
+    "RajasthanWithFristIndia": "RajasthanWithFirstIndia",
+    "RajasthaWithFirstIndia": "RajasthanWithFirstIndia",
+    "RajashanWithFirstIndia": "RajasthanWithFirstIndia",
+    "RajsthanWithFirstIndia": "RajasthanWithFirstIndia",
+    "RajasthanWithFirstndia": "RajasthanWithFirstIndia",
+    "RajathanWithFirstIndia": "RajasthanWithFirstIndia",
+    "RajasthanWthFirstIndia": "RajasthanWithFirstIndia",
+    "RajasthanWithFIrstIndia": "RajasthanWithFirstIndia",
+    "RjasthanWithFirstIndia": "RajasthanWithFirstIndia",
+    "FirstIndianews": "FirstIndiaNews",
+    "FINVIdeo": "FINVideo",
+    "FINVieo": "FINVideo",
+    "FINViedo": "FINVideo",
+    "Dhiolpur": "Dholpur",
+    "Chittirgarh": "Chittorgarh",
+    "Jaislamer": "Jaisalmer",
+    "Rajsamnd": "Rajsamand",
+    "Dehi": "Delhi",
+    "SawaimadhopurNews": "SawaiMadhopurNews"
   },
   "guarded": ["RajasthanWithFirstIndia", "FirstIndiaNews", "FINVideo"],
   "_known": "The confirmed canonical spellings a variant may map to (the guarded tags count too). A variant whose target is not here REJECTS THE WHOLE FILE: the worker keeps its last good copy and /ingest/status says why. Add a target here only once a person has checked its spelling against the desk's own posts.",
-  "known": ["RajasthanPanchayatElection2026", "SawaiMadhopur", "Banswara", "BhajanlalSharma", "CMBhajanlalSharma", "DiyaKumari", "DrJagdeeshChandra"]
+  "known": ["RajasthanPanchayatElection2026", "SawaiMadhopur", "Banswara", "BhajanlalSharma", "CMBhajanlalSharma", "DiyaKumari", "DrJagdeeshChandra", "Dholpur", "Chittorgarh", "Jaisalmer", "Rajsamand", "Delhi", "SawaiMadhopurNews"]
 }

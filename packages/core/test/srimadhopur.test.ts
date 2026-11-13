@@ -38,6 +38,20 @@ describe("Srimadhopur is in Sikar", () => {
     }
   });
 
+  it("the spaced spelling 'श्री माधोपुर' (N2) is the same Sikar town", () => {
+    expect(book.lookup("श्री माधोपुर")?.districts.map((d) => d.tag)).toEqual(["Sikar"]);
+    expect(book.townTag("श्री माधोपुर")).toBe("श्रीमाधोपुर");
+    const s = file("श्री माधोपुर में सड़क हादसा, दो की मौत");
+    expect(s.district).toBe("Sikar");
+    expect(book.find("श्री माधोपुर में सड़क हादसा").map((m) => m.entry.data.districts.map((d) => d.tag))).toEqual([["Sikar"]]);
+    expect(inferHeadlineDistrict(book, "श्री माधोपुर में सड़क हादसा")).toBeNull();
+    // A hashtag cannot hold the space, so the spaced spelling only ever comes as a plain place line
+    const t = file("श्री माधोपुर: सड़क हादसा");
+    expect([t.district, t.town]).toEqual(["Sikar", "श्री माधोपुर"]);
+    const d = composeBreaking({ ...t, rawHeadline: t.rawHeadline }, rules, book, {});
+    expect(d.handles.map((h) => h.handle)).toEqual(["SikarPolice"]);
+  });
+
   it("सवाई माधोपुर itself still resolves to SawaiMadhopur", () => {
     for (const head of ["सवाई माधोपुर में बाघ दिखा", "सवाईमाधोपुर में बाघ दिखा"]) {
       expect(inferHeadlineDistrict(book, head)?.tag, head).toBe("SawaiMadhopur");

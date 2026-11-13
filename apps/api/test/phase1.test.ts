@@ -205,6 +205,7 @@ const tags = (over: Partial<FileTags>): FileTags => ({
       manual: true,
       copied: true,
       recalled: null,
+      corrected: null,
     });
 
     // The card recorded with the post wins over the draft's

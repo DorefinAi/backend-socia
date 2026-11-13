@@ -11,7 +11,7 @@ import { audit } from "./audit";
 import { noteOutcome, recordOutcome, voidOutcome } from "./decisions";
 import type { Db, Executor } from "./client";
 import { notify } from "./events";
-import { REPORTER_SOURCE, handleDirectory, hashtagStaging, orgs, postDrafts, publishJobs, publishedPosts, users, type DraftHandlePick } from "./schema";
+import { REPORTER_SOURCE, auditLog, handleDirectory, hashtagStaging, orgs, postDrafts, publishJobs, publishedPosts, users, type DraftHandlePick } from "./schema";
 
 export interface Actor {
   id: string;
@@ -105,29 +105,46 @@ export async function claimDraft(db: Db, actor: Actor, draftId: string): Promise
   });
 }
 
-/** Sent every 60 s while the editor is open. */
+/** Sent every 60 s while the editor is open. Keeps a correction hold on a posted story too; the status never changes. */
 export async function extendClaim(db: Db, actor: Actor, draftId: string): Promise<Date> {
   const [row] = await db
     .update(postDrafts)
-    .set({ claimExpiresAt: leaseUntil() })
-    .where(and(eq(postDrafts.id, draftId), eq(postDrafts.claimedBy, actor.id), eq(postDrafts.status, "claimed"), sql`${postDrafts.claimExpiresAt} > now()`))
+    // A correction hold never runs past 00:00 IST: after that the post is yesterday's and cannot be edited
+    .set({ claimExpiresAt: sql`CASE WHEN ${postDrafts.status} = 'published' THEN ${correctionLeaseUntil()} ELSE ${leaseUntil()} END` })
+    .where(and(eq(postDrafts.id, draftId), eq(postDrafts.claimedBy, actor.id), inArray(postDrafts.status, ["claimed", "published"]), sql`${postDrafts.claimExpiresAt} > now()`))
     .returning({ until: postDrafts.claimExpiresAt });
   if (!row?.until) throw new DeskError("lease_lost", "Your hold on this draft has expired. Open it again to keep working.");
   return row.until;
 }
 
+/**
+ * Let the draft go: a claimed draft returns to the queue (ready). A posted story under a correction hold only
+ * loses the hold: it stays published, and its updated_at (the posted view's order and day) is left alone.
+ */
 export async function releaseDraft(db: Db, actor: Actor, draftId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    const claimed = sql`${postDrafts.status} = 'claimed'`;
     const [row] = await tx
       .update(postDrafts)
-      .set({ status: "ready", claimedBy: null, claimExpiresAt: null, updatedAt: sql`now()` })
-      .where(and(eq(postDrafts.id, draftId), eq(postDrafts.claimedBy, actor.id), eq(postDrafts.status, "claimed")))
-      .returning({ id: postDrafts.id });
-    if (row) await notify(tx, actor.orgId, { type: "draft.released", draftId });
+      .set({
+        status: sql`CASE WHEN ${claimed} THEN 'ready' ELSE ${postDrafts.status} END`,
+        claimedBy: null,
+        claimExpiresAt: null,
+        updatedAt: sql`CASE WHEN ${claimed} THEN now() ELSE ${postDrafts.updatedAt} END`,
+      })
+      .where(and(eq(postDrafts.id, draftId), eq(postDrafts.claimedBy, actor.id), inArray(postDrafts.status, ["claimed", "published"])))
+      .returning({ status: postDrafts.status, version: postDrafts.version });
+    if (!row) return;
+    // A posted story is not back in the queue: its hold change is a draft.updated, as when the hold started
+    if (row.status === "published") await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: row.status, version: row.version });
+    else await notify(tx, actor.orgId, { type: "draft.released", draftId });
   });
 }
 
-/** Run by the worker: a lease nobody extended goes back to the queue. */
+/**
+ * Run by the worker: a lease nobody extended goes back to the queue. An expired correction hold on a posted story
+ * is only cleared: it stays published, with its updated_at. The count is both kinds.
+ */
 export async function releaseExpiredClaims(db: Db): Promise<number> {
   return db.transaction(async (tx) => {
     const rows = await tx
@@ -136,8 +153,33 @@ export async function releaseExpiredClaims(db: Db): Promise<number> {
       .where(and(eq(postDrafts.status, "claimed"), sql`${postDrafts.claimExpiresAt} < now()`))
       .returning({ id: postDrafts.id, orgId: postDrafts.orgId });
     for (const r of rows) await notify(tx, r.orgId, { type: "draft.released", draftId: r.id });
-    return rows.length;
+    const holds = await clearExpiredHolds(tx);
+    for (const r of holds) await notify(tx, r.orgId, { type: "draft.updated", draftId: r.id, status: r.status, version: r.version });
+    return rows.length + holds.length;
   });
+}
+
+/** Expired correction holds on posted stories (optionally only these drafts of one org) cleared; status and updated_at kept */
+async function clearExpiredHolds(tx: Executor, only?: { orgId: string; draftIds: string[] }) {
+  if (only && !only.draftIds.length) return [];
+  return tx
+    .update(postDrafts)
+    .set({ claimedBy: null, claimExpiresAt: null })
+    .where(
+      and(
+        eq(postDrafts.status, "published"),
+        sql`${postDrafts.claimedBy} IS NOT NULL`,
+        sql`${postDrafts.claimExpiresAt} <= now()`,
+        only ? eq(postDrafts.orgId, only.orgId) : undefined,
+        only ? inArray(postDrafts.id, only.draftIds) : undefined,
+      ),
+    )
+    .returning({ id: postDrafts.id, orgId: postDrafts.orgId, status: postDrafts.status, version: postDrafts.version });
+}
+
+/** On read (the draft view, the posted view): an expired correction hold on these drafts is cleared, quietly */
+export async function clearExpiredCorrectionHolds(db: Executor, orgId: string, draftIds: string[]): Promise<number> {
+  return (await clearExpiredHolds(db, { orgId, draftIds })).length;
 }
 
 // ─── Editing ─────────────────────────────────────────────────────────────────
@@ -156,11 +198,20 @@ export interface UpdateDraftOptions {
    * an editor may add, and adding one teaches us the file-name token it belongs to.
    */
   reporterHandles?: ReadonlySet<string>;
+  /** The requesting user's rights over a posted story, recomputed for this request; without them a posted story is not editable */
+  correction?: CorrectionRights;
 }
 
 /**
  * Save the operator's edits. The client sends the version it loaded; a different version on the
  * server means a colleague saved in between, and the 409 carries the current copy for a diff.
+ *
+ * A posted story under a correction hold (startCorrection) is saved the same way but stays published, after every
+ * correction rule is checked again (today's post, the poster or someone allowed, Edit drafts). Only when the post
+ * text really changes (trimmed, NFC) is it checked (checkXPost, 1000) and written to the Copy & Posted record,
+ * stamped corrected_at / corrected_by and audited (draft.correct_posted); a save that changes nothing writes
+ * nothing. Nothing that posting does runs again (no new post record, no hashtag staging, no decision-log
+ * outcome), and updated_at is left alone, so the story keeps its place and day in the posted view.
  */
 export async function updateDraft(db: Db, actor: Actor, draftId: string, version: number, patch: DraftPatch, opts: UpdateDraftOptions = {}): Promise<Draft> {
   return db.transaction(async (tx) => {
@@ -168,12 +219,28 @@ export async function updateDraft(db: Db, actor: Actor, draftId: string, version
     if (draft.version !== version) {
       throw new DeskError("stale_version", "Someone else saved this draft after you opened it.", { current: draft });
     }
+    const post = draft.status === "published" ? await correctionPost(tx, actor, draft) : null;
+    if (post) assertCorrectionRules(post, actor, opts.correction ?? NO_RIGHTS, "save");
     requireLease(draft, actor);
 
     if (patch.mentions) await assertVerifiedMentions(tx, actor.orgId, patch.mentions, draft, opts.reporterHandles);
 
-    // A draft with no card asked for (phase 1, card_rev 0) stays without one when its card text changes
-    const cardChanged = patch.cardHeadline !== undefined && patch.cardHeadline.trim() !== draft.cardHeadline && draft.cardRev > 0;
+    // A posted story: what the post would say after this save, and whether anything changes at all
+    const nextText = postText({ bodyText: patch.bodyText?.trim() ?? draft.bodyText, hashtags: patch.hashtags ?? draft.hashtags, mentions: patch.mentions ?? draft.mentions });
+    const textChanged = !!post && !sameText(nextText, post.text);
+    if (post) {
+      const same = (a: readonly string[] | undefined, b: readonly string[]) => a === undefined || (a.length === b.length && a.every((x, i) => x === b[i]));
+      const draftChanged =
+        (patch.bodyText !== undefined && patch.bodyText.trim() !== draft.bodyText) ||
+        (patch.cardHeadline !== undefined && patch.cardHeadline.trim() !== draft.cardHeadline) ||
+        !same(patch.hashtags, draft.hashtags) || !same(patch.mentions, draft.mentions);
+      if (!draftChanged && !textChanged) return draft;
+      if (textChanged) assertPostValid(nextText);
+    }
+
+    // A draft with no card asked for (phase 1, card_rev 0) stays without one when its card text changes. A posted
+    // story is never re-rendered (the render worker skips published drafts): its card is corrected by upload.
+    const cardChanged = !post && patch.cardHeadline !== undefined && patch.cardHeadline.trim() !== draft.cardHeadline && draft.cardRev > 0;
     const [updated] = await tx
       .update(postDrafts)
       .set({
@@ -183,12 +250,28 @@ export async function updateDraft(db: Db, actor: Actor, draftId: string, version
         ...(patch.mentions && { mentions: patch.mentions }),
         ...(cardChanged && { cardRev: sql`${postDrafts.cardRev} + 1` }),
         version: sql`${postDrafts.version} + 1`,
-        updatedAt: sql`now()`,
+        ...(!post && { updatedAt: sql`now()` }),
       })
       .where(eq(postDrafts.id, draftId))
       .returning();
 
-    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.edit", entityType: "post_draft", entityId: draftId, before: pickEditable(draft), after: pickEditable(updated!) });
+    if (post && textChanged) {
+      // Back to exactly what went out (trimmed, NFC): the original is written back and the post is no longer "edited"
+      const original = await originalPost(tx, post);
+      const restored = sameText(nextText, original.text);
+      const text = restored ? original.text : postText(updated!);
+      const edited = !(restored && post.cardKey === original.cardKey);
+      await tx
+        .update(publishedPosts)
+        .set({ text, correctedAt: edited ? sql`now()` : null, correctedBy: edited ? actor.id : null })
+        .where(eq(publishedPosts.id, post.id));
+      await audit(tx, {
+        orgId: actor.orgId, actorId: actor.id, action: "draft.correct_posted", entityType: "post_draft", entityId: draftId,
+        before: { ...pickEditable(draft), postId: post.id, text: post.text }, after: { ...pickEditable(updated!), postId: post.id, text, restored: !edited },
+      });
+    } else {
+      await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.edit", entityType: "post_draft", entityId: draftId, before: pickEditable(draft), after: pickEditable(updated!) });
+    }
     // An editor putting a reporter's handle on a draft tells us whose byline that file name means
     if (patch.mentions) await learnReporterTokens(tx, actor, draft, patch.mentions, opts.reporterHandles);
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
@@ -350,11 +433,70 @@ export function postedCardKey(draft: Pick<Draft, "cardKey" | "customCardKey">): 
   return draft.customCardKey ?? draft.cardKey;
 }
 
-/** Checks shared by the card changes: same version, a live hold, still claimed. */
-function requireEditable(draft: Draft, actor: Actor, version: number): void {
+/**
+ * Checks shared by the card changes: same version, a live hold, and still claimed. Or a posted story under a
+ * correction hold: its Copy & Posted record (locked) is returned, so the change is recorded on it.
+ */
+async function requireEditable(tx: Executor, draft: Draft, actor: Actor, version: number, rights: CorrectionRights): Promise<CorrectedPost | null> {
   if (draft.version !== version) throw new DeskError("stale_version", "Someone else saved this draft after you opened it.", { current: draft });
+  if (draft.status === "published") {
+    const post = await correctionPost(tx, actor, draft);
+    assertCorrectionRules(post, actor, rights, "save");
+    requireLease(draft, actor);
+    return post;
+  }
   requireLease(draft, actor);
   if (draft.status !== "claimed") throw new DeskError("invalid_state", `A ${draft.status} draft cannot be changed this way.`, { status: draft.status });
+  return null;
+}
+
+/**
+ * A posted story's card changed under a correction hold: the post record takes the new card, stamped, and audited.
+ * Only a different card key is a change; the same card again writes nothing.
+ */
+async function recordCardCorrection(tx: Executor, actor: Actor, before: Draft, after: Draft, post: CorrectedPost, extra: Record<string, unknown> = {}): Promise<void> {
+  const cardKey = postedCardKey(after);
+  if (cardKey === post.cardKey) return;
+  // Back to the card that went out, with the text as it went out: the post is no longer "edited"
+  const original = await originalPost(tx, post);
+  const edited = !(cardKey === original.cardKey && sameText(post.text, original.text));
+  await tx
+    .update(publishedPosts)
+    .set({ cardKey, correctedAt: edited ? sql`now()` : null, correctedBy: edited ? actor.id : null })
+    .where(eq(publishedPosts.id, post.id));
+  await audit(tx, {
+    orgId: actor.orgId, actorId: actor.id, action: "draft.correct_posted", entityType: "post_draft", entityId: before.id,
+    before: { ...pickEditable(before), postId: post.id, cardKey: post.cardKey },
+    after: { ...pickEditable(after), postId: post.id, cardKey, restored: !edited, ...extra },
+  });
+}
+
+/**
+ * What a Copy & Posted record said when it went out. A record never corrected (or corrected back) is as it went
+ * out; otherwise the first draft.correct_posted audit row of this record that changed the text (or the card) holds
+ * the original in its `before`. Audit rows are written in the same transaction as each correction and never pruned.
+ */
+async function originalPost(tx: Executor, post: CorrectedPost): Promise<{ text: string; cardKey: string | null }> {
+  if (!post.correctedAt) return { text: post.text, cardKey: post.cardKey };
+  const rows = await tx
+    .select({ before: auditLog.before })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.entityType, "post_draft"),
+        eq(auditLog.entityId, post.draftId),
+        eq(auditLog.action, "draft.correct_posted"),
+        sql`${auditLog.after}->>'postId' = ${post.id}`,
+      ),
+    )
+    .orderBy(auditLog.id);
+  const befores = rows.map((r) => r.before).filter((b): b is Record<string, unknown> => !!b && typeof b === "object");
+  const firstText = befores.find((b) => typeof b.text === "string");
+  const firstCard = befores.find((b) => "cardKey" in b);
+  return {
+    text: firstText ? (firstText.text as string) : post.text,
+    cardKey: firstCard ? ((firstCard.cardKey as string | null) ?? null) : post.cardKey,
+  };
 }
 
 export interface CustomCard {
@@ -372,34 +514,41 @@ export async function setCustomCard(
   db: Db, actor: Actor, draftId: string, version: number, card: CustomCard, store: (key: string) => Promise<void>,
   /** The file's own format: the key's extension, which is what the file is served as */
   format: "jpg" | "png" = "png",
+  /** The requesting user's rights over a posted story; without them a posted story's card cannot change */
+  rights: CorrectionRights = NO_RIGHTS,
 ): Promise<Draft> {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
-    requireEditable(draft, actor, version);
+    const post = await requireEditable(tx, draft, actor, version, rights);
     const key = `cards/${draftId}/custom-${randomUUID()}.${format}`;
     await store(key);
     const [updated] = await tx
       .update(postDrafts)
-      .set({ customCardKey: key, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      // A posted story keeps its updated_at: its place and day in the posted view
+      .set({ customCardKey: key, version: sql`${postDrafts.version} + 1`, ...(!post && { updatedAt: sql`now()` }) })
       .where(eq(postDrafts.id, draftId))
       .returning();
-    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.card_uploaded", entityType: "post_draft", entityId: draftId, before: { key: draft.customCardKey }, after: { key, ...card } });
+    if (post) await recordCardCorrection(tx, actor, draft, updated!, post, { ...card });
+    else await audit(tx,{ orgId: actor.orgId, actorId: actor.id, action: "draft.card_uploaded", entityType: "post_draft", entityId: draftId, before: { key: draft.customCardKey }, after: { key, ...card } });
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
     return updated!;
   });
 }
 
 /** Back to the rendered card. The old file stays in storage (the audit log points at it). */
-export async function clearCustomCard(db: Db, actor: Actor, draftId: string, version: number): Promise<Draft> {
+export async function clearCustomCard(db: Db, actor: Actor, draftId: string, version: number, rights: CorrectionRights = NO_RIGHTS): Promise<Draft> {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
-    requireEditable(draft, actor, version);
+    const post = await requireEditable(tx, draft, actor, version, rights);
+    // A posted story already on its rendered card: nothing changes, nothing is written
+    if (post && !draft.customCardKey) return draft;
     const [updated] = await tx
       .update(postDrafts)
-      .set({ customCardKey: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      .set({ customCardKey: null, version: sql`${postDrafts.version} + 1`, ...(!post && { updatedAt: sql`now()` }) })
       .where(eq(postDrafts.id, draftId))
       .returning();
-    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.card_reset", entityType: "post_draft", entityId: draftId, before: { key: draft.customCardKey }, after: { key: null } });
+    if (post) await recordCardCorrection(tx, actor, draft, updated!, post);
+    else await audit(tx,{ orgId: actor.orgId, actorId: actor.id, action: "draft.card_reset", entityType: "post_draft", entityId: draftId, before: { key: draft.customCardKey }, after: { key: null } });
     await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: updated!.status, version: updated!.version });
     return updated!;
   });
@@ -718,6 +867,153 @@ async function copiedPost(tx: Executor, orgId: string, draftId: string) {
   return post ?? null;
 }
 
+// ─── Correcting a posted story (Edit on Posted today) ───────────────────────
+
+type CorrectedPost = typeof publishedPosts.$inferSelect;
+
+const NOT_COPY_POSTED = "Only a story posted with Copy & Posted can be edited after posting.";
+
+/** The Copy & Posted record of a published draft under a correction hold (locked); any other published draft is 409 invalid_state */
+async function correctionPost(tx: Executor, actor: Actor, draft: Draft): Promise<CorrectedPost> {
+  const post = await copiedPost(tx, actor.orgId, draft.id);
+  if (!post) throw new DeskError("invalid_state", NOT_COPY_POSTED, { status: draft.status });
+  return post;
+}
+
+/** Posted on today's India calendar day: the day the posted view and the daily counts use (istDayStart) */
+export function postedTodayIst(postedAt: Date, now = new Date()): boolean {
+  return postedAt >= istDayStart(now);
+}
+
+/** The next 00:00 IST after `now`: a correction hold never outlives the day of its post */
+export function nextIstMidnight(now = new Date()): Date {
+  return new Date(istDayStart(now).getTime() + 24 * 60 * 60 * 1000);
+}
+
+/** claimDraft's lease, capped at the next 00:00 IST */
+const correctionLeaseUntil = () => sql`LEAST(now() + make_interval(secs => ${LEASE_SECONDS}), ${nextIstMidnight().toISOString()}::timestamptz)`;
+
+/** What the requesting user may do to a posted story, from this request's own permissions (never cached) */
+export interface CorrectionRights {
+  /** Edit drafts, usable on X */
+  canEdit: boolean;
+  /** May correct a story someone else posted: Undo, the admin role, or every permission */
+  canCorrectOthers: boolean;
+}
+
+const NO_RIGHTS: CorrectionRights = { canEdit: false, canCorrectOthers: false };
+
+const NOT_YOURS = "Only the person who posted it or an admin can edit a posted story.";
+
+/** The same text once trimmed and NFC-normalised (a different byte form of the same Hindi is no change) */
+function sameText(a: string, b: string): boolean {
+  return a.trim().normalize("NFC") === b.trim().normalize("NFC");
+}
+
+/** A corrected post must still be a post: not empty, within BREAKING_POST_MAX (never 280); 422 post_invalid otherwise */
+function assertPostValid(text: string): void {
+  const check = checkXPost(text, BREAKING_POST_MAX);
+  if (!check.ok) throw new DeskError("post_invalid", check.problems[0]!, { problems: check.problems });
+}
+
+/**
+ * Every rule of a correction, checked when it starts and again on each save and on Done: Edit drafts, the poster or
+ * someone allowed to act on others' posts, and a post from today (IST).
+ */
+function assertCorrectionRules(post: CorrectedPost, actor: Actor, rights: CorrectionRights, at: "start" | "save", now = new Date()): void {
+  if (!rights.canEdit) throw new DeskError("forbidden", NOT_YOURS);
+  if (post.publishedBy !== actor.id && !rights.canCorrectOthers) throw new DeskError("forbidden", NOT_YOURS);
+  if (!postedTodayIst(post.publishedAt, now)) {
+    throw new DeskError("too_late", at === "start" ? "Only today's posts can be edited." : "This post is from yesterday and can't be edited.");
+  }
+}
+
+/**
+ * Edit on Posted today: hold a posted story to correct its text or card. Only a Copy & Posted story, only on the
+ * day it was posted (IST), only by the person who posted it or someone who may act on others' posts. The hold is
+ * claimDraft's lease capped at the next 00:00 IST; the status stays published and updated_at is left alone, so
+ * the story keeps its place and day in the posted view. Announced as draft.updated (never draft.claimed).
+ */
+export async function startCorrection(db: Db, actor: Actor, draftId: string, rights: CorrectionRights, now = new Date()): Promise<Draft> {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    const post = draft.status === "published" ? await copiedPost(tx, actor.orgId, draftId) : null;
+    if (!post) throw new DeskError("invalid_state", NOT_COPY_POSTED, { status: draft.status });
+    assertCorrectionRules(post, actor, rights, "start", now);
+    const holder = draft.claimedBy;
+    if (holder !== null && holder !== actor.id && holdsLease(draft, { ...actor, id: holder })) {
+      const name = await holderName(tx, holder);
+      throw new DeskError("held_by_other", `${name} is working on this.`, { heldBy: name, until: draft.claimExpiresAt });
+    }
+    const [held] = await tx.update(postDrafts).set({ claimedBy: actor.id, claimExpiresAt: correctionLeaseUntil() }).where(eq(postDrafts.id, draftId)).returning();
+    await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.correction_started", entityType: "post_draft", entityId: draftId, after: { postId: post.id, postedBy: post.publishedBy, until: held!.claimExpiresAt } });
+    await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: held!.status, version: held!.version });
+    return held!;
+  });
+}
+
+/**
+ * Done correcting a posted story: the caller's own hold always ends, whatever else is true now — rights taken away
+ * mid-session, the post moved to yesterday, a text that would not pass. Saving is where the rules are enforced (a
+ * save that fails them is refused); Done only lets go. The audit row records whether the rules still held. The
+ * story stays published. A no-op when the caller does not hold it (also the keepalive Done of a closed tab).
+ */
+export async function endCorrection(db: Db, actor: Actor, draftId: string, rights: CorrectionRights): Promise<Draft> {
+  return db.transaction(async (tx) => {
+    const draft = await lockDraft(tx, actor, draftId);
+    if (draft.status !== "published") throw new DeskError("invalid_state", `This draft is ${draft.status}, not posted.`, { status: draft.status });
+    if (draft.claimedBy !== actor.id) return draft;
+    const post = await copiedPost(tx, actor.orgId, draftId);
+    // Only the audit depends on the rules: why the hold ended without them, if it did
+    let refused: string | null = null;
+    try {
+      if (!post) throw new DeskError("invalid_state", NOT_COPY_POSTED);
+      assertCorrectionRules(post, actor, rights, "save");
+      assertPostValid(postText(draft));
+    } catch (e) {
+      if (!(e instanceof DeskError)) throw e;
+      refused = e.code;
+    }
+    const [freed] = await tx.update(postDrafts).set({ claimedBy: null, claimExpiresAt: null }).where(eq(postDrafts.id, draftId)).returning();
+    await audit(tx, {
+      orgId: actor.orgId, actorId: actor.id, action: "draft.correction_ended", entityType: "post_draft", entityId: draftId,
+      before: { until: draft.claimExpiresAt },
+      after: { postId: post?.id ?? null, correctedAt: post?.correctedAt ?? null, correctedBy: post?.correctedBy ?? null, rulesFailed: refused },
+    });
+    await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: freed!.status, version: freed!.version });
+    return freed!;
+  });
+}
+
+/** A post's poster and its last correction, as the desk shows them; corrected is null for a post never corrected */
+export function correctionView(row: { postedAt: Date; postedById: string | null; postedByName: string | null; correctedAt: Date | null; correctedById: string | null; correctedByName: string | null }) {
+  const person = (id: string | null, name: string | null) => (id ? { id, name: name ?? "Someone" } : null);
+  return {
+    postedAt: row.postedAt,
+    postedBy: person(row.postedById, row.postedByName),
+    correctedAt: row.correctedAt,
+    correctedBy: row.correctedAt ? person(row.correctedById, row.correctedByName) : null,
+  };
+}
+
+/** The live Copy & Posted record of a published draft, with its correction; null for any other draft */
+export async function correctionInfo(db: Executor, orgId: string, draftId: string) {
+  const [row] = await db
+    .select({
+      postedAt: publishedPosts.publishedAt,
+      postedById: publishedPosts.publishedBy,
+      postedByName: sql<string | null>`(SELECT u.name FROM users u WHERE u.id = ${publishedPosts.publishedBy})`,
+      correctedAt: publishedPosts.correctedAt,
+      correctedById: publishedPosts.correctedBy,
+      correctedByName: sql<string | null>`(SELECT u.name FROM users u WHERE u.id = ${publishedPosts.correctedBy})`,
+    })
+    .from(publishedPosts)
+    .where(and(eq(publishedPosts.orgId, orgId), eq(publishedPosts.draftId, draftId), eq(publishedPosts.manual, true), isNull(publishedPosts.permalink), isNull(publishedPosts.recalledAt)))
+    .orderBy(sql`${publishedPosts.publishedAt} DESC`)
+    .limit(1);
+  return row ? correctionView(row) : null;
+}
+
 /**
  * Take back a Copy & Posted within COPY_UNDO_SECONDS: the record goes and the draft returns to the queue.
  * Only the person who marked it, or someone allowed to undo posts (`canUndoOthers`).
@@ -728,6 +1024,11 @@ export async function undoCopyPosted(db: Db, actor: Actor, draftId: string, canU
     const post = draft.status === "published" ? await copiedPost(tx, actor.orgId, draftId) : null;
     if (!post) throw new DeskError("invalid_state", "This draft was not marked posted with Copy & Posted.", { status: draft.status });
     if (post.publishedBy !== actor.id && !canUndoOthers) throw new DeskError("forbidden", "Only the person who marked it posted can take it back.");
+    const fixer = draft.claimedBy;
+    if (fixer !== null && fixer !== actor.id && holdsLease(draft, { ...actor, id: fixer })) {
+      const name = await holderName(tx, fixer);
+      throw new DeskError("held_by_other", `${name} is fixing this post. Undo after they finish.`, { heldBy: name, until: draft.claimExpiresAt });
+    }
     if (Date.now() - post.publishedAt.getTime() > COPY_UNDO_SECONDS * 1000) {
       throw new DeskError("too_late", `"Posted" can be taken back for ${COPY_UNDO_SECONDS / 60} minutes. Delete the post on X by hand if it is wrong.`);
     }
@@ -735,7 +1036,8 @@ export async function undoCopyPosted(db: Db, actor: Actor, draftId: string, canU
     await tx.delete(publishedPosts).where(eq(publishedPosts.id, post.id));
     const [updated] = await tx
       .update(postDrafts)
-      .set({ status, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+      // A correction hold on the posted story ends with it: the draft goes back to the queue free
+      .set({ status, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
       .where(eq(postDrafts.id, draftId))
       .returning();
     // The decision log (never throws); a breaking draft (it has a handle_pick) that could not be logged is warned about

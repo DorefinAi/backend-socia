@@ -2,14 +2,16 @@
 
 import {
   DRAFT_STATUSES, PHASE_OFF_MESSAGE, REJECT_REASONS, STORY_LINK_DAYS, assemblePostText, checkXPost, istDayRange, istDayStart, parseLinkSlug, storyLinkName, xLen, X_LIMIT,
+  type PermissionKey,
 } from "@socia/core";
 import {
-  approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, copyPosted, extendClaim, ingestedFiles, markPosted, postDrafts, postedView, publishedPosts,
-  rejectDraft, releaseDraft, requestCardRender, requestRecall, restoreDraft, retryFailed, setCustomCard, stories, undoCopyPosted, undoPost, updateDraft,
-  users, type Actor,
+  approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, clearExpiredCorrectionHolds, copyPosted, endCorrection, extendClaim, ingestedFiles, markPosted, postDrafts, postedTodayIst, postedView, publishedPosts,
+  rejectDraft, releaseDraft, requestCardRender, requestRecall, restoreDraft, retryFailed, setCustomCard, startCorrection, stories, undoCopyPosted, undoPost, updateDraft,
+  users, type Actor, type CorrectionRights,
 } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { and, count, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { isFullAdmin } from "../access";
 import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import { jpegSize, pngSize } from "../image-size";
 import type { AppDeps } from "../app";
@@ -31,7 +33,32 @@ type PostedRecord = Omit<ReturnType<typeof postedView>, "undoUntil"> & {
   manual: boolean;
   copied: boolean;
   recalled: { at: Date; reason: string | null } | null;
+  /** The record's last correction (Edit on Posted today); null when never corrected */
+  corrected: { at: Date; by: { id: string; name: string } | null } | null;
 };
+
+/** The user holds the permission and may use it on X (a platform-scoped role only on its own platforms), as requirePermission */
+const mayOnX = (user: SessionUser, key: PermissionKey): boolean => user.permissions.has(key) && (!user.platformScoped || user.platforms.includes("x"));
+
+/** May correct a story someone else posted: the Undo permission, or an admin (the admin role, or every permission) */
+export const canCorrectOthers = (user: SessionUser): boolean => user.permissions.has("post.undo") || user.role === "admin" || isFullAdmin(user);
+
+/** The user's rights over a posted story, from this request's permissions; packages/db checks them on every correction step */
+export const correctionRights = (user: SessionUser): CorrectionRights => ({ canEdit: mayOnX(user, "draft.edit"), canCorrectOthers: canCorrectOthers(user) });
+
+/**
+ * Whether the Edit button shows on a posted row: the same rules as POST /drafts/:id/correction (a live Copy & Posted
+ * record posted today, IST; Edit drafts; the poster, or someone who may correct others). A hold by someone else is
+ * not checked here: the row's claim shows it, and starting the correction answers 409 held_by_other.
+ */
+export function correctable(user: SessionUser, status: string, post: { publishedAt: Date; postedById: string | null } | null, now = new Date()): boolean {
+  if (status !== "published" || !post) return false;
+  if (!mayOnX(user, "draft.edit") || !postedTodayIst(post.publishedAt, now)) return false;
+  return post.postedById === user.id || canCorrectOthers(user);
+}
+
+/** A posted row's record as correctable() reads it: only a live Copy & Posted record counts */
+const copiedRecord = (p: PostedRecord | null) => (p && p.copied && !p.recalled ? { publishedAt: p.publishedAt, postedById: p.by?.id ?? null } : null);
 
 /** Holding a draft is the first step of every desk action, so any one of them allows a claim. */
 const CLAIM = ["draft.edit", "draft.card", "post.publish", "post.mark_posted", "draft.reject"] as const;
@@ -131,7 +158,12 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   async function view(user: SessionUser, id: string) {
     const { d, s } = await loadDraft(user.orgId, id);
-    return draftView(db, storage, d, s, user.id);
+    const v = await draftView(db, storage, d, s, user.id);
+    return {
+      ...v,
+      /** This user may start (or keep) a correction now: the same rules as the posted row's canCorrect */
+      canCorrect: correctable(user, d.status, v.correction ? { publishedAt: v.correction.postedAt, postedById: v.correction.postedBy?.id ?? null } : null),
+    };
   }
 
   app.get(
@@ -225,12 +257,16 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
       const now = new Date();
       const posted = viewName === "posted" ? await postedBy(user.orgId, rows.map((r) => r.id)) : new Map<string, PostedRecord>();
+      // Expired correction holds on the rows shown are cleared on read (the rows below already ignore them)
+      if (viewName === "posted") await clearExpiredCorrectionHolds(db, user.orgId, rows.filter((r) => r.claimedBy && r.claimExpiresAt && r.claimExpiresAt <= new Date()).map((r) => r.id));
       return {
         cap: await capUsage(db, user.orgId),
         nextCursor,
         items: await Promise.all(
           rows.map(async (r) => {
-            const held = r.status === "claimed" && !!r.claimExpiresAt && r.claimExpiresAt > now;
+            // A posted story can be held too: someone is correcting it (it stays published)
+            const held = (r.status === "claimed" || r.status === "published") && !!r.claimedBy && !!r.claimExpiresAt && r.claimExpiresAt > now;
+            const post = posted.get(r.id) ?? null;
             const text = assemblePostText(r.bodyText, r.hashtags, r.mentions);
             return {
               id: r.id,
@@ -260,9 +296,13 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               postText: text,
               length: xLen(text),
               card: { state: cardState({ cardRev: r.cardRev, cardRenderedRev: r.cardRenderedRev, cardKey: r.renderedKey, customCardKey: r.customCardKey, renderError: r.renderError }) },
-              posted: posted.get(r.id) ?? null,
+              posted: post,
               /** A file saved again after its post went out: the posted draft this one updates */
               updateOfDraftId: r.updateOfDraftId,
+              /** The Edit button on Posted today: this user may start a correction (POST /drafts/:id/correction) */
+              canCorrect: correctable(user, r.status, copiedRecord(post), now),
+              /** The post's last correction; null when never corrected (and outside the posted view) */
+              corrected: post?.corrected ?? null,
             };
           }),
         ),
@@ -289,6 +329,9 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
         manual: publishedPosts.manual,
         recalledAt: publishedPosts.recalledAt,
         recallReason: publishedPosts.recallReason,
+        correctedAt: publishedPosts.correctedAt,
+        correctedBy: publishedPosts.correctedBy,
+        correctedByName: sql<string | null>`(SELECT cu.name FROM users cu WHERE cu.id = ${publishedPosts.correctedBy})`.as("corrected_by_name"),
       })
       .from(publishedPosts)
       .leftJoin(users, eq(users.id, publishedPosts.publishedBy))
@@ -307,6 +350,9 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
         manual: newest.manual,
         recalledAt: newest.recalledAt,
         recallReason: newest.recallReason,
+        correctedAt: newest.correctedAt,
+        correctedBy: newest.correctedBy,
+        correctedByName: newest.correctedByName,
         // The card that went out; rows from before it was recorded fall back to the draft's rendered card (as GET /posts)
         cardKey: sql<string | null>`coalesce(${newest.cardKey}, ${postDrafts.cardKey})`,
       })
@@ -314,7 +360,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       .innerJoinLateral(newest, sql`true`)
       .where(and(eq(postDrafts.orgId, orgId), inArray(postDrafts.id, draftIds)));
     await Promise.all(
-      rows.map(async ({ draftId, cardKey, ...p }) => {
+      rows.map(async ({ draftId, cardKey, correctedAt, correctedBy, correctedByName, ...p }) => {
         out.set(draftId, {
           ...postedView({ at: p.publishedAt, byId: p.publishedBy, byName: p.byName }),
           // Only recalled records left: the post is gone from X, so there is no undo window to offer
@@ -330,6 +376,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           /** Copy & Posted: pasted on X by hand, no link recorded */
           copied: p.manual && !p.permalink,
           recalled: p.recalledAt ? { at: p.recalledAt, reason: p.recallReason } : null,
+          corrected: correctedAt ? { at: correctedAt, by: correctedBy ? { id: correctedBy, name: correctedByName ?? "Someone" } : null } : null,
         });
       }),
     );
@@ -389,7 +436,12 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     };
   });
 
-  app.get("/drafts/:id", { schema: { params: Id } }, async (req) => view(guard(req).user, req.params.id));
+  app.get("/drafts/:id", { schema: { params: Id } }, async (req) => {
+    const { user } = guard(req);
+    // An expired correction hold is cleared on read (status and updated_at untouched)
+    await clearExpiredCorrectionHolds(db, user.orgId, [req.params.id]);
+    return view(user, req.params.id);
+  });
 
   /**
    * A story link (?story=<linkSlug>) back to its draft id: { id }, or 404 not_found. The slug ends in the story's
@@ -441,10 +493,37 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     return { until: await extendClaim(db, actor(user), req.params.id) };
   });
 
+  /** Lets the hold go: a claimed draft returns to the queue; a posted story under correction only loses the hold (stays published) */
   app.post("/drafts/:id/release", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);
     await releaseDraft(db, actor(user), req.params.id);
     return { ok: true };
+  });
+
+  /**
+   * Edit on Posted today: hold a story posted with Copy & Posted today (IST) to correct its text or card. Same lease as
+   * claim (kept alive by /heartbeat); the status stays published. Then PATCH /drafts/:id and PUT /drafts/:id/card save
+   * the correction, and /correction/done (or /release) ends the hold. 403 forbidden, 409 too_late / invalid_state /
+   * held_by_other.
+   */
+  app.post("/drafts/:id/correction", { schema: { params: Id } }, async (req) => {
+    const { user } = guard(req);
+    requirePermission(user, "draft.edit", "x");
+    await startCorrection(db, actor(user), req.params.id, correctionRights(user));
+    return view(user, req.params.id);
+  });
+
+  /**
+   * Done: ends the caller's correction hold, always — even after their rights were taken away mid-session (saves are
+   * where the rules bite). No body needed, so a closed tab's keepalive fetch (session cookie + x-csrf) works. Anyone
+   * not holding the draft needs Edit drafts (and then nothing changes).
+   */
+  app.post("/drafts/:id/correction/done", { schema: { params: Id } }, async (req) => {
+    const { user } = guard(req);
+    const { d } = await loadDraft(user.orgId, req.params.id);
+    if (d.claimedBy !== user.id) requirePermission(user, "draft.edit", "x");
+    await endCorrection(db, actor(user), req.params.id, correctionRights(user));
+    return view(user, req.params.id);
   });
 
   app.patch(
@@ -467,7 +546,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const { version, ...patch } = req.body;
       // The desk's reporter list: a reporter's handle may be added without a directory row, and adding
       // one teaches us the file-name token it belongs to (packages/db desk.ts learnReporterTokens)
-      await updateDraft(db, actor(user), req.params.id, version, patch, { reporterHandles: await reporters.handles() });
+      await updateDraft(db, actor(user), req.params.id, version, patch, { reporterHandles: await reporters.handles(), correction: correctionRights(user) });
       return view(user, req.params.id);
     },
   );
@@ -497,14 +576,14 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
         throw new HttpError(400, "invalid", `The card must be ${CARD_MIN_PX} to ${CARD_MAX_PX} pixels on each side; this one is ${width}x${height}.`);
       }
       const format = png ? "png" : "jpg";
-      await setCustomCard(db, actor(user), req.params.id, req.query.version, { bytes: body.length, width, height }, (key) => storage.put(key, body, CARD_CONTENT_TYPE[format]), format);
+      await setCustomCard(db, actor(user), req.params.id, req.query.version, { bytes: body.length, width, height }, (key) => storage.put(key, body, CARD_CONTENT_TYPE[format]), format, correctionRights(user));
       return view(user, req.params.id);
     });
 
     cards.delete("/drafts/:id/card", { schema: { params: Id, querystring: VersionQuery } }, async (req) => {
       const { user } = guard(req);
       requirePermission(user, "draft.card", "x");
-      await clearCustomCard(db, actor(user), req.params.id, req.query.version);
+      await clearCustomCard(db, actor(user), req.params.id, req.query.version, correctionRights(user));
       return view(user, req.params.id);
     });
   });

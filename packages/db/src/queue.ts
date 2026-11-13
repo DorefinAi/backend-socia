@@ -109,7 +109,8 @@ export async function completeDelete(db: Db, job: PublishJob) {
       .set({ recalledAt: sql`now()`, recalledBy: job.createdBy, recallReason: job.reason })
       .where(and(eq(publishedPosts.draftId, job.draftId), eq(publishedPosts.platformPostId, job.platformPostId!)))
       .returning();
-    await tx.update(postDrafts).set({ status: "recalled", updatedAt: sql`now()` }).where(eq(postDrafts.id, job.draftId));
+    // A recalled post can no longer be corrected: any correction hold on it ends here
+    await tx.update(postDrafts).set({ status: "recalled", claimedBy: null, claimExpiresAt: null, updatedAt: sql`now()` }).where(eq(postDrafts.id, job.draftId));
     await audit(tx, { orgId: job.orgId, actorId: job.createdBy, action: "post.recalled", entityType: "published_post", entityId: post?.id ?? job.draftId, after: { reason: job.reason, platformPostId: job.platformPostId } });
     await notify(tx, job.orgId, { type: "post.recalled", draftId: job.draftId, postId: post?.id ?? "" });
   });

@@ -42,8 +42,12 @@ describe("matchOfRank", () => {
     expect(row!.searchText).toBe(" newer ");
   });
 
-  it("the rollback drops story_search and stories_updated_idx, and migrates forward again", async () => {
-    await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", "0025_story_search.down.sql"), "utf8"));
+  it("the rollback (after any newer migration) drops story_search and stories_updated_idx, and migrates forward again", async () => {
+    const journal = JSON.parse(await readFile(join(MIGRATIONS_DIR, "meta", "_journal.json"), "utf8")) as { entries: { tag: string }[] };
+    const at = journal.entries.findIndex((e) => e.tag === "0025_story_search");
+    for (const later of journal.entries.slice(at).reverse()) {
+      await h.pool.query(await readFile(join(MIGRATIONS_DIR, "down", `${later.tag}.down.sql`), "utf8"));
+    }
     expect(await rows(sql`SELECT to_regclass('public.story_search') AS t`)).toEqual([{ t: null }]);
     expect(await rows(sql`SELECT indexname FROM pg_indexes WHERE indexname = 'stories_updated_idx'`)).toEqual([]);
     await runMigrations(TEST_URL!);

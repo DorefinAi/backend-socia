@@ -492,6 +492,9 @@ export const publishedPosts = pgTable(
     cardKey: text("card_key"),
     /** Posted by hand on X and recorded by the operator, not sent by the worker */
     manual: boolean("manual").notNull().default(false),
+    /** The last correction of a posted story (Edit on Posted today): when, and by whom; null if never corrected (migration 0027) */
+    correctedAt: timestamp("corrected_at", { withTimezone: true }),
+    correctedBy: uuid("corrected_by").references(() => users.id),
   },
   (t) => [
     uniqueIndex("published_posts_platform_id_key").on(t.platform, t.platformPostId),

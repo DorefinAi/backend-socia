@@ -2,7 +2,7 @@
 
 import { LOW_CONFIDENCE, X_LIMIT, checkXPost, storyLinkName } from "@socia/core";
 import {
-  asCategory, asPriority, assets, cardState, copiedPostInfo, ingestedFiles, postDrafts, postText, postedCardKey, publishJobs, stories, users, type Db, type StoryExternal,
+  asCategory, asPriority, assets, cardState, copiedPostInfo, correctionInfo, ingestedFiles, postDrafts, postText, postedCardKey, publishJobs, stories, users, type Db, type StoryExternal,
   type StoryPriority,
 } from "@socia/db";
 import { asFileTags } from "@socia/core";
@@ -133,8 +133,14 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
     },
     /** When and by whom it was marked posted (Copy & Posted or a recorded manual post); null before */
     posted: draft.status === "published" ? await copiedPostInfo(db, draft.orgId, draft.id) : null,
+    /**
+     * A story posted with Copy & Posted (live record): who posted it and when, and its last correction (Edit on Posted
+     * today); null for any other draft
+     */
+    correction: draft.status === "published" ? await correctionInfo(db, draft.orgId, draft.id) : null,
+    /** The live hold: a claim, or a correction hold on a posted story (it stays published) */
     claim:
-      draft.claimedBy && draft.status === "claimed" && leaseLive
+      draft.claimedBy && (draft.status === "claimed" || draft.status === "published") && leaseLive
         ? { userId: draft.claimedBy, name: holder?.name ?? "Someone", until: draft.claimExpiresAt, mine: draft.claimedBy === viewerId }
         : null,
     reject: draft.rejectReason ? { reason: draft.rejectReason, note: draft.rejectNote } : null,

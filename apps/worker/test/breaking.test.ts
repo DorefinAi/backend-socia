@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  createDb, ingestedFiles, orgs, postDrafts, publishedPosts, readIngestStatus, recordIngestPoll, runMigrations, stories, users, type DbHandle,
+  LOGIC_VERSION, createDb, ingestedFiles, orgs, postDecisions, postDrafts, publishedPosts, readIngestStatus, recordIngestPoll, runMigrations, stories, users, type DbHandle,
 } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
@@ -21,6 +21,23 @@ const URL_ = process.env.TEST_DATABASE_URL;
 const log = pino({ level: "silent" });
 const FIXTURES = new URL("../../../packages/core/test/fixtures/breaking/", import.meta.url);
 const fixture = (name: string) => new URL(name, FIXTURES);
+
+describe("explore roll (reporter-prior brief §7.2.3)", () => {
+  it("draftProposals keeps core's list and falls back to reason codes without one", async () => {
+    const { draftProposals } = await import("../src/stages/compose");
+    const core = [{ item: "#X", kind: "hashtag" as const, layer: "emit" as const, source: "brand.geo", reason: "r" }];
+    expect(draftProposals({ hashtags: [], handles: [], handleSuggestions: [], hashtagSuggestions: [], proposals: core })).toEqual(core);
+    // An older core with no proposals and no rule ids: each handle's source falls back to its reason code
+    expect(
+      draftProposals({ hashtags: ["#F"], handles: [{ handle: "JaipurPolice", reason: "police" }], handleSuggestions: [{ handle: "A", reason: "subject", title: "A" }], hashtagSuggestions: ["#S"] }),
+    ).toEqual([
+      { item: "#F", kind: "hashtag", layer: "emit", source: "footer", reason: "footer" },
+      { item: "@JaipurPolice", kind: "handle", layer: "emit", source: "district.police", reason: "district.police" },
+      { item: "#S", kind: "hashtag", layer: "suggest", source: "suggestion", reason: "suggestion" },
+      { item: "@A", kind: "handle", layer: "suggest", source: "subject", reason: "A" },
+    ]);
+  });
+});
 
 describe("data files fail loudly (b6 fix brief P5, no database)", () => {
   it("rejects a campaigns file with a misspelt kind WHOLE, keeps the last good copy and says why in the status", async () => {
@@ -170,7 +187,7 @@ describe("BreakingShareSource (no database)", () => {
     clock += 3000;
     const taken = await ingest.scan();
     while (await convertNext(h.db, store, log, data));
-    while (await composeNext(h.db, new Dictionaries(h.db, orgId), log, { cardOnDemand: true, data }));
+    while (await composeNext(h.db, new Dictionaries(h.db, orgId), log, { cardOnDemand: true, data, exploreRate: 0 }));
     return taken;
   }
 
@@ -236,6 +253,24 @@ describe("BreakingShareSource (no database)", () => {
     // This org has no topic rules, so nothing else is offered; packages/core covers the case where one matches.
     expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
     expect(draft!.hashtagSuggestions).toEqual(["#Kota"]);
+    // ...and why, for the desk: the rule id and the reason line behind each offered tag
+    expect((draft!.handlePick as { tagSuggestions: unknown[] }).tagSuggestions).toEqual([
+      { tag: "#Kota", source: "district.inferred.headline", reason: expect.stringMatching(/inferred/) },
+    ]);
+
+    // The decision log's proposal half (reporter-prior brief §2): written with the draft, undecided, with what the
+    // file name said about the reporter (L1: the file name only) and every item with its rule id
+    const [logged] = await h.db.select().from(postDecisions);
+    expect(logged).toMatchObject({
+      draftId: draft!.id, storyId: kota.id, logicVersion: LOGIC_VERSION, composeVersion: draft!.composeVersion, explore: false, proposalRev: 1,
+      filenameRaw: "btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt", reporterStatus: "unknown_token", reporterToken: "REPORTER",
+      slotRaw: "REPORTER", storyClass: "incident", district: "Kota", districtFrom: "text", decision: null, decidedAt: null,
+    });
+    expect(logged!.draftText.startsWith("कोटा में हिस्ट्रीशीटर")).toBe(true);
+    expect(logged!.proposals).toEqual([
+      { item: "#RajasthanWithFirstIndia", kind: "hashtag", layer: "emit", source: "brand.geo", reason: "a Rajasthan story" },
+      { item: "#Kota", kind: "hashtag", layer: "suggest", source: "district.inferred.headline", reason: expect.stringMatching(/inferred/) },
+    ]);
 
     // A restart skips the first-start files and the ingested ones without reading them again
     expect(await settle(ingestFor())).toBe(0);
@@ -268,6 +303,10 @@ describe("BreakingShareSource (no database)", () => {
     expect(drafts).toHaveLength(1);
     expect(drafts[0]).toMatchObject({ id: first!.id, version: first!.version + 1, status: "ready" });
     expect(drafts[0]!.bodyText).toContain("दो गिरफ्तार");
+    // The undecided proposal follows the rewrite
+    const [relogged] = await h.db.select().from(postDecisions).where(eq(postDecisions.draftId, first!.id));
+    expect(relogged).toMatchObject({ proposalRev: 2 });
+    expect(relogged!.draftText).toContain("दो गिरफ्तार");
     const [story] = await h.db.select().from(stories).where(eq(stories.id, first!.storyId));
     expect(story!.needsCheck).toContain("resaved");
 
@@ -285,6 +324,8 @@ describe("BreakingShareSource (no database)", () => {
     const [updStory] = await h.db.select().from(stories).where(eq(stories.id, update.storyId));
     expect(updStory).toMatchObject({ updateOfDraftId: first!.id });
     expect(updStory!.needsCheck).toContain("update_of_posted");
+    // The update is a draft of its own with a proposal of its own
+    expect(await h.db.select().from(postDecisions).where(eq(postDecisions.draftId, update.id))).toHaveLength(1);
     expect((await h.db.select().from(postDrafts).where(eq(postDrafts.id, first!.id)))[0]!.status).toBe("published");
   }, 60_000);
 

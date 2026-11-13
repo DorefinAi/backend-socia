@@ -9,7 +9,8 @@
 // does not start, and Samvadia ingest is refused at config load.
 
 import {
-  OpsLog, SamvadiaReader, WORKER_HEARTBEAT_MS, WORKER_STAGE_SYSTEMS, createDb, opsLogSettings, readApiPhase, recordDataFileStatus, recordIngestPoll, recordWorkerHeartbeat, workerSystemOf,
+  OpsLog, SamvadiaReader, WORKER_HEARTBEAT_MS, WORKER_STAGE_SYSTEMS, createDb, opsLogSettings, readApiPhase, recordDataFileStatus, recordIngestPoll, recordWorkerHeartbeat,
+  setDecisionLogErrorHandler, workerSystemOf,
 } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
@@ -77,6 +78,8 @@ async function main(): Promise<void> {
   const cfg = loadConfig(once ? [once] : args.filter((a) => !a.startsWith("--")));
   // A dropped idle connection (Postgres restarted) is logged and replaced, not fatal
   const { db, close } = createDb(cfg.databaseUrl, 5, { log });
+  // A decision-log write that fails is dropped and never holds up a draft; it is logged here
+  setDecisionLogErrorHandler((err, context) => log.warn({ err, ...context }, "decision log write failed; the draft went through"));
 
   if (once === "handles") {
     await syncHandles(db, cfg.orgId, cfg.wikidataUserAgent, stageLog("crons"));
@@ -177,7 +180,7 @@ async function main(): Promise<void> {
     const log = stageLog("ingest");
     const dictionaries = new Dictionaries(db, cfg.orgId);
     const data = phaseOneData(log, (status) => recordDataFileStatus(db, status));
-    const composeOpts = { cardOnDemand: cfg.phase === 1, data };
+    const composeOpts = { cardOnDemand: cfg.phase === 1, data, exploreRate: cfg.reporterPrior.exploreRate };
     loops.start({ name: "convert", idleMs: 1000, log, tick: () => convertNext(db, storage!, log, data) });
     loops.start({ name: "compose", idleMs: 1000, log, tick: () => composeNext(db, dictionaries, log, composeOpts) });
   }

@@ -6,10 +6,15 @@
 
 import { createHash } from "node:crypto";
 import {
-  LEADER_POST, asFileTags, composeBreaking, recoverDistrictFrom, deskHandleRules, hashtagGazetteer, mergeReporterTokens, slotFromTags,
-  type Composer, type DeskHandleRules, type HashtagGazetteer, type LearnedReporterToken, type ReporterRules,
+  LEADER_POST, asFileTags, assemblePostText, composeBreaking, recoverDistrictFrom, deskHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
+  mergeReporterTokens, resolveReporterStatus, slotFromTags,
+  type BreakingDraft, type Composer, type DeskHandleRules, type HandlePick, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
+  type TagSuggestion,
 } from "@socia/core";
-import { REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, ingestedFiles, loadRuleComposer, notify, postDrafts, stories, type Db, type Tx } from "@socia/db";
+import {
+  EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, ingestedFiles, loadRuleComposer, notify, postDrafts, recordProposal,
+  stories, type Db, type LoggedProposal, type Tx,
+} from "@socia/db";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { nextStoryIsolated } from "./isolate";
 import type { PhaseOneData } from "../data-files";
@@ -79,7 +84,35 @@ function mergedReporters(roster: ReporterRules, rosterVersion: string, learned: 
   return value;
 }
 
+/** A handle as the desk's suggestion list carries it: the rule id, its reason line, and the prior's score and n */
+function mentionSuggestion(h: HandlePick, prefix: "rule" | "suggest", exact: boolean) {
+  return {
+    handleId: `${prefix}:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact,
+    source: handleSource(h), reason: handleReason(h), ...(h.detail && { detail: h.detail }),
+    ...(h.score !== undefined && { score: h.score }), ...(h.n !== undefined && { n: h.n }),
+  };
+}
+
+/**
+ * The decision log's proposals (reporter-prior brief §2.3) from the composed draft: core's own list when it gives
+ * one; otherwise built from the fields, each item's source falling back to the reason code it always had.
+ */
+export function draftProposals(out: Pick<BreakingDraft, "hashtags" | "handles" | "handleSuggestions" | "hashtagSuggestions"> & { proposals?: Proposal[]; hashtagSuggestionItems?: TagSuggestion[] }): LoggedProposal[] {
+  if (Array.isArray(out.proposals)) return out.proposals.map((p) => ({ ...p }));
+  const items = out.hashtagSuggestionItems ?? out.hashtagSuggestions.map((tag) => ({ tag, source: "suggestion", reason: "suggestion" }));
+  return [
+    ...out.hashtags.map((t): LoggedProposal => ({ item: t, kind: "hashtag", layer: "emit", source: "footer", reason: "footer" })),
+    ...out.handles.map((h) => handleProposal(h, "emit")),
+    ...items.map((t): LoggedProposal => ({ item: t.tag, kind: "hashtag", layer: "suggest", source: t.source, reason: t.reason })),
+    ...out.handleSuggestions.map((h) => handleProposal(h, "suggest")),
+  ];
+}
+
 export interface ComposeOptions {
+  /** Share of posts whose proposals carry explore: true (brief §7.2.3); default EXPLORE_RATE. Tests pin it. */
+  exploreRate?: number;
+  /** The explore roll's source of randomness; Math.random by default */
+  random?: () => number;
   /** Phase 1: a draft goes straight to the queue with no card; "Add card" asks for one */
   cardOnDemand?: boolean;
   /** The places and district-handles files, for breaking stories (required when any arrive) */
@@ -154,10 +187,12 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     hashtagSuggestions: out.hashtagSuggestions,
     mentions: out.mentions,
     // The rule-picked handles are in the post already; as suggestions too, they stay valid when the post is edited
+    // Each with its rule id and reason line (source, reason) and, for the reporter prior, score and n
     mentionSuggestions: [
-      ...out.handles.map((h) => ({ handleId: `rule:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact: true })),
-      // Offered and NOT in the post: police beside a party at a police venue, an institution named in passing
-      ...out.handleSuggestions.map((h) => ({ handleId: `suggest:${h.reason}:${h.handle}`, entity: h.title ?? h.reason, handle: `@${h.handle}`, exact: false })),
+      ...out.handles.map((h) => mentionSuggestion(h, "rule", true)),
+      // Offered and NOT in the post: police beside a party at a police venue, an institution named in passing,
+      // the reporter's likely handles (prior, beat)
+      ...out.handleSuggestions.map((h) => mentionSuggestion(h, "suggest", false)),
     ],
     composeMethod: "rules",
     composeVersion: out.composeVersion,
@@ -175,7 +210,26 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       handles: out.handles.map((h) => ({ handle: `@${h.handle}`, reason: h.reason, ...(h.title && { title: h.title }) })),
       suggested: out.handleSuggestions.map((h) => ({ handle: `@${h.handle}`, reason: h.reason, ...(h.title && { title: h.title }) })),
       reporterToken: slot.reporterToken,
+      // hashtagSuggestions with the rule and reason behind each, for the desk (the column holds the strings)
+      ...(out.hashtagSuggestionItems && { tagSuggestions: out.hashtagSuggestionItems }),
     },
+  };
+
+  // The decision log's proposal half (brief §2): what the file name said about the reporter, and every item with
+  // its rule. Written in a savepoint that never fails or holds up the draft.
+  const logProposal = async (draftId: string) => {
+    const [file] = story.fileId ? await tx.select({ fileName: ingestedFiles.fileName }).from(ingestedFiles).where(eq(ingestedFiles.id, story.fileId)) : [];
+    const who = resolveReporterStatus(file?.fileName ?? null, tags, reporters);
+    const rate = opts.exploreRate ?? EXPLORE_RATE;
+    const ok = await recordProposal(tx, {
+      orgId: story.orgId, draftId, storyId: story.id,
+      filenameRaw: file?.fileName ?? null, slotRaw: who.slotRaw, reporterToken: who.reporterToken, bureauCode: who.bureauCode,
+      bureauDistrict: who.bureauDistrict, reporterHandle: who.reporterHandle, reporterStatus: who.status,
+      storyClass: out.cls, district: story.district, districtFrom: story.districtFrom ?? null, composeVersion: out.composeVersion,
+      draftText: assemblePostText(out.bodyText, out.hashtags, out.mentions), proposals: draftProposals(out),
+      explore: (opts.random ?? Math.random)() < rate,
+    });
+    if (!ok) log.info({ storyId: story.id, draftId }, "decision log: proposal not written (already decided, or the write failed and was logged); the draft is unaffected");
   };
 
   // A re-saved file (the ingest stage sent its story back here): rewrite the unposted draft in place
@@ -197,6 +251,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
         .where(eq(postDrafts.id, existing.id))
         .returning({ status: postDrafts.status, version: postDrafts.version });
       await notify(tx, story.orgId, { type: "draft.updated", draftId: existing.id, status: row!.status, version: row!.version });
+      await logProposal(existing.id);
       log.info({ storyId: story.id, draftId: existing.id }, "re-saved file: draft rewritten in place");
     }
     await tx.update(stories).set({ status: "composed", needsCheck, updatedAt: sql`now()` }).where(eq(stories.id, story.id));
@@ -210,6 +265,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     .onConflictDoNothing()
     .returning({ id: postDrafts.id });
   await tx.update(stories).set({ status: "composed", needsCheck, updatedAt: sql`now()` }).where(eq(stories.id, story.id));
+  if (draft) await logProposal(draft.id);
   // With no card to wait for the draft is in the queue now; otherwise the render worker announces it
   if (draft && ready) await notify(tx, story.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft.id] });
   // A reporter the list does not carry yet is routine — it is true of about 45% of files today and the

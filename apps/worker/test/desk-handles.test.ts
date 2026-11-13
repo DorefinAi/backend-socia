@@ -57,7 +57,8 @@ const log = pino({ level: "silent" });
   it("suggests the Jhalawar desk handle on a Jhalawar story and puts it in the post", async () => {
     const d = await compose("jhalawar-rain", "झालावाड़ में तेज बारिश से नदी उफान पर", "स्कूलों में छुट्टी घोषित", "Jhalawar");
     expect(d.mentions).toEqual(["@JhalawarUpdates"]);
-    expect(d.mentionSuggestions).toEqual([{ handleId: "rule:desk:JhalawarUpdates", entity: "Jhalawar", handle: "@JhalawarUpdates", exact: true }]);
+    // With the rule id and the reason line (reporter-prior contract)
+    expect(d.mentionSuggestions).toEqual([{ handleId: "rule:desk:JhalawarUpdates", entity: "Jhalawar", handle: "@JhalawarUpdates", exact: true, source: "desk", reason: "Jhalawar" }]);
   });
 
   it("does not suggest it on a Kota story; no-keyword, manual and unverified rows never", async () => {

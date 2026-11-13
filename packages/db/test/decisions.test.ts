@@ -488,4 +488,49 @@ describe("istDate", () => {
     expect(u!.features.items[itemKey(naya)]).toMatchObject({ count: 2 });
     expect(u!.features.items["#upper"]).toMatchObject({ count: 2 });
   });
+
+  it("is one consistent snapshot: a decision committed between its reads is in none of its numbers", async () => {
+    // Two reporters with known rows, decided before the snapshot's day (2026-11-18 IST) began
+    const before = new Date("2026-11-17T08:00:00Z");
+    for (let i = 0; i < 3; i++) await decided("iso_a", before, ["#IsoOnly", "@IsoHandle"], "copy_posted", [{ source: "iso_rule", outcome: "accepted" }]);
+    await decided("iso_a", before, ["#IsoOther"], "copy_posted", [{ source: "iso_rule", outcome: "ignored" }]);
+    await decided("iso_b", before, ["#IsoOther"]);
+    const day = new Date("2026-11-18T04:30:00Z");
+
+    let committed = 0;
+    const snap = await snapshotReporterFeatures(h.pool, s.org.id, day, 20, {
+      betweenReads: async () => {
+        // On another connection, committed: more of iso_a's items and outcomes, and a reporter who was not there
+        for (let i = 0; i < 4; i++) await decided("iso_a", before, ["#IsoOnly", "@IsoHandle", "#IsoLate"], "copy_posted", [{ source: "iso_rule", outcome: "ignored" }]);
+        await decided("iso_new", before, ["#IsoOnly", "#IsoOther"], "copy_posted", [{ source: "iso_rule", outcome: "accepted" }]);
+        committed = (await h.db.select().from(postDecisions).where(eq(postDecisions.reporterHandle, "iso_a"))).length;
+      },
+    });
+    // The rows were really there, committed, while the snapshot read
+    expect(committed).toBe(8);
+
+    const rows = await h.db.select().from(reporterFeatures).where(eq(reporterFeatures.snapshotDate, "2026-11-18"));
+    expect(snap.written).toBe(rows.length);
+    expect(rows.map((r) => r.reporter)).not.toContain("iso_new");
+    const total = rows.reduce((a, r) => a + r.n, 0);
+    const a = rows.find((r) => r.reporter === "iso_a")!;
+    expect(a.n).toBe(4);
+    const f = a.features;
+    // iso_a's own counts are those of its 4 rows; nothing from the 5 committed between the reads
+    expect(f.items["#isoonly"]).toEqual({ kind: "hashtag", count: 3, rate: 0.75, base: round4(3 / total), smoothed: round4((3 + 20 * (3 / total)) / (4 + 20)) });
+    expect(f.items["@isohandle"]).toMatchObject({ count: 3 });
+    expect(f.items["#isoother"]).toMatchObject({ count: 1, base: round4(2 / total) });
+    expect(f.items["#isolate"]).toBeUndefined();
+    expect(f.sources.iso_rule).toEqual({ proposed: 4, taken: 3, rate: 0.75, base: 0.75, smoothed: 0.75 });
+    // Every reporter's numbers agree with the reporters read: no item counted more often than its reporter posted
+    for (const r of rows) for (const it of Object.values(r.features.items)) expect(it.count).toBeLessThanOrEqual(r.n);
+
+    // The next day's snapshot sees them all
+    await snapshotReporterFeatures(h.pool, s.org.id, new Date(day.getTime() + 86_400_000));
+    const [next] = await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "iso_a"), eq(reporterFeatures.snapshotDate, "2026-11-19")));
+    expect(next!.n).toBe(8);
+    expect(next!.features.items["#isolate"]).toMatchObject({ count: 4 });
+    expect(next!.features.sources.iso_rule).toMatchObject({ proposed: 8, taken: 3 });
+    expect((await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "iso_new"), eq(reporterFeatures.snapshotDate, "2026-11-19")))).length).toBe(1);
+  });
 });

@@ -18,6 +18,7 @@
 // leader's own post still tags nobody at all.
 
 import { fold } from "../fold";
+import { HANDLE } from "./syntax";
 
 /** One entry of party-handles.json */
 export interface PartyHandleEntry {
@@ -70,7 +71,6 @@ export interface PartyRules {
 
 export const EMPTY_PARTY_RULES: PartyRules = { rules: [], count: 0 };
 
-const HANDLE = /^@?\w{1,15}$/;
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : []);
 
 /** Checks a parsed party-handles.json. Throws on a malformed root; skips and reports a bad entry. */

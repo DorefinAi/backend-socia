@@ -26,6 +26,8 @@
 // those learned tokens are merged in by `mergeReporterTokens`. The list completes itself from use.
 
 import { fold } from "../fold";
+import { HANDLE } from "./syntax";
+import { DataFileRejected } from "./post-tags";
 
 /** One entry of reporter-handles.json */
 export interface ReporterHandleEntry {
@@ -43,6 +45,12 @@ export interface ReporterHandleEntry {
   /** The desk's beat and district labels. Not matched against; used to flag a district mismatch. */
   beats?: string[];
   districts?: string[];
+  /** Who said the beats: "desk" (the X team told us) or "observed" (measured). Display only. */
+  beats_source?: "desk" | "observed";
+  /** A standing desk rule for this reporter (reporter-prior brief §4). Absent for almost everyone. */
+  policy?: { district_when_missing?: string };
+  /** Measured rates for the reporter-routing prior (§3.3): seeded from the corpus, refreshed from the decision log */
+  prior?: ReporterPriorData;
   verified: boolean;
   /** X's numeric user id. Handles get renamed and recycled; the id is what identifies the account. */
   xUserId?: string;
@@ -52,10 +60,52 @@ export interface ReporterHandleEntry {
   note?: string;
 }
 
+/** One reporter's measured rates: handle (no @) or "#Tag" → share of their posts carrying it */
+export interface ReporterPriorData {
+  computed_at?: string;
+  /** Where the numbers came from. Seed values are an UPPER BOUND (brief L2): say so here. */
+  source?: string;
+  /** The reporter's posts the rates rest on */
+  n: number;
+  handles?: Record<string, number>;
+  hashtags?: Record<string, number>;
+}
+
 export interface ReporterHandlesData {
   version: number;
   entries: ReporterHandleEntry[];
+  /**
+   * Tokens that name more than one reporter ("DINESH": Dangi and Kasana). Never matched, whoever claims them:
+   * resolved as "collision", tagging nobody — the wrong colleague is worse than none.
+   */
+  ambiguous_tokens?: string[];
+  /** The smoothing and threshold of the prior (§3.4) */
+  prior_settings?: { m?: number; min_score?: number; min_n?: number };
+  /** The share of ALL posts carrying each handle (no @) or "#Tag": what a small sample is pulled towards */
+  prior_base_rates?: Record<string, number>;
 }
+
+/** What the prior and the policy know about one reporter, by handle */
+export interface ReporterProfile {
+  /** Handle without the @ */
+  handle: string;
+  name: string;
+  beats: string[];
+  beatsSource: "desk" | "observed" | null;
+  /** The district a post with none gets, as a line-1 hashtag only (§4) */
+  districtWhenMissing: string | null;
+  prior: { n: number; handles: Record<string, number>; hashtags: Record<string, number>; source: string | null } | null;
+}
+
+export interface PriorSettings {
+  m: number;
+  minScore: number;
+  minN: number;
+  /** Lower-cased handle (no @) or "#tag" → base rate */
+  base: ReadonlyMap<string, number>;
+}
+
+export const DEFAULT_PRIOR_SETTINGS: Readonly<PriorSettings> = Object.freeze({ m: 20, minScore: 0.25, minN: 20, base: new Map<string, number>() });
 
 export interface ReporterMatch {
   /** Handle without the @ */
@@ -79,11 +129,97 @@ export interface ReporterRules {
    * whose handle it has not decided about — must not become taggable because somebody put it on a post.
    */
   verifiedHandles?: ReadonlySet<string>;
+  /** Verified reporters' beats, policy and prior, by lower-cased handle without the @ */
+  profiles?: ReadonlyMap<string, ReporterProfile>;
+  /** The file's ambiguous_tokens, as keys: always "collision" */
+  ambiguous?: ReadonlySet<string>;
+  prior?: PriorSettings;
 }
 
 export const EMPTY_REPORTER_RULES: ReporterRules = { byToken: new Map(), conflicts: new Set(), count: 0 };
 
-const HANDLE = /^@?\w{1,15}$/;
+/** The profile of a matched reporter, or null */
+export const reporterProfile = (rules: ReporterRules, m: ReporterMatch | null | undefined): ReporterProfile | null =>
+  (m && rules.profiles?.get(m.handle.toLowerCase())) ?? null;
+
+const rate = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+/** A prior's rates, by handle (no @) or "#Tag": a null-prototype record, so "constructor" or "__proto__" is only ever a key */
+const rates = (v: unknown, where: string, problem: (m: string) => void): Record<string, number> => {
+  const out: Record<string, number> = Object.create(null) as Record<string, number>;
+  if (v === undefined) return out;
+  if (!v || typeof v !== "object" || Array.isArray(v)) {
+    problem(`${where}: must be { "Handle": 0.62, ... }`);
+    return out;
+  }
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    if (k.startsWith("_")) continue;
+    if (!rate(x)) problem(`${where}.${k}: ${String(x)} is not a share between 0 and 1`);
+    else out[k.replace(/^@/, "")] = x;
+  }
+  return out;
+};
+
+/**
+ * What a reporter's `prior` may name, beyond being well-formed (parseReporterHandles' `check`). Both lower-cased
+ * without the @. A handle outside `directory`, or inside `bound`, rejects the whole file.
+ */
+export interface ReporterPriorCheck {
+  /** Every handle the OTHER directory files carry (this file's own handles are added) */
+  directory?: ReadonlySet<string>;
+  /** Every police and collector handle, verified or not (HandleRules.bound): a reporter never brings one */
+  bound?: ReadonlySet<string>;
+}
+
+/**
+ * A reporter's profile. A malformed `prior` (no finite sample size, a rate outside 0..1, a handle outside the
+ * directory or a police / collector handle) goes to `reject` and fails the whole file; an unknown beats_source is
+ * a warning.
+ */
+function parseProfile(e: ReporterHandleEntry, handle: string, name: string, where: string, problem: (m: string) => void, reject: (m: string) => void, check: ReporterPriorCheck): ReporterProfile {
+  let prior: ReporterProfile["prior"] = null;
+  if (e.prior !== undefined) {
+    const p = e.prior as Partial<ReporterPriorData> | null;
+    if (!p || typeof p !== "object" || Array.isArray(p) || typeof p.n !== "number" || !Number.isFinite(p.n) || p.n < 0) reject(`${where}: "prior" needs a finite sample size "n" of 0 or more`);
+    else {
+      const handles = rates(p.handles, `${where}.prior.handles`, reject);
+      for (const h of Object.keys(handles)) {
+        const lc = h.toLowerCase();
+        if (check.bound?.has(lc)) reject(`${where}.prior.handles: @${h} is a district police, collector or state police handle — a reporter never brings one (brief §3.5)`);
+        else if (check.directory && !check.directory.has(lc)) reject(`${where}.prior.handles: @${h} is in no directory file — a handle is never invented`);
+      }
+      prior = { n: p.n, handles, hashtags: rates(p.hashtags, `${where}.prior.hashtags`, reject), source: typeof p.source === "string" ? p.source : null };
+    }
+  }
+  if (e.beats_source !== undefined && e.beats_source !== "desk" && e.beats_source !== "observed") {
+    problem(`${where}: beats_source "${String(e.beats_source)}" is neither "desk" nor "observed"; its beats offer nothing`);
+  }
+  const dwm = e.policy?.district_when_missing;
+  return {
+    handle, name, beats: strings(e.beats), beatsSource: e.beats_source === "desk" || e.beats_source === "observed" ? e.beats_source : null,
+    districtWhenMissing: typeof dwm === "string" && dwm.trim() ? dwm.trim() : null, prior,
+  };
+}
+
+function parsePriorSettings(root: Partial<ReporterHandlesData>, reject: (m: string) => void): PriorSettings {
+  const raw: unknown = root.prior_settings;
+  if (raw !== undefined && (!raw || typeof raw !== "object" || Array.isArray(raw))) reject(`prior_settings: must be { "m": 20, "min_score": 0.25, "min_n": 20 }`);
+  const s = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as NonNullable<ReporterHandlesData["prior_settings"]>) : {};
+  const num = (v: unknown, d: number, ok: (x: number) => boolean, k: string) => {
+    if (v === undefined) return d;
+    if (typeof v === "number" && Number.isFinite(v) && ok(v)) return v;
+    reject(`prior_settings.${k}: ${String(v)} is not valid`);
+    return d;
+  };
+  const base = new Map<string, number>();
+  for (const [k, v] of Object.entries(rates(root.prior_base_rates, "prior_base_rates", reject))) base.set(k.toLowerCase(), v);
+  return {
+    m: num(s.m, DEFAULT_PRIOR_SETTINGS.m, (x) => x >= 0, "m"),
+    minScore: num(s.min_score, DEFAULT_PRIOR_SETTINGS.minScore, rate, "min_score"),
+    minN: num(s.min_n, DEFAULT_PRIOR_SETTINGS.minN, (x) => x >= 0, "min_n"),
+    base,
+  };
+}
+
 /**
  * Honorifics the desk types after a name — "ASHOK SIR" (75 files) is the same person as "ASHOK". Dropped
  * so one reporter is not two roster entries.
@@ -130,14 +266,32 @@ function claim(rules: ReporterRules, spelling: string, match: ReporterMatch, pro
  * worker keeps its last good copy. A malformed entry is skipped and reported through `problem`; an
  * unverified entry is left out silently; a token claimed by two reporters is REMOVED and reported.
  */
-export function parseReporterHandles(json: unknown, problem: (message: string) => void = () => undefined): ReporterRules {
+export function parseReporterHandles(json: unknown, problem: (message: string) => void = () => undefined, check: ReporterPriorCheck = {}): ReporterRules {
   const root = json as Partial<ReporterHandlesData> | null;
   if (!root || typeof root !== "object" || !Array.isArray(root.entries)) {
     throw new Error("reporter handles: expected { version, entries: [...] }");
   }
+  // The prior and its settings are rejected WHOLE (b6 fix brief P5): a wrong rate or an invented handle is never
+  // quietly skipped or defaulted
+  const rejects: string[] = [];
+  const reject = (m: string) => rejects.push(m);
   const handles = new Set<string>();
   const verifiedHandles = new Set<string>();
-  const rules: ReporterRules = { byToken: new Map(), conflicts: new Set(), count: 0, handles, verifiedHandles };
+  const profiles = new Map<string, ReporterProfile>();
+  if (root.ambiguous_tokens !== undefined && (!Array.isArray(root.ambiguous_tokens) || root.ambiguous_tokens.some((t) => typeof t !== "string" || !t.trim()))) {
+    reject(`ambiguous_tokens: must be a list of file-name tokens, ["DINESH", ...]`);
+  }
+  // Ambiguous tokens are conflicts from the start, so no entry can claim them (§5.1: DINESH is Dangi and Kasana)
+  const ambiguous = new Set(strings(root.ambiguous_tokens).map(reporterKey).filter(Boolean));
+  const rules: ReporterRules = {
+    byToken: new Map(), conflicts: new Set(ambiguous), count: 0, handles, verifiedHandles, profiles, ambiguous, prior: parsePriorSettings(root, reject),
+  };
+  // This file's own handles are part of the directory a prior may name
+  for (const raw of root.entries) {
+    const h = (raw as Partial<ReporterHandleEntry> | null)?.handle;
+    if (typeof h === "string" && HANDLE.test(h.trim())) handles.add(h.trim().replace(/^@/, "").toLowerCase());
+  }
+  const priorCheck: ReporterPriorCheck = { ...(check.bound && { bound: check.bound }), ...(check.directory && { directory: new Set([...check.directory, ...handles]) }) };
 
   root.entries.forEach((raw, i) => {
     const e = raw as Partial<ReporterHandleEntry> | null;
@@ -154,14 +308,22 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     verifiedHandles.add(handle.toLowerCase());
     const name = typeof e.name === "string" && e.name.trim() ? e.name.normalize("NFC").trim() : handle;
     const match: ReporterMatch = { handle, name, districts: strings(e.districts) };
+    profiles.set(handle.toLowerCase(), parseProfile(e as ReporterHandleEntry, handle, name, `${where} (${e.handle})`, problem, reject, priorCheck));
     let added = 0;
-    for (const spelling of strings(e.names_en)) if (claim(rules, spelling, match, problem, `${where} (${e.handle})`)) added++;
+    for (const spelling of strings(e.names_en)) {
+      if (ambiguous.has(reporterKey(spelling))) {
+        problem(`${where} (${e.handle}): "${spelling}" is in ambiguous_tokens, so it tags nobody`);
+        continue;
+      }
+      if (claim(rules, spelling, match, problem, `${where} (${e.handle})`)) added++;
+    }
     // Not an error: the handle is real and stays in the file, it simply cannot be matched from a file
     // name until the desk adds a spelling or an editor's own edit teaches us one.
     if (!added) return problem(`${where} (${e.handle}): no names_en token yet, so this reporter is never tagged from a file name`);
     rules.count++;
   });
 
+  if (rejects.length) throw new DataFileRejected("reporter-handles", rejects);
   return rules;
 }
 
@@ -190,6 +352,10 @@ export function mergeReporterTokens(rules: ReporterRules, allLearned: readonly L
   const learned = verified ? allLearned.filter((l) => verified.has(l.handle.replace(/^@/, "").toLowerCase())) : allLearned;
   if (!learned.length) return rules;
   const merged: ReporterRules = {
+    // The file's profiles, ambiguous tokens and prior settings carry over: a learned token adds a NAME only
+    ...(rules.profiles && { profiles: rules.profiles }),
+    ...(rules.ambiguous && { ambiguous: rules.ambiguous }),
+    ...(rules.prior && { prior: rules.prior }),
     byToken: new Map(rules.byToken),
     conflicts: new Set(rules.conflicts),
     count: rules.count,
@@ -217,10 +383,67 @@ export function mergeReporterTokens(rules: ReporterRules, allLearned: readonly L
   return merged;
 }
 
+// ─── What the file name said about the reporter, for the decision log (reporter-prior brief §2.2) ──────────
+
+/**
+ * Every case is logged, the misses most of all: `unknown_token` is how a missing reporter surfaces,
+ * `unknown_bureau_code` how the code table gets confirmed.
+ */
+export const REPORTER_STATUSES = ["matched", "unknown_token", "collision", "bureau_code", "unknown_bureau_code", "no_slot", "no_filename"] as const;
+export type ReporterStatus = (typeof REPORTER_STATUSES)[number];
+
+export interface ReporterResolution {
+  status: ReporterStatus;
+  /** The slot as the file name spelled it (the reporter token, else the code): post_decisions.slot_raw */
+  slotRaw: string | null;
+  /** The reporter token, upper-cased, matched or not */
+  reporterToken: string | null;
+  /** The district code: the places file's (districtCode) or a code-shaped token it does not carry (unknownCode) */
+  bureauCode: string | null;
+  /** The district the code stands for, when known */
+  bureauDistrict: string | null;
+  /** The matched roster handle, without the @; null unless `status` is "matched" */
+  reporterHandle: string | null;
+}
+
+/** The FileTags fields resolveReporterStatus reads (stories.file_tags, or fileTags()) */
+export interface ReporterSlotTags {
+  reporter: string | null;
+  districtCode: string | null;
+  district: string | null;
+  unknownCode?: string | null;
+}
+
+/**
+ * The reporter status of one breaking file, from the file name ONLY (never the post's text or handles: brief L1).
+ * A reporter token decides the status when there is one (matched / collision / unknown_token); otherwise the
+ * district code does (bureau_code / unknown_bureau_code); otherwise no_slot. The bureau fields are filled
+ * whenever the name carries a code, whatever the status.
+ */
+export function resolveReporterStatus(fileName: string | null | undefined, tags: ReporterSlotTags | null | undefined, rules: ReporterRules): ReporterResolution {
+  const bureauCode = tags?.districtCode ?? tags?.unknownCode ?? null;
+  const bureauDistrict = tags?.districtCode ? (tags.district ?? null) : null;
+  const base = { reporterToken: null, reporterHandle: null, bureauCode, bureauDistrict };
+  if (!fileName || !fileName.trim()) return { ...base, status: "no_filename", slotRaw: null, bureauCode: null, bureauDistrict: null };
+  const token = tags?.reporter ? reporterKey(tags.reporter) || null : null;
+  if (token) {
+    const slot = { ...base, reporterToken: token, slotRaw: tags!.reporter };
+    const hit = rules.byToken.get(token);
+    if (hit) return { ...slot, status: "matched", reporterHandle: hit.handle };
+    if (rules.conflicts.has(token)) return { ...slot, status: "collision" };
+    return { ...slot, status: "unknown_token" };
+  }
+  if (tags?.districtCode) return { ...base, status: "bureau_code", slotRaw: tags.districtCode };
+  if (tags?.unknownCode) return { ...base, status: "unknown_bureau_code", slotRaw: tags.unknownCode };
+  return { ...base, status: "no_slot", slotRaw: null };
+}
+
 export interface ReporterPick {
   match: ReporterMatch | null;
   /** The token we were given but could not place. Log these: it is how the roster gets completed. */
   unmatchedToken: string | null;
+  /** The token names more than one reporter (ambiguous_tokens, or two entries claim it): nobody is tagged */
+  collision?: string;
 }
 
 /**
@@ -234,6 +457,8 @@ export function pickReporter(token: string | null | undefined, rules: ReporterRu
   if (!key) return { match: null, unmatchedToken: null };
   const hit = rules.byToken.get(key);
   if (hit) return { match: hit, unmatchedToken: null };
+  // A token that names more than one reporter is not missing from the list: it is ambiguous, and tags nobody
+  if (rules.conflicts.has(key)) return { match: null, unmatchedToken: null, collision: key };
   return { match: null, unmatchedToken: key };
 }
 

@@ -476,6 +476,12 @@ export interface PostTagContext {
   inferDistrict?: (headline: string) => string | null;
   /** Evergreen topic tags that are emitted (precise enough to auto-apply) */
   topics?: readonly { tag: string; pattern: RegExp }[];
+  /**
+   * The filing reporter's desk rule (reporter-prior brief §4): the district tag ("Jaipur") a post that names NO
+   * district in any slot, and none the gazetteer infers, gets — as the leading tag on a standard post, offered
+   * (never a leading tag) on a video post. From the file name's reporter only.
+   */
+  reporterPolicy?: string | null;
 }
 
 export interface PostTags {
@@ -488,6 +494,8 @@ export interface PostTags {
   suggest: string[];
   /** Normalisation flags and unknown_district, for the desk to see */
   flags: string[];
+  /** The reporter's desk rule fired: "emit" (the leading tag) or "suggest" (a video post); null when it did not */
+  policy: "emit" | "suggest" | null;
 }
 
 /** The district the slots name: the Latin leading tag, else the first trailing tag on a place list */
@@ -527,12 +535,16 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
   const d = emittable(district);
   const place = d ? tagPlace(d, ctx.places) : null;
 
+  // The reporter's desk rule: only when nothing resolves (no slot, no place anywhere, no inference). Video format has
+  // no leading run, so there it is offered in the trailing run instead.
+  const policyTag = ctx.reporterPolicy && !slot && !inferredDistrict && !namesAPlace(s, ctx) ? ctx.reporterPolicy : null;
+  const policy: PostTags["policy"] = policyTag ? (video ? "suggest" : "emit") : null;
   const lead: string[] = [];
   if (format === "A") {
     lead.push(leadNorm[0]!);
     if (leadNorm[1] && isDevanagari(leadNorm[1])) lead.push(leadNorm[1]);
-  }
-  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : null, trail: trailNorm, video }, ctx.places);
+  } else if (policy === "emit") lead.push(policyTag!);
+  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : policy === "emit" ? policyTag : null, trail: trailNorm, video }, ctx.places);
   if (brand.unknownDistrict) flags.push(`unknown_district:${brand.unknownDistrict}`);
 
   const trail: string[] = [];
@@ -553,8 +565,9 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
 
   // §2.8: an inferred district is offered, never emitted
   if (district?.provenance === "inferred") suggest.push(district.value);
+  if (policy === "suggest") suggest.push(policyTag!);
   if (ctx.suggestRules && ctx.at) suggest.push(...suggestTags(body, ctx.suggestRules, ctx.at));
   const emitted = new Set([...lead, ...trail].map((t) => fold(t)));
   const offered = [...new Set(suggest)].filter((t) => !emitted.has(fold(t)));
-  return { format, district: d, lead, trail, suggest: offered, flags };
+  return { format, district: d, lead, trail, suggest: offered, flags, policy };
 }

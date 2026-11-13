@@ -38,6 +38,8 @@
 // an unknown reporter tags nobody, and nothing here can invent a handle that is not in a data file.
 
 import { fold } from "../fold";
+import { HANDLE } from "./syntax";
+import type { PlainRuleId, PriorRuleId } from "./proposals";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_PARTY_RULES, namesAnyParty, pickPartyHandles, type PartyRules } from "./parties";
 import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
@@ -74,11 +76,15 @@ export interface HandleRules {
    * tags these or their lookalikes (desk-handles.ts)
    */
   all?: ReadonlySet<string>;
+  /**
+   * Every police and collector handle in the file, district or state, VERIFIED OR NOT, lowercase without the @.
+   * A reporter's suggestions (the measured prior and declared beats) never offer one of these (brief §3.5).
+   */
+  bound?: ReadonlySet<string>;
 }
 
 export const EMPTY_HANDLE_RULES: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {} };
 
-const HANDLE = /^@?\w{1,15}$/;
 const ROLES = new Set(["police", "collector", "govt", "cm"]);
 /** "Sawai Madhopur", "SawaiMadhopur" and "sawai-madhopur" are one key */
 export const districtKey = (name: string) => name.replace(/[^A-Za-z0-9]+/g, "").toLowerCase();
@@ -105,9 +111,11 @@ export function parseHandleRules(json: unknown): HandleRules {
   };
   const bare = (e: DistrictHandleEntry) => e.handle.replace(/^@/, "");
   const all = new Set<string>();
-  const rules: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {}, all };
+  const bound = new Set<string>();
+  const rules: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {}, all, bound };
   for (const e of entries(root!.state, "state")) {
     all.add(bare(e).toLowerCase());
+    if (e.role === "police" || e.role === "collector") bound.add(bare(e).toLowerCase());
     if (!e.verified) continue;
     if (e.role === "govt") rules.state.government.push(bare(e));
     else if (e.role === "cm") rules.state.cm.push(bare(e));
@@ -126,6 +134,7 @@ export function parseHandleRules(json: unknown): HandleRules {
     const d = rules.districts[key] ?? { police: [] as string[], collector: [] as string[] };
     for (const e of entries(list, `districts.${name}`)) {
       all.add(bare(e).toLowerCase());
+      if (e.role === "police" || e.role === "collector") bound.add(bare(e).toLowerCase());
       if (e.verified && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) d[e.role].push(bare(e));
     }
     rules.districts[key] = d;
@@ -394,13 +403,44 @@ export interface HandlePickInput {
   elsewhere?: (word: string) => boolean;
 }
 
-export interface HandlePick {
+/** Why a handle is on the draft or offered: shown as the suggestion's entity */
+export type HandleReason =
+  | "cm" | "police" | "collector" | "government" | "state_police" | "subject" | "desk" | "party" | "reporter"
+  /** Offered from the filing reporter's measured rates (reporter-prior brief §3); never tagged */
+  | "prior"
+  /** Offered from a reporter's desk-declared beat whose keywords the copy matches (§3.3); never tagged */
+  | "beat"
+  /** Offered for an office named without its holder: "CM ने" (§6); never tagged */
+  | "office";
+
+interface HandlePickBase {
   handle: string;
-  /** Why: shown on the draft as the suggestion's entity */
-  reason: "cm" | "police" | "collector" | "government" | "state_police" | "subject" | "desk" | "party" | "reporter";
   /** The subject's title, the party's name, the reporter's name, or the directory name (reason "desk") */
   title?: string;
+  /** The "why" line for the desk ("rituraj files @RajGovOfficial stories 62% of the time (102 posts)") */
+  detail?: string;
 }
+
+/** A handle the reporter prior offers: always its rule id, smoothed rate and sample size */
+export interface PriorHandlePick extends HandlePickBase {
+  reason: "prior";
+  source: PriorRuleId;
+  /** The smoothed rate, rounded to 2 places */
+  score: number;
+  /** The reporter's posts the rate rests on */
+  n: number;
+}
+
+/** Any other handle: never a score */
+export interface RuleHandlePick extends HandlePickBase {
+  reason: Exclude<HandleReason, "prior">;
+  /** The stable rule id (proposals.ts PROPOSAL_SOURCES); absent: derived from `reason` by handleSource */
+  source?: PlainRuleId;
+  score?: never;
+  n?: never;
+}
+
+export type HandlePick = PriorHandlePick | RuleHandlePick;
 
 export interface HandleResult {
   handles: HandlePick[];
@@ -516,13 +556,14 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     if (noted) return;
     noted = true;
     unmatchedReporter = rep.unmatchedToken;
+    if (rep.collision) warnings.push(`the file name's "${rep.collision}" names more than one reporter, so nobody was tagged; the full name in the file name decides`);
     if (rep.match && districtMismatch(rep.match, district)) {
       warnings.push(`@${rep.match.handle} usually files from ${rep.match.districts.join("/")}, not ${district}`);
     }
   };
 
-  const picks: (HandlePick & { inHeadline: boolean })[] = [];
-  const add = (handles: string[] | undefined, reason: HandlePick["reason"], inHeadline: boolean, title?: string) => {
+  const picks: (RuleHandlePick & { inHeadline: boolean })[] = [];
+  const add = (handles: string[] | undefined, reason: RuleHandlePick["reason"], inHeadline: boolean, title?: string) => {
     // One handle per use is enough: the first verified one
     const h = handles?.[0];
     if (h) picks.push({ handle: h, reason, inHeadline, ...(title && { title }) });

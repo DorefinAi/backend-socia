@@ -102,13 +102,14 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   const { value: rules, version: handlesVersion } = await opts.data.handles.get();
   const [
     { value: subjects, version: subjectsVersion }, { value: roster, version: reportersVersion }, { value: parties, version: partiesVersion },
-    { value: normaliser, version: normaliseVersion }, { value: suggestRules, version: campaignsVersion }, dict,
+    { value: normaliser, version: normaliseVersion }, { value: suggestRules, version: campaignsVersion }, { value: beats, version: beatsVersion }, dict,
   ] = await Promise.all([
     opts.data.subjects.get(),
     opts.data.reporters.get(),
     opts.data.parties.get(),
     opts.data.normalise.get(),
     opts.data.campaigns.get(),
+    opts.data.beats.get(),
     dictionaries.topics(),
   ]);
   const { topics, desk, learnedReporters, version: topicsVersion } = dict;
@@ -138,8 +139,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     rules,
     book,
     {
-      version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.r${reportersVersion}.y${partiesVersion}.n${normaliseVersion}.c${campaignsVersion}.t${shortVersion(topicsVersion)}`,
-      topics, subjects, desk, reporters, parties, normaliser, suggestRules,
+      version: `p${placesVersion}.h${handlesVersion}.s${subjectsVersion}.r${reportersVersion}.y${partiesVersion}.n${normaliseVersion}.c${campaignsVersion}.b${beatsVersion}.t${shortVersion(topicsVersion)}`,
+      topics, subjects, desk, reporters, parties, normaliser, suggestRules, beats,
       // The story's own arrival, so a re-saved or replayed file keeps the campaign window it came in
       at: story.createdAt,
     },

@@ -4,8 +4,10 @@
 // file can be dropped in as it is.
 
 import { fold } from "../fold";
+import { HANDLE } from "./syntax";
 import { Gazetteer, type GazetteerEntry, type GazetteerMatch } from "../gazetteer";
 import { DataFileRejected } from "./post-tags";
+import { parseOffices, type Office } from "./offices";
 
 export const SUBJECT_KINDS = ["person", "department", "party", "company", "institution", "police"] as const;
 export type SubjectKind = (typeof SUBJECT_KINDS)[number];
@@ -97,11 +99,12 @@ export interface SubjectRules {
    * desk-added handles rule never tags these or their lookalikes (desk-handles.ts)
    */
   handles?: ReadonlySet<string>;
+  /** `offices`: an office named without its holder, offered only (offices.ts) */
+  offices?: readonly Office[];
 }
 
 export const EMPTY_SUBJECT_RULES: SubjectRules = { gazetteer: new SubjectGazetteer([]), count: 0 };
 
-const HANDLE = /^@?\w{1,15}$/;
 const KINDS = new Set<string>(SUBJECT_KINDS);
 
 /** Every key an entry may carry: a misspelt one ("suggestonly") must not be ignored, it rejects the file */
@@ -180,6 +183,9 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
       },
     });
   });
+  // An office named without its holder (reporter-prior brief §6): its handles must be entries of this file
+  const office = parseOffices((root as { offices?: unknown }).offices, handles);
+  for (const m of office.problems) reject(m);
   if (rejects.length) throw new DataFileRejected("subject-handles", rejects);
-  return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles };
+  return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles, offices: office.offices };
 }

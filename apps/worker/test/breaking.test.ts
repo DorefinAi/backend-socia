@@ -55,6 +55,21 @@ describe("data files fail loudly (b6 fix brief P5, no database)", () => {
     expect(statuses.at(-1)).toMatchObject({ ok: true });
   });
 
+  it("loads the shipped beat-handles file against the directory files, and rejects a beat whose handle is in none (L8)", async () => {
+    const statuses: { file: string; ok: boolean; message?: string }[] = [];
+    const shipped = phaseOneData(log, (s) => void statuses.push(s));
+    expect([...(await shipped.beats.get()).value.beats.keys()].sort()).toEqual(["education", "jda", "tourism"]);
+
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const path = join(dir, "beat-handles.json");
+    await writeFile(path, JSON.stringify({ education: { keywords: "स्कूल", handles: ["@NoSuchHandle1"] } }));
+    const data = phaseOneData(log, (s) => void statuses.push(s), { BEAT_HANDLES_FILE: path });
+    // Never a good copy: no beats at all rather than an invented handle
+    expect((await data.beats.get()).value.beats.size).toBe(0);
+    expect(statuses.at(-1)).toMatchObject({ file: "beats", ok: false });
+    expect(statuses.at(-1)!.message).toMatch(/in no directory file/);
+  });
+
   it("takes the places file's district tags as known-good normalisation targets", async () => {
     const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
     const path = join(dir, "hashtag-normalise.json");

@@ -191,7 +191,9 @@ describe("the whole leg over 383 real breaking file names", () => {
     const problems: string[] = [];
     parseReporterHandles(json("../../../apps/worker/config/reporter-handles.json"), (m) => problems.push(m));
     expect(problems).toEqual([]);
-    expect(shipped.conflicts.size).toBe(0);
+    // The only conflicts are the file's declared ambiguous tokens (DINESH): no two entries contest a token
+    expect([...shipped.conflicts]).toEqual(["DINESH"]);
+    expect([...(shipped.ambiguous ?? [])]).toEqual(["DINESH"]);
     expect(shipped.count).toBeGreaterThanOrEqual(15);
   });
 

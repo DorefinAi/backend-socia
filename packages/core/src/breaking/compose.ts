@@ -17,15 +17,18 @@ import { pickCategoryTags } from "./categories";
 import { pickHandlesExplained, type HandlePick, type HandleRules } from "./handles";
 import { EMPTY_DESK_HANDLE_RULES, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_PARTY_RULES, type PartyRules } from "./parties";
-import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, type ReporterMatch, type ReporterRules } from "./reporters";
+import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, type ReporterMatch, type ReporterRules } from "./reporters";
+import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
+import { officeSuggestions } from "./offices";
 import { headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, type DistrictFrom } from "./parse";
 import {
-  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, normaliseTag, stripLinks, suggestTags,
+  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags,
   type Sourced, type SuggestRules, type TagNormaliser,
 } from "./post-tags";
 import type { StoryClass } from "./storyclass";
 import type { DistrictInfo, PlaceBook } from "./places";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
+import { PROPOSAL_SOURCES, districtSource, handleProposal, tagProposal, type Proposal, type TagSuggestion } from "./proposals";
 
 /** A headline that starts with the desk's own hashtags and a colon ("#BJP:", "#Congress #Kota:") */
 const DESK_TAG_RUN = /^(?:#\S+\s*){1,3}[:：]/u;
@@ -100,6 +103,13 @@ export interface BreakingComposeOptions {
   suggestRules?: SuggestRules;
   /** When the story came in, for the campaign windows; none: campaign tags are not offered */
   at?: Date;
+  /** beat-handles.json: the desk-declared beats a reporter's profile may name (reporter-prior brief §3.3) */
+  beats?: BeatRules;
+  /**
+   * The reporter routing prior and declared beats, offered after every other rule (default on). Off is what the
+   * L7 test compares against: the emitted post must be byte-identical either way.
+   */
+  reporterPrior?: boolean;
   limit?: number;
   target?: number;
 }
@@ -113,6 +123,13 @@ export interface BreakingDraft {
    * see the note in composeBreaking for what auto-applying them measured at.
    */
   hashtagSuggestions: string[];
+  /** hashtagSuggestions with the rule behind each and its reason line, in the same order (brief §2.3) */
+  hashtagSuggestionItems: TagSuggestion[];
+  /**
+   * Everything the draft carries or offers, one entry per item, with layer, rule id and reason: the decision
+   * log's `proposals` (brief §2.3). Built from the fields here, never a second decision.
+   */
+  proposals: Proposal[];
   mentions: string[];
   handles: HandlePick[];
   /** Handles offered to the desk and not in the post (handles.ts `suggestions`) */
@@ -128,6 +145,11 @@ export interface BreakingDraft {
   /** The headline itself had to be cut to fit */
   headlineCut: boolean;
   composeVersion: string;
+  /**
+   * The rule behind line 1's district hashtag: "district.<from>" for a stated district, "reporter_policy" for a
+   * reporter's desk rule (a hashtag only: it chose no handle), null when line 1 carries none
+   */
+  districtSource: string | null;
 }
 
 /** "#बड़ीसादड़ी": spaces and punctuation out, Devanagari marks kept */
@@ -297,7 +319,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
     reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = X_LIMIT, target = BREAKING_TARGET,
-    normaliser = EMPTY_NORMALISER, suggestRules = EMPTY_SUGGEST_RULES, at,
+    normaliser = EMPTY_NORMALISER, suggestRules = EMPTY_SUGGEST_RULES, at, beats = EMPTY_BEAT_RULES, reporterPrior: reporterPriorOn = true,
   } = opts;
   // URLs never reach a rule or the post (§2.1): every line this reads is cleaned first
   const flags: string[] = [];
@@ -334,6 +356,31 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // or an administration handle however a later rule uses `district`
   const picked = pickHandlesExplained({ ...story, district: place?.name ?? null, rajasthan, elsewhere }, rules, { subjects, desk, reporters, parties, max: 3, at });
   const handles = picked.handles;
+  // The headline's district tags (two districts: a conflict when none was taken as stated)
+  const headlineTags = place ? [] : headlineDistrictTags(book, story.rawHeadline ?? story.headline);
+  const headline = story.headline.normalize("NFC").replace(/\s+/g, " ").trim();
+  // The desk's own tag run kept in the headline ("#Congress #Kota: ...", "#BJP: ..."): line 1 as written, no tags added
+  const deskRun = DESK_TAG_RUN.test(headline);
+  // A reporter's desk rule (reporter-prior brief §4): rituraj's post that names no district goes out as "#Jaipur:".
+  // It means "filed from the Jaipur desk", not "happened in Jaipur" (his Jodhpur panchayat story went out as
+  // #JaipurNews), so it is a line-1 hashtag and NOTHING ELSE: it was not in the picker's district above, never
+  // chooses a police, collector or administration handle, and never changes the footer. Only what the DESK WROTE
+  // blocks it — a stated district, a place written before the headline's colon ("आकोला: ..."), a place hashtag
+  // anywhere in the copy ("#Delhi"), the desk's own tag run; a place the gazetteer finds in the text does not
+  // (user decision, 13 Nov). A video headline never takes a leading tag: there it is offered instead.
+  const profile = reporterProfile(reporters, reporter);
+  const policyWarnings: string[] = [];
+  const policyDistrict = profile?.districtWhenMissing ? book.district(profile.districtWhenMissing) : null;
+  if (profile?.districtWhenMissing && !policyDistrict) {
+    policyWarnings.push(`@${profile.handle}'s district_when_missing "${profile.districtWhenMissing}" is not a district in the places file; the desk rule was not applied`);
+  }
+  const placeTagged = [story.rawHeadline ?? story.headline, ...story.points].some((line) => [...line.matchAll(HASHTAG)].some((m) => m[1] !== undefined && book.hashtag(m[1]) !== null));
+  // A district found only by the gazetteer (headline, text) or guessed from the reporter is not one the desk wrote; a
+  // stored district of unknown provenance (a row before migration 0023) may be, so it blocks
+  const gazetteerOnly = district?.provenance === "inferred" && (district.from === "headline" || district.from === "text" || district.from === "reporter");
+  const deskWrotePlace = !!place || (!!district && !gazetteerOnly) || headlineTags.length > 0 || !!story.town || placeTagged || deskRun;
+  const policy = policyDistrict && profile && !deskWrotePlace ? { district: policyDistrict, layer: isVideoHeadline(headline) ? ("suggest" as const) : ("emit" as const), name: profile.name } : null;
+  const policyReason = policy ? `${policy.name}'s desk rule: a post naming no district goes out as ${policy.district.name} (filed from that desk, not a location)` : "";
   const footer = rajasthan ? RAJASTHAN_FOOTER : NATIONAL_FOOTER;
   // The footer is the only tag that goes on by itself. The topic rules are OFFERED, not applied: measured
   // against 400 published posts (30 Oct 2026), auto-applying them put a tag the desk had not written on
@@ -341,19 +388,62 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // trailing run's precision from 92.5% to 55.8%. Only 2 of 19 active rules beat a coin flip. A wrong tag
   // costs the desk a deletion on a live post; a missing one costs a click.
   const hashtags = [footer];
-  const offered = pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer]);
+  const offered: TagSuggestion[] = [];
+  // A video post's desk rule: offered first, never a leading tag
+  if (policy?.layer === "suggest") offered.push({ tag: `#${policy.district.tag}`, source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}; a video post takes no leading tag` });
   // An inferred district (§2.8) is offered first among the suggestions and goes nowhere else
-  if (district?.provenance === "inferred") offered.unshift(`#${district.value.tag}`);
+  if (district?.provenance === "inferred" && !(policy && policy.district.name === district.value.name)) {
+    offered.push({ tag: `#${district.value.tag}`, source: districtSource(district.from, true), reason: `${district.value.name}, inferred from the ${district.from === "reporter" ? "reporter's district" : district.from}: not stated in the copy` });
+  }
+  for (const t of pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer])) {
+    offered.push({ tag: t, source: PROPOSAL_SOURCES.topic, reason: "the org's topic rule matched the copy" });
+  }
   // District tags in the headline that were not taken as stated (two different districts: a conflict) are offered
-  if (!place) for (const d of headlineDistrictTags(book, story.rawHeadline ?? story.headline)) offered.push(`#${d.tag}`);
-  if (at) offered.push(...suggestTags([story.headline, ...story.points].join("\n"), suggestRules, at).map((t) => `#${t}`));
-  const hashtagSuggestions = [...new Set(offered)].filter((t) => t.toLowerCase() !== footer.toLowerCase());
+  if (!place) {
+    for (const d of headlineTags) {
+      offered.push({ tag: `#${d.tag}`, source: PROPOSAL_SOURCES.headlineConflict, reason: `the headline tags ${d.name} beside another district` });
+    }
+  }
+  if (at) {
+    for (const t of suggestTags([story.headline, ...story.points].join("\n"), suggestRules, at)) {
+      offered.push({ tag: `#${t}`, source: PROPOSAL_SOURCES.campaign, reason: "a campaign or keyword tag in campaigns.json matched" });
+    }
+  }
   const mentions = handles.map((h) => `@${h.handle}`);
 
-  const tags = [place ? `#${place.tag}` : "", story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : ""].filter(Boolean);
-  const headline = story.headline.normalize("NFC").replace(/\s+/g, " ").trim();
-  // The desk's own tag run kept in the headline ("#Congress #Kota: ...", "#BJP: ..."): line 1 as written, no tags added
-  const prefix = tags.length && !DESK_TAG_RUN.test(headline) ? `${tags.join(" ")}: ` : "";
+  const townTag = story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : "";
+  const lineOne = place ?? (policy?.layer === "emit" ? policy.district : null);
+  const tags = [lineOne ? `#${lineOne.tag}` : "", townTag].filter(Boolean);
+
+  // ── added after every rule above has finished, as suggestions only: nothing above moves (brief §3.5, L7) ──
+  const handleSuggestions = [...picked.suggestions];
+  const taken = new Set([...handles, ...handleSuggestions].map((h) => h.handle.toLowerCase()));
+  const text = [story.rawHeadline ?? story.headline, ...story.points].join("\n");
+  // An office named without its holder: "CM ने ..." offers the CM's handles (§6), on Rajasthan copy only
+  if (rajasthan && picked.cls !== "leader_post" && subjects.offices?.length) {
+    const holders = subjects.gazetteer.find(text).filter((m) => m.entry.data.kind === "person").map((m) => m.entry.data.handle.toLowerCase());
+    for (const h of officeSuggestions(subjects.offices, text, taken, (o) => o.handles.some((x) => holders.includes(x.toLowerCase())))) {
+      handleSuggestions.push(h);
+      taken.add(h.handle.toLowerCase());
+    }
+  }
+  const priorWarnings: string[] = [];
+  // The reporter routing prior (§3): measured rates and declared beats of the reporter the FILE NAME names
+  if (reporterPriorOn && profile) {
+    // Every police and collector handle, verified or not: a reporter never brings one (§3.5)
+    const districtBound = new Set([...(rules.bound ?? []), ...rules.state.police, ...Object.values(rules.districts).flatMap((d) => [...d.police, ...d.collector])].map((h) => h.toLowerCase()));
+    const takenTags = new Set([...tags, footer, ...offered.map((o) => o.tag)].map((t) => t.toLowerCase()));
+    const directory = new Set([...(rules.all ?? []), ...(subjects.handles ?? []), ...(parties.handles ?? []), ...(reporters.handles ?? [])].map((h) => h.replace(/^@/, "").toLowerCase()));
+    const prior = reporterPrior({ profile, text, taken, takenTags, districtBound, directory }, reporters, beats);
+    handleSuggestions.push(...prior.handles);
+    offered.push(...prior.hashtags);
+    priorWarnings.push(...prior.warnings);
+  }
+  // First occurrence of each tag wins; never the footer, never a tag already in line 1
+  const inLineOne = new Set(tags.map((t) => t.toLowerCase()));
+  const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && o.tag.toLowerCase() !== footer.toLowerCase() && (policy?.layer !== "emit" || !inLineOne.has(o.tag.toLowerCase())));
+  const hashtagSuggestions = hashtagSuggestionItems.map((o) => o.tag);
+  const prefix = tags.length && !deskRun ? `${tags.join(" ")}: ` : "";
   // Room for lines 1–2: the limit less the footer and its blank line
   const room = limit - xLen(assemblePostText("x", hashtags, mentions)) + 1;
 
@@ -366,9 +456,21 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   }
   const body = headlineCut ? "" : joinPoints(story.points, Math.min(room, room - limit + target) - xLen(line1) - 2);
   const bodyText = body ? `${line1}\n\n${body}` : line1;
+  // The decision log's view of all of the above (brief §2.3): line 1's tags only when this composer put them there
+  const proposals: Proposal[] = [];
+  const stated = place && district ? districtSource(district.from, false) : null;
+  if (prefix && place && district) proposals.push({ item: `#${place.tag}`, kind: "hashtag", layer: "emit", source: districtSource(district.from, false), reason: `${place.name}, stated (${district.from})` });
+  if (prefix && policy?.layer === "emit") proposals.push({ item: `#${policy.district.tag}`, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.reporterPolicy, reason: policyReason });
+  if (prefix && townTag) proposals.push({ item: townTag, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.town, reason: `the town on the place line (${story.town})` });
+  proposals.push({ item: footer, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.brand, reason: rajasthan ? "a Rajasthan story" : "a story from outside Rajasthan" });
+  for (const h of handles) proposals.push(handleProposal(h, "emit"));
+  for (const t of hashtagSuggestionItems) proposals.push(tagProposal(t));
+  for (const h of handleSuggestions) proposals.push(handleProposal(h, "suggest"));
   return {
-    bodyText, hashtags, hashtagSuggestions, mentions, handles, handleSuggestions: picked.suggestions, cls: picked.cls, why: picked.why,
-    warnings: [...picked.warnings, ...codeWarnings, ...flags.map((f) => `hashtag typo: ${f}`)],
+    bodyText, hashtags, hashtagSuggestions, hashtagSuggestionItems, proposals, mentions, handles, handleSuggestions, cls: picked.cls, why: picked.why,
+    warnings: [...picked.warnings, ...codeWarnings, ...policyWarnings, ...priorWarnings, ...flags.map((f) => `hashtag typo: ${f}`)],
     unmatchedReporter: picked.unmatchedReporter, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}`,
+    // Only when this composer put line 1's district there (the desk's own tag run is left as written)
+    districtSource: !prefix ? null : stated ?? (policy?.layer === "emit" ? PROPOSAL_SOURCES.reporterPolicy : null),
   };
 }

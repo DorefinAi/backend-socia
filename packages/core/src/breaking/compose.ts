@@ -22,11 +22,11 @@ import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
 import { deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, type DistrictFrom } from "./parse";
 import {
-  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags,
-  type Sourced, type SuggestRules, type TagNormaliser,
+  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand,
+  BRAND_RAJASTHAN, type PlaceKind, type PlaceKindLookup, type Sourced, type SuggestRules, type TagNormaliser,
 } from "./post-tags";
 import type { StoryClass } from "./storyclass";
-import type { DistrictInfo, PlaceBook } from "./places";
+import type { DistrictInfo, Place, PlaceBook } from "./places";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
 import { PROPOSAL_SOURCES, districtSource, handleProposal, tagProposal, type Proposal, type TagSuggestion } from "./proposals";
 
@@ -344,6 +344,30 @@ const tagPlace = (book: PlaceBook, raw: string) => {
   return book.hashtag(t) ?? (stem ? book.hashtag(stem) : null);
 };
 
+/**
+ * A video post's brand when no place is stated: true for Rajasthan, false for national, null when nothing decides
+ * (the caller keeps its default). The first place hashtag in the copy decides first, as in resolveBrand; then the
+ * channel label after the headline's last "|" or "।".
+ */
+function videoBrand(story: Pick<BreakingComposeInput, "headline" | "points" | "rawHeadline">, book: PlaceBook): boolean | null {
+  if (!isVideoHeadline(story.headline)) return null;
+  for (const line of [story.rawHeadline ?? story.headline, ...story.points]) {
+    for (const m of line.matchAll(HASHTAG)) {
+      const kind = m[1] !== undefined ? placeKind(tagPlace(book, m[1])) : null;
+      if (kind) return kind === "rajasthan";
+    }
+  }
+  const label = videoLabelBrand(story.headline, bookPlaceKind(book));
+  return label === null ? null : label === BRAND_RAJASTHAN;
+}
+
+/** Which side of the border a place the places file knows is on: a town or district is Rajasthan, a national place is not */
+const placeKind = (p: Place | null): PlaceKind | null =>
+  !p ? null : p.kind === "national" || p.districts[0]?.rajasthan === false ? "outside" : "rajasthan";
+
+/** The live composer's lookup for videoLabelBrand: a Latin label word through the places file ("Sikar", "Delhi") */
+export const bookPlaceKind = (book: PlaceBook): PlaceKindLookup => (tag) => placeKind(tagPlace(book, tag));
+
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
@@ -376,7 +400,11 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
       ? [`the file names ${reporterPick.unmatchedToken}, who is not in the reporter list; the file code's district (${district.value.name}) was used — check it`]
       : [];
   const place = emittable(district);
-  const rajasthan = place ? place.rajasthan : story.rajasthan;
+  // The brand. A stated place decides; with none, a video post's place TAG in the copy, then its channel label
+  // ("| Madhya Pradesh News" → national, "| Rajasthan News" → Rajasthan: videoLabelBrand, the one implementation the
+  // replay reference shares, V1), then the story's own default. A place the gazetteer only finds in the text never
+  // decides here (FL5).
+  const rajasthan = place ? place.rajasthan : (videoBrand(story, book) ?? story.rajasthan);
   // A word naming another district: "बूंदी SP ने" in a Jaipur story does not tag Jaipur's police
   const elsewhere = (word: string) => {
     const p = book.lookup(word);

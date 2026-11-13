@@ -233,7 +233,13 @@ export function parseDistricts(json: unknown, problem: (message: string) => void
   return { rajasthan, outside, signals };
 }
 
-type PlaceKind = "rajasthan" | "outside";
+export type PlaceKind = "rajasthan" | "outside";
+
+/**
+ * Which side of the border a Latin tag names, or null: the replay reads districts.json (TagPlaces), the live
+ * composer its places file (compose.ts bookPlaceKind). videoLabelBrand takes either.
+ */
+export type PlaceKindLookup = (tag: string) => PlaceKind | null;
 
 /** Which list a tag is on, also through its "#<Place>News" stem ("#JaipurNews" → Jaipur) */
 export function tagPlace(tag: string, places: TagPlaces): { kind: PlaceKind; place: string } | null {
@@ -303,6 +309,8 @@ export function isVideoHeadline(line1: string): boolean {
 }
 
 /**
+ * The ONE implementation of the video channel-label brand (V1): the live composer (composeBreaking) and the replay
+ * reference (resolveBrand, composePostTags) both call it.
  * The brand a video headline's channel label names, or null when it names none (§2.2). The label is what follows
  * the LAST "|" or "।" separator: "<title> | Rajasthan News" and "<title> | Jaipur News" are Rajasthan (a label that
  * starts with "Rajasthan" or with a Rajasthan district: "Sikar Crime News", "Sawai Madhopur"); "| Madhya Pradesh
@@ -310,7 +318,8 @@ export function isVideoHeadline(line1: string): boolean {
  * list — are national. Anything else ("| BJP Padyatra", a Hindi clause after a danda, the colon form) is not a
  * channel label, and the caller keeps its own default.
  */
-export function videoLabelBrand(line1: string, places: TagPlaces = EMPTY_TAG_PLACES): typeof BRAND_RAJASTHAN | typeof BRAND_NATIONAL | null {
+export function videoLabelBrand(line1: string, places: TagPlaces | PlaceKindLookup = EMPTY_TAG_PLACES): typeof BRAND_RAJASTHAN | typeof BRAND_NATIONAL | null {
+  const kindOf: PlaceKindLookup = typeof places === "function" ? places : (t) => tagPlace(t, places)?.kind ?? null;
   const h = stripLinks(line1).replace(new RegExp(`(?:\\s+#${TAG_CHAR}+)+\\s*$`, "u"), "").trim();
   const cut = Math.max(h.lastIndexOf("|"), h.lastIndexOf("।"));
   if (cut < 0) return null;
@@ -321,8 +330,8 @@ export function videoLabelBrand(line1: string, places: TagPlaces = EMPTY_TAG_PLA
   if (/^rajasthan$/i.test(words[0] ?? "")) return BRAND_RAJASTHAN;
   // The longest run of leading words that is a place tag: "Sawai Madhopur", "SriGanganagar", "Sikar" (of "Sikar Crime")
   for (let n = words.length; n >= 1; n--) {
-    const p = tagPlace(words.slice(0, n).join(""), places);
-    if (p) return p.kind === "rajasthan" ? BRAND_RAJASTHAN : BRAND_NATIONAL;
+    const kind = kindOf(words.slice(0, n).join(""));
+    if (kind) return kind === "rajasthan" ? BRAND_RAJASTHAN : BRAND_NATIONAL;
   }
   return /\snews$/i.test(label) ? BRAND_NATIONAL : null;
 }

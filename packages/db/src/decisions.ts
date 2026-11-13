@@ -537,10 +537,16 @@ async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date,
       const total = reporters.reduce((a, r) => a + r.n, 0);
       if (!total) return { day, written: 0, ...(await finish(tx, orgId, day)) };
 
+      // An item's key as itemKey() makes it: NFC and lower case, so "#क़ानून" stored precomposed and decomposed
+      // count as one item. normalize() needs PostgreSQL 13+ on a UTF8 database; anywhere else lower() alone
+      // (the outcome writes already store NFC: postItems normalizes the final text).
+      const nfc = ((await tx.execute(sql`
+        SELECT current_setting('server_version_num')::int >= 130000 AND current_setting('server_encoding') = 'UTF8' AS ok`)).rows[0] as { ok?: boolean } | undefined)?.ok === true;
+      const key = nfc ? sql`lower(normalize(i, NFC))` : sql`lower(i)`;
       const items = (await tx.execute(sql`
         WITH base AS (${base}),
         items AS (
-          SELECT DISTINCT b.id, b.r, lower(i) AS k
+          SELECT DISTINCT b.id, b.r, ${key} AS k
             FROM base b CROSS JOIN LATERAL unnest(coalesce(b.final_hashtags, '{}'::text[]) || coalesce(b.final_handles, '{}'::text[])) AS i
         ),
         tot AS (SELECT k, count(*)::int AS all_c FROM items GROUP BY k),

@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DbHandle } from "../src/client";
 import {
-  LOGIC_VERSION, editDistance, istDate, itemOutcomes, minusDays, postItems, recordOutcome, recordProposal, reporterStatusReport, reworkBase, reworkRatio,
+  LOGIC_VERSION, editDistance, istDate, itemKey, itemOutcomes, minusDays, postItems, recordOutcome, recordProposal, reporterStatusReport, reworkBase, reworkRatio,
   setDecisionLogger, snapshotReporterFeatures, voidOutcome, type ProposalRecord,
 } from "../src/decisions";
 import { claimDraft, copyPosted, rejectDraft, restoreDraft, undoCopyPosted } from "../src/desk";
@@ -19,6 +19,8 @@ async function refused(p: Promise<unknown>, re: RegExp) {
   expect(err, "expected the database to refuse").not.toBeNull();
   expect(`${err!.message} ${err!.cause?.message ?? ""}`).toMatch(re);
 }
+
+const round4 = (x: number) => Math.round(x * 10_000) / 10_000;
 
 const P = (item: string, layer: "emit" | "suggest", source: string, extra: Partial<LoggedProposal> = {}): LoggedProposal => ({
   item, kind: item.startsWith("#") ? "hashtag" : "handle", layer, source, reason: `${source} reason`, ...extra,
@@ -461,5 +463,29 @@ describe("istDate", () => {
     const [a, b] = await Promise.all([snapshotReporterFeatures(h.pool, s.org.id, day), snapshotReporterFeatures(h.pool, s.org.id, day)]);
     expect(a.written + b.written).toBe(a.reporters);
     expect(a.reporters).toBe(b.reporters);
+  });
+
+  it("counts a Devanagari tag stored in NFC and in NFD as one item (normalize NFC, then lower case)", async () => {
+    const yesterday = new Date("2026-11-14T10:00:00Z");
+    // क़ (U+0958) precomposed and क + nukta; ऩ (U+0929) composed and न + nukta
+    const qanoon = "#क़ानून";
+    const qanoonNfd = qanoon.normalize("NFD");
+    const naya = "#ऩया";
+    const nayaNfd = naya.normalize("NFD");
+    expect(qanoonNfd).not.toBe(qanoon);
+    expect(nayaNfd).not.toBe(naya);
+    await decided("unicode", yesterday, [qanoon, naya]);
+    await decided("unicode", yesterday, [qanoonNfd, nayaNfd, "#UPPER"]);
+    await decided("unicode", yesterday, ["#upper"]);
+    await snapshotReporterFeatures(h.pool, s.org.id, new Date(NOW.getTime() + 2 * 86_400_000 + 86_400_000));
+    const [u] = await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "unicode"), eq(reporterFeatures.snapshotDate, "2026-11-16")));
+    expect(u!.n).toBe(3);
+    const keys = Object.keys(u!.features.items).sort();
+    expect(keys).toEqual([itemKey(qanoon), itemKey(naya), "#upper"].sort());
+    // The key is the one itemKey() gives the post text, whichever form was stored
+    expect(itemKey(qanoonNfd)).toBe(itemKey(qanoon));
+    expect(u!.features.items[itemKey(qanoon)]).toMatchObject({ count: 2, rate: round4(2 / 3) });
+    expect(u!.features.items[itemKey(naya)]).toMatchObject({ count: 2 });
+    expect(u!.features.items["#upper"]).toMatchObject({ count: 2 });
   });
 });

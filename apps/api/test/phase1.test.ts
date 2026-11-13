@@ -73,7 +73,7 @@ const tags = (over: Partial<FileTags>): FileTags => ({
     await draft("jodhpur-big", { district: "Jodhpur", town: "पीपाड़", fileTags: tags({ big: true, desk: "NDR", reporter: "REPORTER" }), deskNote: "नोट-: फुलस्क्रीन करावें", needsCheck: ["desk_note"] });
     await draft("jaipur-update", { district: "Jaipur", fileTags: tags({ update: true, desk: "VKS" }) });
     await draft("no-district", { district: null, fileTags: tags({ desk: "VKS" }), needsCheck: ["no_district"] });
-    await draft("too-long", { district: "Kota", fileTags: tags({}) }, { bodyText: "क".repeat(300) });
+    await draft("too-long", { district: "Kota", fileTags: tags({}) }, { bodyText: "क".repeat(1001) });
 
     await recordIngestPoll(h.db, orgId, {
       mode: "folder", taken: 1, cursor: null,

@@ -396,6 +396,8 @@ export const postDrafts = pgTable(
     status: text("status").notNull().default("rendering"),
     /** Editable post text without the tag line */
     bodyText: text("body_text").notNull(),
+    /** Breaking drafts: line 2 as the composer wrote it (b8). Desk saves never write it; null before 0026 */
+    composerLine2: text("composer_line2"),
     /** Text printed on the card */
     cardHeadline: text("card_headline").notNull(),
     hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),

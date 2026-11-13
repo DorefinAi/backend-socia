@@ -184,7 +184,7 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
     });
   });
   // An office named without its holder (reporter-prior brief §6): its handles must be entries of this file
-  const office = parseOffices((root as { offices?: unknown }).offices, handles);
+  const office = parseOffices((root as { offices?: unknown }).offices, handles, (root as { office_exclusion_lists?: unknown }).office_exclusion_lists);
   for (const m of office.problems) reject(m);
   if (rejects.length) throw new DataFileRejected("subject-handles", rejects);
   return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles, offices: office.offices };

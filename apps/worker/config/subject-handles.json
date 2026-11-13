@@ -9,33 +9,41 @@
       "handles": ["@BhajanlalBjp", "@RajCMO"],
       "holder_since": "2023-12-15",
       "exclude_same_sentence": [
-        "पूर्व", "दिल्ली", "मध्यप्रदेश", "मध्य प्रदेश", "मप्र", "यूपी", "उत्तर प्रदेश", "पंजाब", "गुजरात", "हरियाणा", "महाराष्ट्र", "बिहार",
-        "छत्तीसगढ़", "कर्नाटक", "बंगाल", "पश्चिम बंगाल", "गोवा", "तमिलनाडु", "केरल", "असम", "ओडिशा", "झारखंड", "उत्तराखंड", "हिमाचल",
-        "तेलंगाना", "आंध्र", "आंध्र प्रदेश",
+        "पूर्व",
         "मोहन यादव", "योगी", "रेखा गुप्ता", "भगवंत मान", "फडणवीस", "नीतीश", "गहलोत",
         "डिप्टी", "Deputy", "उप",
-        "Former", "Ex", "Delhi", "Madhya Pradesh", "Uttar Pradesh", "Bihar", "Punjab", "Gujarat", "Haryana", "Maharashtra",
-        "Chhattisgarh", "Karnataka", "Bengal", "West Bengal", "Goa", "Tamil Nadu", "Kerala", "Assam", "Odisha", "Jharkhand",
-        "Uttarakhand", "Himachal", "Telangana", "Andhra", "Andhra Pradesh",
+        "Former", "Ex",
         "Yogi", "Rekha Gupta", "Mohan Yadav", "Gehlot", "Nitish", "Mann", "Bhagwant Mann", "Fadnavis"
       ],
-      "_exclude_next_to_alias_note": "Short codes that are also other words: they make it another state's CM ONLY right beside the alias ('MP CM', 'MP के मुख्यमंत्री', 'UP के CM'), never elsewhere in the sentence: 'सांसद/MP ने CM से मुलाकात की' is still the Rajasthan CM. Matched with case as written.",
-      "exclude_next_to_alias": ["MP", "UP"]
+      "exclude_same_sentence_lists": ["other_states"],
+      "_exclude_next_to_alias_note": "Short codes that are also other words: they make it another state's CM ONLY right beside the alias ('MP CM', 'MP के मुख्यमंत्री', 'UP के CM', 'MP-CM', 'एमपी के सीएम'), never elsewhere in the sentence: 'सांसद/MP ने CM से मुलाकात की' is still the Rajasthan CM. A hyphen or slash may join them. Matched with case as written.",
+      "exclude_next_to_alias": ["MP", "UP", "एमपी", "यूपी"]
     },
     "rajasthan_cs": {
-      "note": "The Chief Secretary named without a name ('मुख्य सचिव ने ली बैठक'): OFFERED only, never tagged (approved 2026-11-13). 'CS' is a whole word, so never ACS, CSR or CSIR; 'अतिरिक्त' / 'Additional' is the ACS spelled out ('अतिरिक्त मुख्य सचिव'), 'ICSI' / 'कंपनी सचिव' / 'Company Secretary' is the CS exam. @svoruganti1466 is still HELD for desk check in this file's entries, which is why this is a suggestion at most.",
+      "note": "The Chief Secretary named without a name ('मुख्य सचिव ने ली बैठक'): OFFERED only, never tagged (approved 2026-11-13). 'CS' is a whole word, so never ACS, CSR or CSIR; 'अतिरिक्त' / 'Additional' is the ACS spelled out ('अतिरिक्त मुख्य सचिव'), 'ICSI' / 'कंपनी सचिव' / 'Company Secretary' is the CS exam. The other states come from the shared office_exclusion_lists.other_states, as for the CM. MP / UP and Ex are next-to-alias only ('MP के मुख्य सचिव', 'Ex CS', 'Ex-Chief Secretary'), so 'set up', 'follow up', 'ex-servicemen' and 'सांसद/MP ने मुख्य सचिव से मुलाकात की' still name the Rajasthan CS. @svoruganti1466 is still HELD for desk check in this file's entries, which is why this is a suggestion at most.",
       "detail": "Chief Secretary mentioned without a name",
       "aliases_hi": ["मुख्य सचिव"],
       "aliases_en": ["CS", "Chief Secretary"],
       "handles": ["@svoruganti1466"],
       "exclude_same_sentence": [
-        "पूर्व", "Former", "former", "Ex", "ex", "रिटायर्ड", "सेवानिवृत्त", "निवर्तमान", "Retired", "retired",
+        "पूर्व", "Former", "रिटायर्ड", "सेवानिवृत्त", "निवर्तमान", "Retired",
         "अतिरिक्त", "Additional",
-        "दिल्ली", "मध्यप्रदेश", "मध्य प्रदेश", "MP", "यूपी", "उत्तर प्रदेश", "UP", "पंजाब", "गुजरात", "हरियाणा", "महाराष्ट्र", "बिहार",
-        "Delhi", "Madhya Pradesh", "Uttar Pradesh", "Punjab", "Gujarat", "Haryana", "Maharashtra", "Bihar",
         "ICSI", "कंपनी सचिव", "Company Secretary"
-      ]
+      ],
+      "exclude_same_sentence_lists": ["other_states"],
+      "exclude_next_to_alias": ["MP", "UP", "एमपी", "यूपी", "Ex", "EX", "ex"]
     }
+  },
+  "office_exclusion_lists": {
+    "_note": "Word lists several offices share, named in an office's exclude_same_sentence_lists and added to its exclude_same_sentence (matched the same way: whole words, without case, anywhere in the sentence). other_states: the other states, in Hindi and English, that make a CM or a Chief Secretary another state's. Short codes that are also everyday words (MP, UP) are NOT here: they go in each office's exclude_next_to_alias.",
+    "other_states": [
+      "दिल्ली", "मध्यप्रदेश", "मध्य प्रदेश", "मप्र", "यूपी", "उत्तर प्रदेश", "पंजाब", "गुजरात", "हरियाणा", "महाराष्ट्र", "बिहार",
+      "छत्तीसगढ़", "कर्नाटक", "बंगाल", "पश्चिम बंगाल", "गोवा", "तमिलनाडु", "केरल", "असम", "ओडिशा", "झारखंड", "उत्तराखंड", "हिमाचल",
+      "तेलंगाना", "आंध्र", "आंध्र प्रदेश",
+      "Delhi", "Madhya Pradesh", "Uttar Pradesh", "Bihar", "Punjab", "Gujarat", "Haryana", "Maharashtra",
+      "Chhattisgarh", "Karnataka", "Bengal", "West Bengal", "Goa", "Tamil Nadu", "Kerala", "Assam", "Odisha", "Jharkhand",
+      "Uttarakhand", "Himachal", "Telangana", "Andhra", "Andhra Pradesh"
+    ]
   },
   "entries": [
     {

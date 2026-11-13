@@ -21,8 +21,14 @@ export interface OfficeData {
    */
   exclude_same_sentence?: string[];
   /**
-   * Short codes that are also other words ("MP": a state and a Member of Parliament): they make it another office
-   * ONLY right beside the alias ("MP CM", "MP के मुख्यमंत्री", "CM of MP"), matched with case as written.
+   * Names of shared lists in the file's top-level `office_exclusion_lists` ("other_states"), added to
+   * exclude_same_sentence: the CM and the Chief Secretary read one list of other states, so they cannot drift apart.
+   */
+  exclude_same_sentence_lists?: string[];
+  /**
+   * Short codes that are also other words ("MP": a state and a Member of Parliament; "Ex" in "ex-servicemen"): they
+   * make it another office ONLY right beside the alias ("MP CM", "MP के मुख्यमंत्री", "MP-CM", "Ex CS", "CM of MP"),
+   * matched with case as written.
    */
   exclude_next_to_alias?: string[];
   /** The line shown with the offered handle; default "CM mentioned without a name" */
@@ -55,12 +61,24 @@ const whole = (alt: string, flags = "u") => new RegExp(`(?<![\\p{L}\\p{M}\\p{N}]
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : []);
 
 /**
- * The `offices` block of subject-handles.json. Every problem is returned (the caller rejects the whole file): an
- * office with no alias, a handle that is not in `directory` (handles of this file, lower-cased, no @).
+ * The `offices` block of subject-handles.json, with its shared `office_exclusion_lists`. Every problem is returned
+ * (the caller rejects the whole file): an office with no alias, a handle that is not in `directory` (handles of this
+ * file, lower-cased, no @), a shared list that is not a list of words, an office naming a list that does not exist.
  */
-export function parseOffices(json: unknown, directory: ReadonlySet<string>): { offices: Office[]; problems: string[] } {
+export function parseOffices(json: unknown, directory: ReadonlySet<string>, sharedLists?: unknown): { offices: Office[]; problems: string[] } {
   const problems: string[] = [];
   const offices: Office[] = [];
+  const lists = new Map<string, string[]>();
+  if (sharedLists !== undefined) {
+    if (!sharedLists || typeof sharedLists !== "object" || Array.isArray(sharedLists)) problems.push('"office_exclusion_lists" must be { "other_states": ["...", ...] }');
+    else {
+      for (const [name, v] of Object.entries(sharedLists as Record<string, unknown>)) {
+        if (name.startsWith("_")) continue;
+        if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== "string" || !x.trim())) problems.push(`office_exclusion_lists.${name}: must be a list of words`);
+        else lists.set(name, v as string[]);
+      }
+    }
+  }
   if (json === undefined) return { offices, problems };
   if (!json || typeof json !== "object" || Array.isArray(json)) return { offices, problems: ['"offices" must be { "rajasthan_cm": { ... } }'] };
   for (const [key, raw] of Object.entries(json as Record<string, unknown>)) {
@@ -81,10 +99,18 @@ export function parseOffices(json: unknown, directory: ReadonlySet<string>): { o
     if (!handles.length) problems.push(`offices.${key}: no handles`);
     if (!aliases.length || !handles.length) continue;
     const alias = words(aliases);
-    const ex = words(strings(o.exclude_same_sentence));
+    const shared: string[] = [];
+    if (o.exclude_same_sentence_lists !== undefined && !Array.isArray(o.exclude_same_sentence_lists)) problems.push(`offices.${key}: "exclude_same_sentence_lists" must be a list of names`);
+    for (const name of strings(o.exclude_same_sentence_lists)) {
+      const l = lists.get(name);
+      if (l) shared.push(...l);
+      else problems.push(`offices.${key}: "${name}" is not a list in office_exclusion_lists`);
+    }
+    const ex = words([...strings(o.exclude_same_sentence), ...shared]);
     const near = words(strings(o.exclude_next_to_alias));
     // "MP CM", "MP के मुख्यमंत्री", "CM of MP": the code beside the alias, at most a postposition between them
-    const excludeNear = near ? whole(`(?:${near})\\s*(?:(?:के|की|का)\\s+)?(?:${alias})|(?:${alias})\\s+of\\s+(?:${near})`) : null;
+    // A hyphen or slash may join them too: "MP-CM", "MP/CM", "Ex-CS"
+    const excludeNear = near ? whole(`(?:${near})\\s*(?:[-–/]\\s*)?(?:(?:के|की|का)\\s+)?(?:${alias})|(?:${alias})\\s+of\\s+(?:${near})`) : null;
     offices.push({
       key,
       alias: whole(alias),

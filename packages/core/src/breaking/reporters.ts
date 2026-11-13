@@ -161,7 +161,7 @@ const rates = (v: unknown, where: string, problem: (m: string) => void): Record<
 
 /**
  * What a reporter's `prior` may name, beyond being well-formed (parseReporterHandles' `check`). Both lower-cased
- * without the @. A handle outside `directory`, or inside `bound`, rejects the whole file.
+ * without the @. A handle outside `directory`, or inside `bound`, rejects that reporter's entry.
  */
 export interface ReporterPriorCheck {
   /** Every handle the OTHER directory files carry (this file's own handles are added) */
@@ -172,7 +172,7 @@ export interface ReporterPriorCheck {
 
 /**
  * A reporter's profile. A malformed `prior` (no finite sample size, a rate outside 0..1, a handle outside the
- * directory or a police / collector handle) goes to `reject` and fails the whole file; an unknown beats_source is
+ * directory or a police / collector handle) goes to `reject`, which rejects that entry; an unknown beats_source is
  * a warning.
  */
 function parseProfile(e: ReporterHandleEntry, handle: string, name: string, where: string, problem: (m: string) => void, reject: (m: string) => void, check: ReporterPriorCheck): ReporterProfile {
@@ -262,19 +262,28 @@ function claim(rules: ReporterRules, spelling: string, match: ReporterMatch, pro
 }
 
 /**
- * Checks a parsed reporter-handles.json. The root must be `{ entries: [...] }` or this throws and the
- * worker keeps its last good copy. A malformed entry is skipped and reported through `problem`; an
- * unverified entry is left out silently; a token claimed by two reporters is REMOVED and reported.
+ * Checks a parsed reporter-handles.json. The root must be `{ entries: [...] }`, and ambiguous_tokens a list, or this
+ * throws and the worker keeps its last good copy. A malformed entry (its prior included) is skipped and reported
+ * through `problem`, naming its handle; bad prior settings switch the measured prior off and say so; an unverified
+ * entry is left out silently; a token claimed by two reporters is REMOVED and reported.
  */
 export function parseReporterHandles(json: unknown, problem: (message: string) => void = () => undefined, check: ReporterPriorCheck = {}): ReporterRules {
   const root = json as Partial<ReporterHandlesData> | null;
   if (!root || typeof root !== "object" || !Array.isArray(root.entries)) {
     throw new Error("reporter handles: expected { version, entries: [...] }");
   }
-  // The prior and its settings are rejected WHOLE (b6 fix brief P5): a wrong rate or an invented handle is never
-  // quietly skipped or defaulted
+  // What a problem takes down (O2, 13 Nov): never quietly skipped or defaulted, but no wider than it has to be.
+  //   - ambiguous_tokens malformed: the WHOLE FILE is rejected. It is what keeps a token two colleagues share off
+  //     every post; loading without it could put the wrong reporter's byline on one. The worker keeps its last
+  //     good copy.
+  //   - prior_settings / prior_base_rates malformed: the file loads, the MEASURED PRIOR IS OFF (no profile keeps its
+  //     `prior`) and `problem` says so. Defaults would offer what the edit may have meant to hold back; off offers
+  //     nothing, and bylines, desk rules and declared beats keep working.
+  //   - one entry bad (a malformed prior, a police or invented handle in it, a file-level key inside it, a bad
+  //     policy block): THAT ENTRY is rejected, named by its handle, and the rest of the file loads.
   const rejects: string[] = [];
   const reject = (m: string) => rejects.push(m);
+  const settingsProblems: string[] = [];
   const handles = new Set<string>();
   const verifiedHandles = new Set<string>();
   const profiles = new Map<string, ReporterProfile>();
@@ -284,8 +293,9 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
   // Ambiguous tokens are conflicts from the start, so no entry can claim them (§5.1: DINESH is Dangi and Kasana)
   const ambiguous = new Set(strings(root.ambiguous_tokens).map(reporterKey).filter(Boolean));
   const rules: ReporterRules = {
-    byToken: new Map(), conflicts: new Set(ambiguous), count: 0, handles, verifiedHandles, profiles, ambiguous, prior: parsePriorSettings(root, reject),
+    byToken: new Map(), conflicts: new Set(ambiguous), count: 0, handles, verifiedHandles, profiles, ambiguous, prior: parsePriorSettings(root, (m) => settingsProblems.push(m)),
   };
+  if (rejects.length) throw new DataFileRejected("reporter-handles", rejects);
   // This file's own handles are part of the directory a prior may name
   for (const raw of root.entries) {
     const h = (raw as Partial<ReporterHandleEntry> | null)?.handle;
@@ -305,10 +315,22 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     if (!e.verified) return;
 
     const handle = e.handle.trim().replace(/^@/, "");
-    verifiedHandles.add(handle.toLowerCase());
     const name = typeof e.name === "string" && e.name.trim() ? e.name.normalize("NFC").trim() : handle;
+    const who = `${where} (@${handle})`;
+    // Everything wrong with THIS entry: it alone is rejected, the rest of the file loads (O2)
+    const entryProblems: string[] = [];
+    for (const k of FILE_LEVEL_KEYS) if (k in e) entryProblems.push(`"${k}" belongs at the top of the file, not inside an entry`);
+    const pol = (e as { policy?: unknown }).policy;
+    if (pol !== undefined && (!pol || typeof pol !== "object" || Array.isArray(pol) || ((pol as { district_when_missing?: unknown }).district_when_missing !== undefined && typeof (pol as { district_when_missing?: unknown }).district_when_missing !== "string"))) {
+      entryProblems.push(`"policy" must be { "district_when_missing": "<District>" }`);
+    }
+    const profile = parseProfile(e as ReporterHandleEntry, handle, name, who, problem, (m) => entryProblems.push(m), priorCheck);
+    if (entryProblems.length) {
+      return problem(`${who}: entry REJECTED, this reporter is not loaded (no byline, no desk rule, no prior) until it is fixed — ${entryProblems.join("; ")}`);
+    }
+    verifiedHandles.add(handle.toLowerCase());
     const match: ReporterMatch = { handle, name, districts: strings(e.districts) };
-    profiles.set(handle.toLowerCase(), parseProfile(e as ReporterHandleEntry, handle, name, `${where} (${e.handle})`, problem, reject, priorCheck));
+    profiles.set(handle.toLowerCase(), profile);
     let added = 0;
     for (const spelling of strings(e.names_en)) {
       if (ambiguous.has(reporterKey(spelling))) {
@@ -323,9 +345,16 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     rules.count++;
   });
 
-  if (rejects.length) throw new DataFileRejected("reporter-handles", rejects);
+  // Bad prior settings: the measured prior is switched OFF for everyone rather than run on defaults
+  if (settingsProblems.length) {
+    for (const [k, p] of profiles) if (p.prior) profiles.set(k, { ...p, prior: null });
+    problem(`the measured reporter prior is OFF until prior_settings / prior_base_rates are fixed (bylines, desk rules and declared beats still load) — ${settingsProblems.join("; ")}`);
+  }
   return rules;
 }
+
+/** Keys of the file's top level: inside an entry they are a misplaced edit, and reject that entry */
+const FILE_LEVEL_KEYS = ["prior_settings", "prior_base_rates", "ambiguous_tokens", "entries", "version"] as const;
 
 /** A token the desk taught us by hand, from handle_directory (source "reporter") */
 export interface LearnedReporterToken {

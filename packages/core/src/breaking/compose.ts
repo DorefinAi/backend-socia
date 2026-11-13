@@ -20,7 +20,7 @@ import { EMPTY_PARTY_RULES, type PartyRules } from "./parties";
 import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, type ReporterMatch, type ReporterRules } from "./reporters";
 import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
-import { headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, type DistrictFrom } from "./parse";
+import { deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, type DistrictFrom } from "./parse";
 import {
   EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags,
   type Sourced, type SuggestRules, type TagNormaliser,
@@ -110,6 +110,12 @@ export interface BreakingComposeOptions {
    * L7 test compares against: the emitted post must be byte-identical either way.
    */
   reporterPrior?: boolean;
+  /**
+   * Words that make the text before the headline's colon a LABEL, not a place ("बड़ी खबर:", "पंचायत चुनाव:",
+   * "ब्रेकिंग:"): a reporter's desk rule still puts its tag before them ("#Jaipur: पंचायत चुनाव: ..."). Default
+   * HEADLINE_LABEL_WORDS; matched per word, without case or nukta.
+   */
+  headlineLabels?: readonly string[];
   limit?: number;
   target?: number;
 }
@@ -315,11 +321,35 @@ export function recoverDistrictFrom(sourceText: string | null | undefined, fileN
   return p.district === district ? p.districtFrom : null;
 }
 
+/**
+ * The words that make a pre-colon prefix a label rather than a place (BreakingComposeOptions.headlineLabels). From the
+ * desk's own prefixes in the Sep–Nov exports: "पंचायत चुनाव:", "पंचायतीराज चुनाव 2026:", "Breaking News:", "बड़ी खबर:".
+ */
+export const HEADLINE_LABEL_WORDS: readonly string[] = [
+  "खबर", "ख़बर", "बड़ी", "बड़ा", "बड़े", "ताजा", "ब्रेकिंग", "अपडेट", "लाइव", "एक्सक्लूसिव", "अलर्ट", "सूचना", "चुनाव", "मतदान",
+  "Breaking", "News", "Live", "Update", "Exclusive", "Alert",
+];
+
+/** Whether a pre-colon prefix is a label: any of its words is a label word */
+export function isHeadlineLabel(prefix: string, labels: readonly string[] = HEADLINE_LABEL_WORDS): boolean {
+  const set = new Set(labels.map((w) => fold(w)).filter(Boolean));
+  return prefix.split(/[\s\-–—/]+/u).some((w) => set.has(fold(w)));
+}
+
+/** "#JodhpurNews", "#Jodhpur_News", "#जोधपुरन्यूज़", "#जोधपुरसमाचार": the place a "<Place>News" tag names */
+const NEWS_STEM = /^(.+?)_?(?:News|NEWS|news|न्यूज़?|समाचार)$/u;
+const tagPlace = (book: PlaceBook, raw: string) => {
+  const t = raw.normalize("NFC");
+  const stem = NEWS_STEM.exec(t)?.[1];
+  return book.hashtag(t) ?? (stem ? book.hashtag(stem) : null);
+};
+
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
     reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = X_LIMIT, target = BREAKING_TARGET,
     normaliser = EMPTY_NORMALISER, suggestRules = EMPTY_SUGGEST_RULES, at, beats = EMPTY_BEAT_RULES, reporterPrior: reporterPriorOn = true,
+    headlineLabels = HEADLINE_LABEL_WORDS,
   } = opts;
   // URLs never reach a rule or the post (§2.1): every line this reads is cleaned first
   const flags: string[] = [];
@@ -374,11 +404,16 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   if (profile?.districtWhenMissing && !policyDistrict) {
     policyWarnings.push(`@${profile.handle}'s district_when_missing "${profile.districtWhenMissing}" is not a district in the places file; the desk rule was not applied`);
   }
-  const placeTagged = [story.rawHeadline ?? story.headline, ...story.points].some((line) => [...line.matchAll(HASHTAG)].some((m) => m[1] !== undefined && book.hashtag(m[1]) !== null));
+  // A place hashtag anywhere, "#<Place>News" included (#JodhpurNews, #DelhiNews): the desk wrote the place
+  const placeTagged = [story.rawHeadline ?? story.headline, ...story.points].some((line) => [...line.matchAll(HASHTAG)].some((m) => m[1] !== undefined && tagPlace(book, m[1]) !== null));
+  // A place the desk wrote before the headline's colon, known or not ("रामपुरा खुर्द: ..."), that is not a label
+  // ("बड़ी खबर:", "पंचायत चुनाव:"). The parser drops an unknown two-word prefix from the headline; it still blocks.
+  const prefixPlace = deskPlacePrefix(book, story.rawHeadline ?? story.headline);
+  const prefixTagged = !!prefixPlace && !isHeadlineLabel(prefixPlace, headlineLabels);
   // A district found only by the gazetteer (headline, text) or guessed from the reporter is not one the desk wrote; a
   // stored district of unknown provenance (a row before migration 0023) may be, so it blocks
   const gazetteerOnly = district?.provenance === "inferred" && (district.from === "headline" || district.from === "text" || district.from === "reporter");
-  const deskWrotePlace = !!place || (!!district && !gazetteerOnly) || headlineTags.length > 0 || !!story.town || placeTagged || deskRun;
+  const deskWrotePlace = !!place || (!!district && !gazetteerOnly) || headlineTags.length > 0 || !!story.town || placeTagged || prefixTagged || deskRun;
   const policy = policyDistrict && profile && !deskWrotePlace ? { district: policyDistrict, layer: isVideoHeadline(headline) ? ("suggest" as const) : ("emit" as const), name: profile.name } : null;
   const policyReason = policy ? `${policy.name}'s desk rule: a post naming no district goes out as ${policy.district.name} (filed from that desk, not a location)` : "";
   const footer = rajasthan ? RAJASTHAN_FOOTER : NATIONAL_FOOTER;

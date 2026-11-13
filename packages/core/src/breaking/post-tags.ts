@@ -508,11 +508,18 @@ export interface PostTagContext {
   /** Evergreen topic tags that are emitted (precise enough to auto-apply) */
   topics?: readonly { tag: string; pattern: RegExp }[];
   /**
-   * The filing reporter's desk rule (reporter-prior brief §4): the district tag ("Jaipur") a post that names NO
-   * district in any slot, and none the gazetteer infers, gets — as the leading tag on a standard post, offered
-   * (never a leading tag) on a video post. From the file name's reporter only.
+   * The filing reporter's desk rule (reporter-prior brief §4): the district tag ("Jaipur") a post gets when the desk
+   * wrote no place — as the leading tag on a standard post, offered (never a leading tag) on a video post. From the
+   * file name's reporter only. The same rule as composeBreaking: only what the DESK wrote blocks it (a place in any
+   * slot, "#<Place>News" included; its own leading tag run; a place before the headline's colon, see
+   * `deskPlacePrefix`). A district the gazetteer infers does NOT block it, and it never changes the brand.
    */
   reporterPolicy?: string | null;
+  /**
+   * Whether the desk wrote a place before the headline's colon ("रामपुरा खुर्द: ..."): composeBreaking's R3 check,
+   * given here by a caller that has the places file (parse.ts deskPlacePrefix and isHeadlineLabel). None: not checked.
+   */
+  deskPlacePrefix?: (headline: string) => boolean;
 }
 
 export interface PostTags {
@@ -567,16 +574,19 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
   const d = emittable(district);
   const place = d ? tagPlace(d, ctx.places) : null;
 
-  // The reporter's desk rule: only when nothing resolves (no slot, no place anywhere, no inference). Video format has
-  // no leading run, so there it is offered in the trailing run instead.
-  const policyTag = ctx.reporterPolicy && !slot && !inferredDistrict && !namesAPlace(s, ctx) ? ctx.reporterPolicy : null;
+  // The reporter's desk rule, as composeBreaking applies it: only what the desk WROTE blocks it — a place in any slot,
+  // its own leading tag run (format A), a place before the headline's colon. The gazetteer's inference does not (user
+  // decision, 13 Nov). Video format has no leading run, so there it is offered in the trailing run instead.
+  const deskWrotePlace = format === "A" || !!slot || namesAPlace(s, ctx) || (ctx.deskPlacePrefix?.(s.headline) ?? false);
+  const policyTag = ctx.reporterPolicy && !deskWrotePlace ? ctx.reporterPolicy : null;
   const policy: PostTags["policy"] = policyTag ? (video ? "suggest" : "emit") : null;
   const lead: string[] = [];
   if (format === "A") {
     lead.push(leadNorm[0]!);
     if (leadNorm[1] && isDevanagari(leadNorm[1])) lead.push(leadNorm[1]);
   } else if (policy === "emit") lead.push(policyTag!);
-  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : policy === "emit" ? policyTag : null, trail: trailNorm, video, headline: line1 }, ctx.places);
+  // The desk rule's tag means "filed from that desk", not where the story is: it never decides the brand
+  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : null, trail: trailNorm, video, headline: line1 }, ctx.places);
   if (brand.unknownDistrict) flags.push(`unknown_district:${brand.unknownDistrict}`);
 
   const trail: string[] = [];

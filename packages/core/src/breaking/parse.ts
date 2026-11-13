@@ -245,6 +245,18 @@ function headlinePrefix(book: PlaceBook, headline: string, hint: string | null):
   return place ? { place, rest: m[2]! } : null;
 }
 
+/**
+ * The words before the headline's colon when the parser reads them as a place the desk wrote ("रामपुरा खुर्द:",
+ * "आकोला:", "कोटा:"), else null: a hashtag run, a party or election word, a label ("बड़ी खबर:", "ब्रेकिंग:") or
+ * anything not place-shaped is not one. The parser itself still drops an unknown two-word prefix from the headline
+ * (to be revisited after a replay); this only lets the composer see that the desk named a place there.
+ */
+export function deskPlacePrefix(book: PlaceBook, headline: string): string | null {
+  const h = clean(headline.normalize("NFC"));
+  if (!headlinePrefix(book, h, null)) return null;
+  return /^([^:：]{2,30}?)\s*[:：]/u.exec(h)?.[1]?.trim() ?? null;
+}
+
 /** "#Jhalawar #डग: ...", "#Alwar: ...": one to three hashtags, then the colon */
 const HASHTAG_PREFIX = /^((?:#[\p{L}\p{M}\p{N}_]+\s*){1,3})[:：]\s*[-–]?\s*(.*)$/u;
 

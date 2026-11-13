@@ -20,7 +20,7 @@ import { EMPTY_PARTY_RULES, type PartyRules } from "./parties";
 import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, type ReporterMatch, type ReporterRules } from "./reporters";
 import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
-import { deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, type DistrictFrom } from "./parse";
+import { deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, type DistrictFrom } from "./parse";
 import {
   EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand,
   BRAND_RAJASTHAN, type PlaceKind, type PlaceKindLookup, type Sourced, type SuggestRules, type TagNormaliser,
@@ -443,8 +443,9 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   if (profile?.districtWhenMissing && !policyDistrict) {
     policyWarnings.push(`@${profile.handle}'s district_when_missing "${profile.districtWhenMissing}" is not a district in the places file; the desk rule was not applied`);
   }
-  // A place hashtag anywhere, "#<Place>News" included (#JodhpurNews, #DelhiNews): the desk wrote the place
-  const placeTagged = [story.rawHeadline ?? story.headline, ...story.points].some((line) => [...line.matchAll(HASHTAG)].some((m) => m[1] !== undefined && tagPlace(book, m[1]) !== null));
+  // A place hashtag anywhere, "#<Place>News" included (#JodhpurNews, #DelhiNews, #जोधपुरन्यूज़): the desk wrote the place.
+  // The same reading as the parser's headline district tags (parse.ts placeOfTag)
+  const placeTagged = [story.rawHeadline ?? story.headline, ...story.points].some((line) => [...line.matchAll(HASHTAG)].some((m) => m[1] !== undefined && placeOfTag(book, m[1]) !== null));
   // A place the desk wrote before the headline's colon, known or not ("रामपुरा खुर्द: ..."), that is not a label
   // ("बड़ी खबर:", "पंचायत चुनाव:"). The parser drops an unknown two-word prefix from the headline; it still blocks.
   const prefixPlace = deskPlacePrefix(book, story.rawHeadline ?? story.headline);

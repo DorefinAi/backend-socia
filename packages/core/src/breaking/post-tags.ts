@@ -536,6 +536,22 @@ export interface PostTagContext {
    * never reaches this (FL5). None: a Hindi leading tag decides nothing, as before.
    */
   leadTagDistrict?: (tag: string) => string | null;
+  /**
+   * The Latin place tag a Hindi place name is ("जोधपुर" → "Jodhpur"), from a caller that has the places file
+   * (parse.ts hindiPlaceTag). With it a Hindi "#<स्थान>न्यूज़" tag reads exactly as "#<Place>News" does (C-c), as
+   * composeBreaking reads it. None: Hindi news tags are read as written (no place).
+   */
+  hindiPlace?: (name: string) => string | null;
+}
+
+/** "#जोधपुरन्यूज़", "#जोधपुरन्यूज", "#जोधपुरसमाचार": the Hindi "<Place>News" form; the same stems as parse.ts placeOfTag */
+const HINDI_NEWS_STEM = /^(.+?)_?(?:न्यूज़?|समाचार)$/u;
+/** A Hindi "<स्थान>न्यूज़" tag as its Latin "<Place>News" form when the stem is a known place, else the tag as written */
+export function hindiNewsAsLatin(tag: string, hindiPlace: PostTagContext["hindiPlace"]): string {
+  if (!hindiPlace || !isDevanagari(tag)) return tag;
+  const stem = HINDI_NEWS_STEM.exec(tag.normalize("NFC"))?.[1];
+  const place = stem ? hindiPlace(stem) : null;
+  return place ? `${place}News` : tag;
 }
 
 export interface PostTags {
@@ -570,7 +586,10 @@ export function namesAPlace(s: Segmented, ctx: Pick<PostTagContext, "places" | "
 
 /** The tags the desk would put on this post: emitted (lead, trail) and offered (suggest) */
 export function composePostTags(text: string, ctx: PostTagContext): PostTags {
-  const s = segmentPost(text);
+  const seg = segmentPost(text);
+  // A Hindi "#जोधपुरन्यूज़" is read as "#JodhpurNews" in every slot (C-c), so it counts wherever that tag counts
+  const h = (t: string) => hindiNewsAsLatin(t, ctx.hindiPlace);
+  const s: Segmented = ctx.hindiPlace ? { ...seg, lead: seg.lead.map(h), trail: seg.trail.map(h), inline: seg.inline.map(h) } : seg;
   const flags: string[] = [];
   const n = (t: string) => {
     const r = normaliseTag(t, ctx.normaliser);

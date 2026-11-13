@@ -371,6 +371,55 @@ describe("istDate", () => {
     expect(report.coverage.breakingDrafts - report.coverage.logged).toBe(3);
     expect((await reporterStatusReport(h.db, s.org.id, { since, limit: 1 })).rows).toHaveLength(3);
   });
+
+  it("the CHECK constraints refuse a half outcome, an unknown decision, a non-array proposals or voided, a negative rework", async () => {
+    const d = await s.draft("जांच");
+    const base = {
+      orgId: s.org.id, draftId: d.id, storyId: d.storyId, reporterStatus: "matched", logicVersion: LOGIC_VERSION, composeVersion: "t", draftText: "x",
+      proposals: [] as LoggedProposal[],
+    };
+    const decidedRow = { decision: "copy_posted" as const, decidedAt: new Date(), finalText: "x #T", finalHashtags: ["#T"], finalHandles: [], reworkRatio: 0 };
+    const insert = (values: Record<string, unknown>) => h.db.insert(postDecisions).values({ ...base, ...values } as typeof postDecisions.$inferInsert);
+    // post_decisions_outcome_whole: decision, decided_at and final_text are set together or not at all
+    await refused(insert({ decision: "copy_posted", finalText: "x" }), /post_decisions_outcome_whole/);
+    await refused(insert({ decidedAt: new Date(), finalText: "x" }), /post_decisions_outcome_whole/);
+    await refused(insert({ decision: "rejected", decidedAt: new Date() }), /post_decisions_outcome_whole/);
+    await refused(insert({ finalText: "x" }), /post_decisions_outcome_whole/);
+    // post_decisions_decision_known
+    await refused(insert({ ...decidedRow, decision: "posted_somewhere" }), /post_decisions_decision_known/);
+    // post_decisions_proposals_array: proposals and voided are JSON arrays
+    await refused(h.db.execute(sql`INSERT INTO post_decisions (org_id, draft_id, story_id, reporter_status, logic_version, compose_version, draft_text, proposals)
+      VALUES (${s.org.id}, ${d.id}, ${d.storyId}, 'matched', ${LOGIC_VERSION}, 't', 'x', '{"item":"#T"}'::jsonb)`), /post_decisions_proposals_array/);
+    await refused(h.db.execute(sql`INSERT INTO post_decisions (org_id, draft_id, story_id, reporter_status, logic_version, compose_version, draft_text, proposals, voided)
+      VALUES (${s.org.id}, ${d.id}, ${d.storyId}, 'matched', ${LOGIC_VERSION}, 't', 'x', '[]'::jsonb, '{}'::jsonb)`), /post_decisions_proposals_array/);
+    await refused(h.db.execute(sql`INSERT INTO post_decisions (org_id, draft_id, story_id, reporter_status, logic_version, compose_version, draft_text, proposals)
+      VALUES (${s.org.id}, ${d.id}, ${d.storyId}, 'matched', ${LOGIC_VERSION}, 't', 'x', 'null'::jsonb)`), /post_decisions_proposals_array/);
+    // post_decisions_rework_range
+    await refused(insert({ ...decidedRow, reworkRatio: -0.01 }), /post_decisions_rework_range/);
+    expect(await h.db.select().from(postDecisions).where(eq(postDecisions.draftId, d.id))).toEqual([]);
+
+    // The legitimate writes pass. An undecided proposal row:
+    await insert({});
+    // ...decided (rework 0: the words unchanged), voided by the app, decided again (rework 1: every word gone)
+    expect(await recordOutcome(h.db, { orgId: s.org.id, draftId: d.id, decision: "copy_posted", finalText: "x #T", decidedBy: s.priya.id })).toBe("written");
+    expect(await row(d.id)).toMatchObject({ decision: "copy_posted", reworkRatio: 0 });
+    expect(await voidOutcome(h.db, { orgId: s.org.id, draftId: d.id, voidedBy: s.priya.id })).toBe("written");
+    const voided = await row(d.id);
+    expect(voided).toMatchObject({ decision: null, decidedAt: null, finalText: null, reworkRatio: null });
+    expect(voided.voided).toHaveLength(1);
+    expect(await recordOutcome(h.db, { orgId: s.org.id, draftId: d.id, decision: "rejected", finalText: "#T", decidedBy: s.amit.id, rejectReason: "other" })).toBe("written");
+    expect(await row(d.id)).toMatchObject({ decision: "rejected", reworkRatio: 1 });
+    expect((await row(d.id)).voided).toHaveLength(1);
+    // Each decision the log knows, a rework over 1 (more words than the draft had), and a row inserted already voided
+    for (const decision of ["copy_posted", "mark_posted", "approved", "rejected"] as const) {
+      const dd = await s.draft(decision);
+      await insert({ draftId: dd.id, storyId: dd.storyId, ...decidedRow, decision, reworkRatio: 1.5 });
+    }
+    const dv = await s.draft("voided");
+    await insert({ draftId: dv.id, storyId: dv.storyId, voided: [{ outcome: { decision: "rejected" }, proposal: { proposals: [] } }] });
+    expect((await row(dv.id)).voided).toHaveLength(1);
+    expect(at("error")).toEqual([]);
+  });
 });
 
 (TEST_URL ? describe : describe.skip)("nightly reporter features (brief §7.1)", () => {

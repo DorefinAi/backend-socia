@@ -130,12 +130,12 @@
       "keywords_en": [
         "Jhabar Singh Kharra"
       ],
-      "verified": true,
+      "verified": false,
       "source": "https://api.fxtwitter.com/officialkharra",
       "checkedAt": "2026-11-13",
       "evidence": 2,
       "xUserId": "1575160026343559168",
-      "note": "Added 13 Nov 2026. X profile name 'Jhabar Singh Kharra', bio: \"Official Account of Jhabar Singh Kharra, Minister of State (Independent charge), MLA, Shri Madhopur (39)\", no badge, 4.2k followers. Corroborated: the desk itself tagged @officialkharra on 2 of the 30 Oct posts (his vote in the panchayat poll), and @RajGovOfficial tags it (subject-handles.json). Avoid @jhabarkharrabjp / @JhabarKharraBJP: its bio says 'फैन पेज' (fan page), though the desk used it once on 30 Oct. scope 'mla' (user decision, 13 Nov 2026): OFFERED, unticked, whenever the copy names him; never tagged on the post, and naming him does not count as naming the party (parties.ts keeps MLA entries out of the party picks, the clash rule and the political hint). The person entry in subject-handles.json is kept (still HELD there, so it does not tag); if the desk verifies it there, that entry tags it and the offer is dropped (one entry per handle)."
+      "note": "MLA identity confirmed by desk; handle-to-person match not yet confirmed from X profile. | Added 13 Nov 2026. X profile name 'Jhabar Singh Kharra', bio: \"Official Account of Jhabar Singh Kharra, Minister of State (Independent charge), MLA, Shri Madhopur (39)\", no badge, 4.2k followers. Corroborated: the desk itself tagged @officialkharra on 2 of the 30 Oct posts (his vote in the panchayat poll), and @RajGovOfficial tags it (subject-handles.json). Avoid @jhabarkharrabjp / @JhabarKharraBJP: its bio says 'फैन पेज' (fan page), though the desk used it once on 30 Oct. scope 'mla' (user decision, 13 Nov 2026): OFFERED, unticked, whenever the copy names him; never tagged on the post, and naming him does not count as naming the party (parties.ts keeps MLA entries out of the party picks, the clash rule and the political hint). The person entry in subject-handles.json is kept (still HELD there, so it does not tag); if the desk verifies it there, that entry tags it and the offer is dropped (one entry per handle)."
     },
     {
       "handle": "@BMacharyaBJP",
@@ -146,19 +146,21 @@
         "बालमुकुंद आचार्य",
         "बाल मुकुंद आचार्य",
         "बालमुकुन्द आचार्य",
-        "बालमुकुंदाचार्य"
+        "बालमुकुंदाचार्य",
+        "बालमुकुन्दाचार्य"
       ],
       "keywords_en": [
         "Balmukund Acharya",
         "Bal Mukund Acharya",
-        "Balmukundacharya"
+        "Balmukundacharya",
+        "Balmukundachary"
       ],
       "verified": false,
       "source": "https://api.fxtwitter.com/BMacharyaBJP",
       "checkedAt": "2026-11-13",
       "evidence": 0,
       "xUserId": "1722112604162715648",
-      "note": "HELD for desk check (no badge, and nothing corroborates it beyond its own bio). Set verified to true after checking. | X profile name 'Swami Balmukundacharya', bio: \"स्वामी श्री बालमुकुंदाचार्य हाथोज धाम / विधायक - हवामहल विधानसभा / भारतीय जनता पार्टी\", no badge, 9.4k followers, joined Nov 2023 (after the 2023 election), location Jaipur. Not tagged by the desk in the 30 Oct export, and no official account's tag of it was checked. scope 'mla': as @officialkharra, offered and never tagged. Kept verified:false (user decision, 13 Nov 2026): an MLA is only ever offered, so an unverified one is offered too, and the desk ticks it."
+      "note": "MLA identity confirmed by desk; handle-to-person match not yet confirmed from X profile. | HELD for desk check (no badge, and nothing corroborates it beyond its own bio). Set verified to true after checking. | X profile name 'Swami Balmukundacharya', bio: \"स्वामी श्री बालमुकुंदाचार्य हाथोज धाम / विधायक - हवामहल विधानसभा / भारतीय जनता पार्टी\", no badge, 9.4k followers, joined Nov 2023 (after the 2023 election), location Jaipur. Not tagged by the desk in the 30 Oct export, and no official account's tag of it was checked. scope 'mla': as @officialkharra, offered and never tagged. Kept verified:false (user decision, 13 Nov 2026): an MLA is only ever offered, so an unverified one is offered too, and the desk ticks it."
     }
   ]
 }

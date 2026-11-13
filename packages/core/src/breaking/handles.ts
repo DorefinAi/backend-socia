@@ -624,6 +624,9 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   }
   // An MLA's own handle (party-handles.json, scope "mla") the copy names is OFFERED whatever the class, never tagged
   // (user decision, 13 Nov 2026). When a verified subject entry tags the same handle, done() drops the offer.
+  // No Rajasthan gate (M3: "खर्रा दिल्ली दौरे पर" offers him, as no person handle has a location limit), and no
+  // attack or criticism filter (M2): a named MLA is offered on a story attacking them too — the desk tagged
+  // @V_S_Kanawat on 13 Nov on a story where villagers attacked him. attackTargets() only ever applies to parties.
   for (const m of pickMlaHandles(all, parties)) suggested.push({ handle: m.handle, reason: "party", title: m.name });
 
   // Handles the desk added with keywords, computed here because they ride on every class except the two

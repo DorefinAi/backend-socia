@@ -73,13 +73,19 @@ export interface PostCheck {
 const TAG_OR_MENTION = /[#@][\p{L}\p{M}\p{N}_]+/gu;
 const NOT_TEXT = /[\s\p{P}\p{S}]+/gu;
 
-/** Run by the API before approve, and again by the publish worker before sending. */
-export function checkXPost(text: string): PostCheck {
+/**
+ * Run by the API before approve, and again by the publish worker before sending, with X's limit. Copy & Posted
+ * (the desk posts by hand) and a correction of a posted story check against the composer's limit instead
+ * (BREAKING_POST_MAX, b8 decisions §0.2).
+ */
+export function checkXPost(text: string, limit = X_LIMIT): PostCheck {
   const problems: string[] = [];
   const length = xLen(text);
   if (!text.trim()) problems.push("The post is empty.");
   else if (!text.replace(TAG_OR_MENTION, "").replace(NOT_TEXT, "")) problems.push("The post has only hashtags and mentions. Add the news text.");
-  if (length > X_LIMIT) problems.push(`The post is ${length - X_LIMIT} characters over X's limit of ${X_LIMIT}.`);
+  if (length > limit) {
+    problems.push(limit === X_LIMIT ? `The post is ${length - X_LIMIT} characters over X's limit of ${X_LIMIT}.` : `The post is ${length - limit} characters over the ${limit}-character limit.`);
+  }
   const url = findUrl(text);
   if (url) problems.push(`"${url}" is a link. ${URL_REASON}`);
   return { ok: problems.length === 0, length, problems };

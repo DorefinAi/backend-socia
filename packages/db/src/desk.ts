@@ -2,7 +2,7 @@
 // audit row, and the live event commit together or not at all.
 
 import {
-  COPY_UNDO_SECONDS, LEASE_SECONDS, NATIONAL_FOOTER, RAJASTHAN_FOOTER, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus, reporterKey,
+  BREAKING_POST_MAX, COPY_UNDO_SECONDS, LEASE_SECONDS, NATIONAL_FOOTER, RAJASTHAN_FOOTER, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus, reporterKey,
   type DraftAction, type DraftStatus, type RejectReason,
 } from "@socia/core";
 import { randomUUID } from "node:crypto";
@@ -680,7 +680,8 @@ export async function copyPosted(db: Db, actor: Actor, draftId: string, version:
     }
     const status = move(draft, "copy_posted");
     const text = postText(draft);
-    const check = checkXPost(text);
+    // Posted by hand: the composer's limit, not X's 280 (b8 decisions §0.2)
+    const check = checkXPost(text, BREAKING_POST_MAX);
     if (!check.ok) throw new DeskError("post_invalid", check.problems[0]!, { problems: check.problems });
 
     const [row] = await tx

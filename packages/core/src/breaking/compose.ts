@@ -10,7 +10,7 @@
 // assemblePostText() puts them together exactly as the desk copies it. Always within X's 280 (weighted).
 
 import { fold } from "../fold";
-import { X_LIMIT, assemblePostText, cutOnGraphemes, cutOnWords } from "../compose";
+import { assemblePostText, cutOnGraphemes, cutOnWords } from "../compose";
 import type { HashtagGazetteer } from "../hashtags";
 import { xLen } from "../xtext";
 import { pickCategoryTags } from "./categories";
@@ -48,8 +48,8 @@ export const BREAKING_CUT = "...";
  *     headline text or the reporter suggests is offered. A party named only in the
  *     points, a party wing and a seasonal institution (@CeoRajasthan) are offered, not tagged.
  * b8: line 2 the desk's length (100–130 with its dots, crispPoints) whatever the headline, cut to withhold the
- *     payoff, then "..." or "...."; shorter only when X's 280 leaves less room, and dropped when that would leave
- *     it under BREAKING_BODY_FLOOR (never a stub like "आमजन....").
+ *     payoff, then "..." or "...."; the post may go past 280 (the desk posts by hand; "Fit to 280" in the editor
+ *     makes a post fit), up to BREAKING_POST_MAX; a line 2 that would be under BREAKING_BODY_FLOOR is dropped.
  */
 export const BREAKING_FORMAT = "b8";
 
@@ -117,7 +117,7 @@ export interface BreakingComposeOptions {
    * HEADLINE_LABEL_WORDS; matched per word, without case or nukta.
    */
   headlineLabels?: readonly string[];
-  /** The longest whole post (default X's 280: the owner's decision of 14 Nov, posts never go over it) */
+  /** The longest whole post (default BREAKING_POST_MAX: the composer does not squeeze a post to 280) */
   limit?: number;
   /** Line 2's longest length (default BREAKING_BODY_MAX) */
   bodyMax?: number;
@@ -214,6 +214,11 @@ export const BREAKING_BODY_TARGET = 120;
 export const BREAKING_BODY_MAX = 130;
 /** A line 2 shorter than this is a stub ("आमजन....") and the post goes without it */
 export const BREAKING_BODY_FLOOR = 40;
+/**
+ * The longest whole breaking post, a sanity limit (b8 decisions §0.2): the composer does not squeeze a post to 280,
+ * since the desk posts by hand and the account posts long. Copy & Posted and corrections check against it too.
+ */
+export const BREAKING_POST_MAX = 1000;
 
 /** Describing words the payoff follows: "डंपर और कार के बीच हुई जोरदार...." */
 const HANGING_WORDS: ReadonlySet<string> = new Set(
@@ -262,13 +267,16 @@ export function crispPoints(points: string[], dots: string, max = BREAKING_BODY_
  * The cut. Every word end whose line (dots included) lands between MIN and `max` is a candidate, scored once:
  * best right after a linking word or a describing word with content still to come in that point ("…दिलबाग सिंह
  * पर....", "…के बीच हुई जोरदार...."), or on the person or thing just before its action; worse after a word that
- * finishes the statement, after a number, or at the end of a point (nothing held back). Ties go nearest TARGET.
- * The scan stops at the first word end past `max` (prefixes only grow). With no candidate: the longest run of
- * whole words, and when that is under the floor (one huge word), whole letters.
+ * finishes the statement, after a number, or at the end of a point (nothing held back); the further from TARGET,
+ * the lower the score (equal scores go to the earlier cut). A cut under BREAKING_BODY_FLOOR is never a candidate,
+ * so line 2 is dropped only when no cut of 40 or more fits. The scan stops at the first word end past `max`
+ * (prefixes only grow). With no candidate: the longest run of whole words, and when that is under the floor (one
+ * huge word), whole letters.
  */
 function cutPoints(parts: string[], all: string, dots: string, max: number): string {
   const dotLen = xLen(dots);
-  const lo = Math.min(BREAKING_BODY_MIN, Math.max(1, max - 30));
+  // Never under the floor: a shorter cut would win on score and then be dropped as a stub (review B2)
+  const lo = Math.max(BREAKING_BODY_FLOOR, Math.min(BREAKING_BODY_MIN, max - 30));
   const target = Math.min(BREAKING_BODY_TARGET, max);
   const words = wordsOf(all);
   // Each word's point, and how many words and content words of that point come after it
@@ -433,7 +441,7 @@ export const bookLeadTagDistrict = (book: PlaceBook) => (tag: string): string | 
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
-    reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = X_LIMIT, bodyMax = BREAKING_BODY_MAX,
+    reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = BREAKING_POST_MAX, bodyMax = BREAKING_BODY_MAX,
     normaliser = EMPTY_NORMALISER, suggestRules = EMPTY_SUGGEST_RULES, at, beats = EMPTY_BEAT_RULES, reporterPrior: reporterPriorOn = true,
     headlineLabels = HEADLINE_LABEL_WORDS,
   } = opts;
@@ -580,8 +588,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     const cut = cutOnWords(headline, room - xLen(prefix) - xLen(BREAKING_CUT));
     line1 = cut ? `${prefix}${cut}${BREAKING_CUT}` : (cutOnWords(line1, room - xLen(BREAKING_CUT)) + BREAKING_CUT);
   }
-  // Line 2 the desk's length whatever the headline (100–130), shorter only when X's 280 leaves less room, and
-  // dropped under the floor (crispPoints)
+  // Line 2 the desk's length whatever the headline (100–130), shorter only when the post's limit leaves less room,
+  // and dropped under the floor (crispPoints)
   const body = headlineCut ? "" : crispPoints(story.points, breakingDots(plainHeadline(line1)), Math.min(bodyMax, room - xLen(line1) - 2));
   const bodyText = body ? `${line1}\n\n${body}` : line1;
   // The decision log's view of all of the above (brief §2.3): line 1's tags only when this composer put them there

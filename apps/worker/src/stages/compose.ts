@@ -185,6 +185,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   const needsCheck = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
   const content = {
     bodyText: out.bodyText,
+    // Line 2 as composed ("" when there is none): Fit to 280 rebuilds line 2 only while the draft still carries it
+    composerLine2: out.bodyText.split("\n\n")[1] ?? "",
     cardHeadline: headline,
     hashtags: out.hashtags,
     // Offered to the desk, never applied on their own

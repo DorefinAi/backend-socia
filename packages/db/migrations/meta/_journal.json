@@ -183,6 +183,13 @@
       "when": 1794569989780,
       "tag": "0025_story_search",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794580000000,
+      "tag": "0026_composer_line2",
+      "breakpoints": true
     }
   ]
 }

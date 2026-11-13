@@ -103,6 +103,8 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
     status: draft.status,
     version: draft.version,
     bodyText: draft.bodyText,
+    /** Line 2 as the composer wrote it (b8): Fit to 280 rebuilds only that; null for a draft from before */
+    composerOriginalLine2: draft.composerLine2 ?? null,
     cardHeadline: draft.cardHeadline,
     hashtags: draft.hashtags,
     /**

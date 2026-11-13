@@ -20,8 +20,12 @@ const RAJASTHAN_ONLY = /^#rajasthan/i;
 // "हाईकोर्ट की <place> बेंच/खंडपीठ", "High Court of <place>". A place merely in the same sentence ("हाईकोर्ट ने
 // दिल्ली पुलिस से ...") does not count. Rajasthan's own seats (जोधपुर, जयपुर बेंच) are never another state.
 
-/** A High Court mention, Hindi or English, with or without the space */
-const HIGH_COURT = String.raw`(?:हाई\s?कोर्ट|उच्च\s+न्यायालय|[Hh]igh\s+[Cc]ourt)`;
+/** Latin letters matched without case, the rest as written: the regexes below cannot take the "i" flag, since "UP" and "MP" must stay capitals */
+const anyCase = (s: string) => s.replace(/[A-Za-z]/g, (c) => `[${c.toUpperCase()}${c.toLowerCase()}]`);
+/** A High Court mention, Hindi or English (any case: "HIGH COURT OF DELHI"), with or without the space */
+const HIGH_COURT = String.raw`(?:हाई\s?कोर्ट|उच्च\s+न्यायालय|${anyCase("high")}\s+${anyCase("court")})`;
+/** A short code ("UP", "MP", "J&K") is matched as written; a name ("Delhi", "DELHI", "delhi") without case */
+const placePattern = (p: string) => (/^[A-Z&]{2,3}$/.test(p) ? esc(p) : anyCase(esc(p)));
 /** States, seats and benches of the other High Courts, as the copy names them (longest first within a family) */
 const OTHER_HC_PLACES = [
   "इलाहाबाद", "प्रयागराज", "लखनऊ", "उत्तर प्रदेश", "यूपी", "दिल्ली", "मुंबई", "बॉम्बे", "बंबई", "महाराष्ट्र", "नागपुर", "औरंगाबाद",
@@ -37,39 +41,60 @@ const OTHER_HC_PLACES = [
   "Himachal Pradesh", "Himachal", "Jammu and Kashmir", "Jammu & Kashmir", "J&K", "Jharkhand", "Chhattisgarh", "Odisha", "Orissa",
   "Andhra Pradesh", "Telangana", "Gauhati", "Guwahati", "Goa",
 ];
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const OTHER = `(?:${[...OTHER_HC_PLACES].sort((a, b) => b.length - a.length).map(esc).join("|")})`;
+function esc(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+const OTHER = `(?:${[...OTHER_HC_PLACES].sort((a, b) => b.length - a.length).map(placePattern).join("|")})`;
+/** Rajasthan's own High Court and its seats: a mention they qualify is Rajasthan's, whatever came before it */
+const RAJASTHAN_HC_PLACES = ["राजस्थान", "जोधपुर", "जयपुर", "Rajasthan", "Jodhpur", "Jaipur"];
+const RAJASTHAN = `(?:${RAJASTHAN_HC_PLACES.map(placePattern).join("|")})`;
 /** No letter, mark or digit next to it: "UP" never inside "UPSC", "MP" never inside "MPs" */
 const B = String.raw`(?<![\p{L}\p{M}\p{N}])`;
 const E = String.raw`(?![\p{L}\p{M}\p{N}])`;
 const ANY_HC = new RegExp(`${B}${HIGH_COURT}${E}`, "gu");
-const OTHER_HC = [
-  // "इलाहाबाद हाईकोर्ट", "MP के हाईकोर्ट", "Delhi High Court"
-  new RegExp(`${B}${OTHER}${E}\\s*(?:(?:के|की|का|'s)\\s+)?${HIGH_COURT}${E}`, "gu"),
+/** The phrases in which `place` qualifies a High Court mention directly */
+const qualified = (place: string): RegExp[] => [
+  // "इलाहाबाद हाईकोर्ट", "MP के हाईकोर्ट", "Delhi High Court", "Delhi's High Court"
+  new RegExp(String.raw`${B}${place}${E}\s*(?:(?:के|की|का|'s)\s+)?${HIGH_COURT}${E}`, "gu"),
   // "हाईकोर्ट की लखनऊ बेंच", "हाई कोर्ट की इंदौर खंडपीठ"
-  new RegExp(`${B}${HIGH_COURT}\\s+(?:की|के)\\s+${OTHER}${E}\\s*(?:बेंच|खंडपीठ|पीठ)`, "gu"),
-  // "High Court of Delhi", "Delhi's High Court"
-  new RegExp(`${B}${HIGH_COURT}\\s+(?:of|at)\\s+${OTHER}${E}`, "gu"),
+  new RegExp(String.raw`${B}${HIGH_COURT}\s+(?:की|के)\s+${place}${E}\s*(?:बेंच|खंडपीठ|पीठ)`, "gu"),
+  // "High Court of Delhi", "HIGH COURT OF DELHI"
+  new RegExp(String.raw`${B}${HIGH_COURT}\s+(?:${anyCase("of")}|${anyCase("at")})\s+${place}${E}`, "gu"),
 ];
+const OTHER_HC = qualified(OTHER);
+const RAJASTHAN_HC = qualified(RAJASTHAN);
+
+/** The offsets of the High Court mentions inside the phrases `res` match */
+function mentionsIn(t: string, res: readonly RegExp[]): Set<number> {
+  const out = new Set<number>();
+  for (const re of res) {
+    for (const m of t.matchAll(re)) {
+      const hc = new RegExp(HIGH_COURT, "u").exec(m[0]);
+      if (hc) out.add(m.index! + hc.index);
+    }
+  }
+  return out;
+}
 
 /**
- * Whether every High Court the copy names is another state's: then #RajasthanHighCourt is not for it. Copy that
- * names no High Court this way (the desk added an alias this does not know) is left alone, and one Rajasthan or
- * unqualified mention anywhere keeps the tag ("राजस्थान हाईकोर्ट ने इलाहाबाद हाईकोर्ट के फैसले का हवाला दिया").
+ * Whether every High Court the copy names is another state's: then #RajasthanHighCourt is not for it. Read in
+ * order: a mention another state qualifies is that state's, and an UNQUALIFIED mention after it follows it ("दिल्ली
+ * हाईकोर्ट का बड़ा फैसला / हाईकोर्ट ने कहा ..."). A Rajasthan mention anywhere, or an unqualified one before any
+ * qualified one (a fully unqualified story), keeps the tag ("राजस्थान हाईकोर्ट ने इलाहाबाद हाईकोर्ट के फैसले का
+ * हवाला दिया"). Copy that names no High Court this way (the desk added an alias this does not know) is left alone.
  */
 export function namesOnlyOtherHighCourts(text: string): boolean {
   const t = text.normalize("NFC");
-  const all = [...t.matchAll(ANY_HC)].map((m) => m.index!);
+  const all = [...t.matchAll(ANY_HC)].map((m) => m.index!).sort((x, y) => x - y);
   if (!all.length) return false;
-  // Each other-state phrase covers the High Court mention inside it
-  const covered = new Set<number>();
-  for (const re of OTHER_HC) {
-    for (const m of t.matchAll(re)) {
-      const hc = new RegExp(HIGH_COURT, "u").exec(m[0]);
-      if (hc) covered.add(m.index! + hc.index);
-    }
+  const other = mentionsIn(t, OTHER_HC);
+  const rajasthan = mentionsIn(t, RAJASTHAN_HC);
+  let follows = false;
+  for (const i of all) {
+    if (other.has(i)) follows = true;
+    else if (rajasthan.has(i) || !follows) return false;
   }
-  return all.every((i) => covered.has(i));
+  return true;
 }
 
 /** The tags the High Court guard applies to: the desk's #RajasthanHighCourt and any spelling of it */

@@ -170,6 +170,29 @@ function mentionView(raw: unknown): { view: MentionSuggestionView | null; malfor
   return { view, malformed };
 }
 
+/** One stored item rebuilt from its well-formed contract fields only (never passed on raw); null when unusable. Never throws. */
+function wellFormedMention(raw: unknown): MentionSuggestionView | null {
+  try {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const m = raw as Record<string, unknown>;
+    if (typeof m.handle !== "string" || typeof m.handleId !== "string") return null;
+    const entity = typeof m.entity === "string" ? m.entity : undefined;
+    const source = str(m.source);
+    const reason = str(m.reason);
+    const detail = str(m.detail);
+    const score = num(m.score);
+    const n = num(m.n);
+    return {
+      handleId: m.handleId, handle: m.handle, exact: m.exact === true,
+      ...(entity !== undefined && { entity }), ...(source && { source }), ...(reason && { reason }), ...(detail && { detail }),
+      ...(score !== undefined && { score }), ...(n !== undefined && { n }),
+    };
+  } catch {
+    // an item that cannot even be read is left out
+    return null;
+  }
+}
+
 /**
  * The fallback when mapping failed: only the items that are objects with a string handle and handleId, each
  * rebuilt from its well-formed contract fields (never passed on raw); [] when the value is not a list. Never throws.
@@ -179,24 +202,8 @@ function wellFormedMentions(stored: unknown): MentionSuggestionView[] {
   try {
     if (!Array.isArray(stored)) return out;
     for (const raw of stored) {
-      try {
-        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-        const m = raw as Record<string, unknown>;
-        if (typeof m.handle !== "string" || typeof m.handleId !== "string") continue;
-        const entity = typeof m.entity === "string" ? m.entity : undefined;
-        const source = str(m.source);
-        const reason = str(m.reason);
-        const detail = str(m.detail);
-        const score = num(m.score);
-        const n = num(m.n);
-        out.push({
-          handleId: m.handleId, handle: m.handle, exact: m.exact === true,
-          ...(entity !== undefined && { entity }), ...(source && { source }), ...(reason && { reason }), ...(detail && { detail }),
-          ...(score !== undefined && { score }), ...(n !== undefined && { n }),
-        });
-      } catch {
-        // an item that cannot even be read is left out
-      }
+      const view = wellFormedMention(raw);
+      if (view) out.push(view);
     }
   } catch {
     // a list that cannot be walked: whatever was rebuilt before it broke
@@ -204,12 +211,29 @@ function wellFormedMentions(stored: unknown): MentionSuggestionView[] {
   return out;
 }
 
-/** The stored tags that are strings, in order; [] when the value is not a list. Never throws. */
+/** A tag as the desk sees it: one Unicode form (NFC), so a Hindi tag typed two ways is one tag */
+const nfc = (tag: string) => tag.normalize("NFC");
+/** The key a tag is matched to its rule by: NFC, lower case */
+const tagKey = (tag: string) => nfc(tag).toLowerCase();
+
+/** The stored tags that are strings, in NFC, each once, in order; [] when the value is not a list. Never throws. */
 function wellFormedTags(tags: unknown): string[] {
   const out: string[] = [];
   try {
     if (!Array.isArray(tags)) return out;
-    for (const t of tags) if (typeof t === "string") out.push(t);
+    const seen = new Set<string>();
+    for (const t of tags) {
+      try {
+        if (typeof t !== "string") continue;
+        const tag = nfc(t);
+        if (!seen.has(tag)) {
+          seen.add(tag);
+          out.push(tag);
+        }
+      } catch {
+        // a tag that cannot be normalised is left out
+      }
+    }
   } catch {
     // a list that cannot be walked: whatever was read before it broke
   }
@@ -226,7 +250,16 @@ export function mentionSuggestionsView(stored: unknown, draftId?: string): Menti
     let dropped = 0;
     const fields = new Set<string>();
     for (const raw of stored) {
-      const { view, malformed } = mentionView(raw);
+      // One item that breaks while being mapped costs only itself: it goes out rebuilt from its well-formed
+      // fields (no derived rule id), or not at all
+      let mapped: ReturnType<typeof mentionView>;
+      try {
+        mapped = mentionView(raw);
+      } catch {
+        const view = wellFormedMention(raw);
+        mapped = { view, malformed: [view ? "unreadable" : "item"] };
+      }
+      const { view, malformed } = mapped;
       if (view) out.push(view);
       else dropped++;
       for (const f of malformed) fields.add(f);
@@ -240,28 +273,89 @@ export function mentionSuggestionsView(stored: unknown, draftId?: string): Menti
   }
 }
 
-/** The hashtag suggestions, each tag with its rule when handle_pick knows it; the order and the strings as stored */
+/** handle_pick.tagSuggestions by tag key (NFC, lower case), the first rule of a tag winning. Never throws. */
+function tagRules(pick: DraftHandlePick | null | undefined, draftId: string | undefined): Map<string, Record<string, unknown>> {
+  const byTag = new Map<string, Record<string, unknown>>();
+  let items: unknown;
+  try {
+    items = pick?.tagSuggestions;
+  } catch (err) {
+    report(draftId, "hashtag", { err }, "handle_pick.tagSuggestions could not be read; tags sent as plain strings");
+    return byTag;
+  }
+  if (items === undefined || items === null) return byTag;
+  if (!Array.isArray(items)) {
+    report(draftId, "hashtag", {}, "handle_pick.tagSuggestions is not a list; tags sent as plain strings");
+    return byTag;
+  }
+  let bad = 0;
+  try {
+    for (const it of items as unknown[]) {
+      try {
+        const tag = it && typeof it === "object" ? (it as { tag?: unknown }).tag : undefined;
+        if (typeof tag !== "string") {
+          bad++;
+          continue;
+        }
+        const key = tagKey(tag);
+        if (!byTag.has(key)) byTag.set(key, it as Record<string, unknown>);
+      } catch {
+        bad++;
+      }
+    }
+  } catch {
+    bad++; // a list that cannot be walked: the rules read before it broke
+  }
+  if (bad) report(draftId, "hashtag", { dropped: bad }, "hashtag suggestion rules: unusable items left out");
+  return byTag;
+}
+
+/** One tag (already NFC) with its rule when known; the bare tag when the rule cannot be read. Never throws. */
+function tagView(tag: string, it: Record<string, unknown> | undefined): HashtagSuggestionView {
+  if (!it) return tag;
+  try {
+    const source = str(it.source);
+    if (!source) return tag;
+    const reason = str(it.reason);
+    const score = num(it.score);
+    const n = num(it.n);
+    return { tag, source, ...(reason && { reason }), ...(score !== undefined && { score }), ...(n !== undefined && { n }) };
+  } catch {
+    return tag;
+  }
+}
+
+/**
+ * The hashtag suggestions, each tag with its rule when handle_pick knows it, in stored order. Tags go out in NFC
+ * and are matched to their rule by NFC + lower case, so one tag stored in two Unicode forms shows once, with its
+ * rule. A tag that is not a string is left out; a rule that cannot be read costs only its own tag's reason.
+ */
 export function hashtagSuggestionsView(tags: readonly string[], pick: DraftHandlePick | null | undefined, draftId?: string): HashtagSuggestionView[] {
   try {
-    const items = pick?.tagSuggestions;
-    if (items !== undefined && !Array.isArray(items)) report(draftId, "hashtag", {}, "handle_pick.tagSuggestions is not a list; tags sent as plain strings");
-    const byTag = new Map<string, Record<string, unknown>>();
-    let bad = 0;
-    for (const it of Array.isArray(items) ? items : []) {
-      if (it && typeof it === "object" && typeof it.tag === "string") {
-        if (!byTag.has(it.tag.toLowerCase())) byTag.set(it.tag.toLowerCase(), it as unknown as Record<string, unknown>);
-      } else bad++;
+    if (!Array.isArray(tags)) {
+      if (tags !== null && tags !== undefined) report(draftId, "hashtag", { type: typeof tags }, "hashtag suggestions are not a list; none shown");
+      return [];
     }
-    if (bad) report(draftId, "hashtag", { dropped: bad }, "hashtag suggestion rules: unusable items left out");
-    return tags.map((tag) => {
-      const it = byTag.get(tag.toLowerCase());
-      const source = str(it?.source);
-      if (!it || !source) return tag;
-      const reason = str(it.reason);
-      const score = num(it.score);
-      const n = num(it.n);
-      return { tag, source, ...(reason && { reason }), ...(score !== undefined && { score }), ...(n !== undefined && { n }) };
-    });
+    const byTag = tagRules(pick, draftId);
+    const out: HashtagSuggestionView[] = [];
+    const seen = new Set<string>();
+    let dropped = 0;
+    for (const raw of tags as readonly unknown[]) {
+      try {
+        if (typeof raw !== "string") {
+          dropped++;
+          continue;
+        }
+        const tag = nfc(raw);
+        if (seen.has(tag)) continue;
+        seen.add(tag);
+        out.push(tagView(tag, byTag.get(tag.toLowerCase())));
+      } catch {
+        dropped++;
+      }
+    }
+    if (dropped) report(draftId, "hashtag", { dropped }, "hashtag suggestions: tags that are not strings left out");
+    return out;
   } catch (err) {
     const out = wellFormedTags(tags);
     report(draftId, "hashtag", { err, kept: out.length }, "hashtag suggestions could not be mapped; only the stored strings sent, as plain tags");

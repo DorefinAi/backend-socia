@@ -263,3 +263,49 @@ describe("S4: the CM next to a code with a hyphen, a slash or the Hindi code", (
     for (const t of ["MP ने CM से मुलाकात की", "सांसद/MP ने CM से मुलाकात की", "एमपी ने सीएम से की मुलाकात"]) expect(namesOffice(cm, t), t).toBe(true);
   });
 });
+
+// ─── O2: one bad reporter entry takes down that entry only ───────────────────
+
+describe("O2: a bad entry in reporter-handles.json rejects only that entry, named by its handle", () => {
+  const shipped = cfg("reporter-handles.json");
+  const victimIndex = shipped.entries.findIndex((e: { handle: string; verified: boolean }) => e.verified && !/rituraj/i.test(e.handle));
+  const victim = shipped.entries[victimIndex];
+  const victimKey = victim.handle.replace(/^@/, "").toLowerCase();
+  const corrupt = (patch: Record<string, unknown>) => ({ ...shipped, entries: shipped.entries.map((e: object, i: number) => (i === victimIndex ? { ...e, ...patch } : e)) });
+  const NONE = ["सरकार ने जारी किए नए दिशा-निर्देश", "सभी विभागों को भेजे गए आदेश"];
+
+  for (const [label, patch] of [
+    ["a bad prior", { prior: { n: 50, handles: { RajGovOfficial: 1.5 } } }],
+    ["prior_settings inside the entry", { prior_settings: { m: 20 } }],
+    ["a bad policy block", { policy: "Jaipur" }],
+  ] as const) {
+    it(`${label}: that reporter is out, with a message naming the handle; the rest load, and rituraj's #Jaipur still works`, () => {
+      const problems: string[] = [];
+      const r = parseReporterHandles(corrupt(patch), (m) => problems.push(m), { directory });
+      expect(problems.filter((m) => /entry REJECTED/.test(m)), label).toHaveLength(1);
+      expect(problems.join(" ")).toContain(`@${victim.handle.replace(/^@/, "")}): entry REJECTED`);
+      expect(r.profiles!.has(victimKey)).toBe(false);
+      expect([...r.byToken.values()].some((m) => m.handle.toLowerCase() === victimKey)).toBe(false);
+      // Everyone else is still there
+      expect(r.profiles!.size).toBe(reporters.profiles!.size - 1);
+      // The #Jaipur desk rule runs from the partly-loaded file
+      const p = parseBreaking(fileText(RITURAJ, NONE), RITURAJ, book);
+      const slot = slotFromTags(p.tags);
+      const d = composeBreaking({ ...p, reporterToken: slot.reporterToken, fileDistrict: slot.district }, rules, book, { subjects, reporters: r, parties });
+      expect(d.bodyText.startsWith("#Jaipur: ")).toBe(true);
+      expect(d.districtSource).toBe("reporter_policy");
+    });
+  }
+
+  it("file-level shape errors: ambiguous_tokens of the wrong type rejects the file (safer: a shared token could byline the wrong colleague)", () => {
+    expect(() => parseReporterHandles({ ...shipped, ambiguous_tokens: "DINESH" })).toThrow(/ambiguous_tokens/);
+  });
+  it("file-level shape errors: bad prior_settings keep every byline and the desk rule, with the measured prior OFF", () => {
+    const problems: string[] = [];
+    const r = parseReporterHandles({ ...shipped, prior_settings: "m=20" }, (m) => problems.push(m), { directory });
+    expect(r.profiles!.size).toBe(reporters.profiles!.size);
+    expect([...r.profiles!.values()].every((p) => p.prior === null)).toBe(true);
+    expect(r.profiles!.get("rituraj9999")!.districtWhenMissing).toBe("Jaipur");
+    expect(problems.join(" ")).toMatch(/measured reporter prior is OFF.*prior_settings/);
+  });
+});

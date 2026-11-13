@@ -566,9 +566,14 @@ describe("C1–C6: what a reporter's suggestions may carry", () => {
     expect(unverified.bound!.has("dmsalumbar")).toBe(true);
     const dir = new Set([...directory, "dmsalumbar"]);
     expect(() => parseBeatHandles({ admin: { keywords: "प्रशासन", handles: ["@DMSalumbar"] } }, dir, { bound: unverified.bound! })).toThrow(/police, collector/);
-    // At load: a prior naming one fails the reporters file
+    // At load: a prior naming one rejects that reporter's entry (O2), named by handle; the rest of the file loads
     const entry = { handle: "@a_rep", names_en: ["A_REP"], verified: true, prior: { n: 50, handles: { DMSalumbar: 0.9 } } };
-    expect(() => parseReporterHandles({ version: 1, entries: [entry] }, undefined, { bound: unverified.bound! })).toThrow(DataFileRejected);
+    const other = { handle: "@b_rep", names_en: ["B_REP"], verified: true };
+    const problems: string[] = [];
+    const r = parseReporterHandles({ version: 1, entries: [entry, other] }, (m) => problems.push(m), { bound: unverified.bound! });
+    expect(r.byToken.has("A_REP")).toBe(false);
+    expect(r.byToken.get("B_REP")?.handle).toBe("b_rep");
+    expect(problems.join(" ")).toMatch(/@a_rep\): entry REJECTED.*DMSalumbar is a district police/);
     // At compose: filtered even when the file was never checked
     const fake = { ...profileOf("rituraj9999")!, prior: { n: 100, handles: { DMSalumbar: 0.9 }, hashtags: {}, source: null } };
     expect(reporterPrior({ profile: fake, text: "", taken: new Set(), takenTags: new Set(), districtBound: unverified.bound!, directory: dir }, reporters, beats).handles).toEqual([]);
@@ -576,13 +581,21 @@ describe("C1–C6: what a reporter's suggestions may carry", () => {
   it("C4: a keyword pattern that matches empty text fails the file", () => {
     expect(() => parseBeatHandles({ education: { keywords: "स्कूल|", handles: ["@rajeduofficial"] } }, directory)).toThrow(/matches empty text/);
   });
-  it("C5: a bad prior or prior settings fail the reporters file loudly", () => {
+  it("C5 (O2): a bad prior rejects that entry loudly, bad prior settings switch the prior off, a bad ambiguous_tokens fails the file", () => {
     const base = { handle: "@a_rep", names_en: ["A_REP"], verified: true };
     for (const prior of [{ n: 50, handles: { RajGovOfficial: 1.5 } }, { n: Number.NaN }, { n: "50" }, { n: 50, handles: { NotAHandleAnywhere: 0.5 } }]) {
-      expect(() => parseReporterHandles({ version: 1, entries: [{ ...base, prior }] }, undefined, { directory }), JSON.stringify(prior)).toThrow(DataFileRejected);
+      const problems: string[] = [];
+      const r = parseReporterHandles({ version: 1, entries: [{ ...base, prior }] }, (m) => problems.push(m), { directory });
+      expect(r.byToken.has("A_REP"), JSON.stringify(prior)).toBe(false);
+      expect(problems.join(" "), JSON.stringify(prior)).toMatch(/@a_rep\): entry REJECTED/);
     }
-    expect(() => parseReporterHandles({ version: 1, prior_settings: "m=20", entries: [base] })).toThrow(DataFileRejected);
-    expect(() => parseReporterHandles({ version: 1, prior_settings: { min_score: 2 }, entries: [base] })).toThrow(DataFileRejected);
+    for (const settings of [{ prior_settings: "m=20" }, { prior_settings: { min_score: 2 } }, { prior_base_rates: { RajGovOfficial: 7 } }]) {
+      const problems: string[] = [];
+      const r = parseReporterHandles({ version: 1, ...settings, entries: [{ ...base, prior: { n: 50, handles: { RajGovOfficial: 0.6 } } }] }, (m) => problems.push(m));
+      expect(r.byToken.get("A_REP")?.handle, JSON.stringify(settings)).toBe("a_rep");
+      expect(r.profiles!.get("a_rep")!.prior, JSON.stringify(settings)).toBeNull();
+      expect(problems.join(" "), JSON.stringify(settings)).toMatch(/measured reporter prior is OFF/);
+    }
     expect(() => parseReporterHandles({ version: 1, ambiguous_tokens: "DINESH", entries: [base] })).toThrow(DataFileRejected);
     const problems: string[] = [];
     parseReporterHandles({ version: 1, entries: [{ ...base, beats: ["education"], beats_source: "desk-ish" }] }, (m) => problems.push(m));

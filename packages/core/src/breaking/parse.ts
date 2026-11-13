@@ -92,8 +92,25 @@ const PLACE_BYLINE = /^(.+?)\s+से\s+.+?\s+की\s+(?:एक्सक्ल�
 const BYLINE = /^.{2,60}\s+की\s+(?:एक्सक्लूसिव\s+|खास\s+|विशेष\s+)?रिपोर्ट$/u;
 /** "रेनवाल (जयपुर)", "अंता(बारां)" */
 const TOWN_IN_BRACKETS = /^(.+?)\s*\((.+?)\)$/u;
-/** Words that a one-word line can be without being a place */
-const NOT_A_PLACE = /बड़ा|बड़ी|बड़े|खबर|हादसा|कार्रवाई|खुलासा|मामला|सनसनी|अपडेट|ब्रेकिंग|एक्सक्लूसिव|विज्ञापन|सूचना|अलर्ट|लाइव|दौरा|बयान|चुनाव|बैठक|हत्या|मौत|आग|फैसला|नियुक्ति|तबादला|पोस्ट|भाजपा|बीजेपी|कांग्रेस/u;
+/**
+ * Words that a one-word line can be without being a place. WHOLE words only (C-b): "बड़ागांव" and "आगोलाई" are
+ * places, not "बड़ा…" or "आग…". The plural and compound forms the old substring match caught are listed outright.
+ */
+const NOT_A_PLACE_WORDS: ReadonlySet<string> = new Set(
+  [
+    "बड़ा", "बड़ी", "बड़े", "खबर", "खबरें", "हादसा", "हादसे", "कार्रवाई", "खुलासा", "मामला", "मामले", "सनसनी", "अपडेट", "ब्रेकिंग",
+    "एक्सक्लूसिव", "विज्ञापन", "सूचना", "अलर्ट", "लाइव", "दौरा", "दौरे", "बयान", "चुनाव", "चुनावी", "चुनावों", "बैठक", "बैठकें", "हत्या",
+    "हत्याकांड", "मौत", "आग", "आगजनी", "फैसला", "फैसले", "नियुक्ति", "तबादला", "तबादले", "पोस्ट", "भाजपा", "बीजेपी", "कांग्रेस", "न्यूज",
+  ].map(fold),
+);
+/** A word made only of NOT_A_PLACE_WORDS, joined as in a hashtag ("बड़ीखबर", "ब्रेकिंगन्यूज़"); never a part of a word */
+function labelRun(word: string, from = 0): boolean {
+  if (from === word.length) return from > 0;
+  for (const w of NOT_A_PLACE_WORDS) if (word.startsWith(w, from) && labelRun(word, from + w.length)) return true;
+  return false;
+}
+/** Whether a short phrase is not a place: one of its whole words is a NOT_A_PLACE word (or a run of them) */
+export const notAPlace = (phrase: string): boolean => fold(phrase).split(" ").some((w) => !!w && labelRun(w));
 
 interface Located {
   district: DistrictInfo | null;
@@ -207,7 +224,7 @@ function resolvePlace(book: PlaceBook, phrase: string, hint: string | null, allo
     if (inner) return located(inner, null, outer ? districtOf(outer, hint).name : hint);
     if (outer) return located(outer, null, hint);
   }
-  if (allowUnknownTown && words(p) <= 2 && DEVANAGARI.test(p) && !/[0-9:]/.test(p) && !NOT_A_PLACE.test(p)) return { district: null, town: p };
+  if (allowUnknownTown && words(p) <= 2 && DEVANAGARI.test(p) && !/[0-9:]/.test(p) && !notAPlace(p)) return { district: null, town: p };
   return null;
 }
 
@@ -280,7 +297,7 @@ function hashtagPrefix(book: PlaceBook, headline: string, hint: string | null): 
   if (unknown.length) {
     const i = unknown[0]!;
     const word = tokens[i]!;
-    const newTown = unknown.length === 1 && i === tokens.length - 1 && area?.kind === "district" && DEVANAGARI.test(word) && !/[0-9०-९_]/.test(word) && !NOT_A_PLACE.test(word);
+    const newTown = unknown.length === 1 && i === tokens.length - 1 && area?.kind === "district" && DEVANAGARI.test(word) && !/[0-9०-९_]/.test(word) && !notAPlace(word);
     if (!newTown) return null;
     town = word;
   }

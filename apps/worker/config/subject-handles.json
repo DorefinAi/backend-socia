@@ -13,6 +13,20 @@
         "मोहन यादव", "योगी", "रेखा गुप्ता", "भगवंत मान", "फडणवीस", "नीतीश", "गहलोत",
         "डिप्टी", "Deputy", "उप"
       ]
+    },
+    "rajasthan_cs": {
+      "note": "The Chief Secretary named without a name ('मुख्य सचिव ने ली बैठक'): OFFERED only, never tagged (approved 2026-11-13). 'CS' is a whole word, so never ACS, CSR or CSIR; 'अतिरिक्त' / 'Additional' is the ACS spelled out ('अतिरिक्त मुख्य सचिव'), 'ICSI' / 'कंपनी सचिव' / 'Company Secretary' is the CS exam. @svoruganti1466 is still HELD for desk check in this file's entries, which is why this is a suggestion at most.",
+      "detail": "Chief Secretary mentioned without a name",
+      "aliases_hi": ["मुख्य सचिव"],
+      "aliases_en": ["CS", "Chief Secretary"],
+      "handles": ["@svoruganti1466"],
+      "exclude_same_sentence": [
+        "पूर्व", "Former", "former", "Ex", "ex", "रिटायर्ड", "सेवानिवृत्त", "निवर्तमान", "Retired", "retired",
+        "अतिरिक्त", "Additional",
+        "दिल्ली", "मध्यप्रदेश", "मध्य प्रदेश", "MP", "यूपी", "उत्तर प्रदेश", "UP", "पंजाब", "गुजरात", "हरियाणा", "महाराष्ट्र", "बिहार",
+        "Delhi", "Madhya Pradesh", "Uttar Pradesh", "Punjab", "Gujarat", "Haryana", "Maharashtra", "Bihar",
+        "ICSI", "कंपनी सचिव", "Company Secretary"
+      ]
     }
   },
   "entries": [

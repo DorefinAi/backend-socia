@@ -19,6 +19,8 @@ export interface OfficeData {
    * deputy, another state's CM by name.
    */
   exclude_same_sentence?: string[];
+  /** The line shown with the offered handle; default "CM mentioned without a name" */
+  detail?: string;
 }
 
 export interface Office {
@@ -30,6 +32,7 @@ export interface Office {
   handles: string[];
   /** The stable rule id: "office_alias.rajasthan_cm" */
   source: string;
+  detail?: string;
 }
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -67,7 +70,7 @@ export function parseOffices(json: unknown, directory: ReadonlySet<string>): { o
     if (!handles.length) problems.push(`offices.${key}: no handles`);
     if (!aliases.length || !handles.length) continue;
     const ex = strings(o.exclude_same_sentence);
-    offices.push({ key, alias: whole(words(aliases)), exclude: ex.length ? whole(words(ex)) : null, handles, source: `office_alias.${key}` });
+    offices.push({ key, alias: whole(words(aliases)), exclude: ex.length ? whole(words(ex)) : null, handles, source: `office_alias.${key}`, ...(typeof o.detail === "string" && o.detail.trim() && { detail: o.detail.trim() }) });
   }
   return { offices, problems };
 }
@@ -95,7 +98,7 @@ export function officeSuggestions(offices: readonly Office[], text: string, take
     if (namesHolder(o) || o.handles.some((h) => taken.has(h.toLowerCase()))) continue;
     for (const h of o.handles) {
       if (taken.has(h.toLowerCase()) || out.some((x) => x.handle.toLowerCase() === h.toLowerCase())) continue;
-      out.push({ handle: h, reason: "office", source: o.key === "rajasthan_cm" ? SOURCES.officeCm : o.source, detail: "CM mentioned without a name" });
+      out.push({ handle: h, reason: "office", source: o.key === "rajasthan_cm" ? SOURCES.officeCm : o.source, detail: o.detail ?? "CM mentioned without a name" });
     }
   }
   return out;

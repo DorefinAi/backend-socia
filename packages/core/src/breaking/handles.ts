@@ -397,9 +397,22 @@ export interface HandlePickInput {
 export interface HandlePick {
   handle: string;
   /** Why: shown on the draft as the suggestion's entity */
-  reason: "cm" | "police" | "collector" | "government" | "state_police" | "subject" | "desk" | "party" | "reporter";
+  reason: "cm" | "police" | "collector" | "government" | "state_police" | "subject" | "desk" | "party" | "reporter"
+    /** Offered from the filing reporter's measured rates (reporter-prior brief §3); never tagged */
+    | "prior"
+    /** Offered from a reporter's desk-declared beat whose keywords the copy matches (§3.3); never tagged */
+    | "beat"
+    /** Offered for an office named without its holder: "CM ने" (§6); never tagged */
+    | "office";
   /** The subject's title, the party's name, the reporter's name, or the directory name (reason "desk") */
   title?: string;
+  /** The stable rule id (proposals.ts SOURCES); absent: derived from `reason` by handleSource */
+  source?: string;
+  /** The "why" line for the desk ("rituraj files @RajGovOfficial stories 62% of the time (102 posts)") */
+  detail?: string;
+  /** reason "prior": the smoothed rate, and the reporter's posts it rests on */
+  score?: number;
+  n?: number;
 }
 
 export interface HandleResult {

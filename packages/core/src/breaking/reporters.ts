@@ -217,6 +217,61 @@ export function mergeReporterTokens(rules: ReporterRules, allLearned: readonly L
   return merged;
 }
 
+// ─── What the file name said about the reporter, for the decision log (reporter-prior brief §2.2) ──────────
+
+/**
+ * Every case is logged, the misses most of all: `unknown_token` is how a missing reporter surfaces,
+ * `unknown_bureau_code` how the code table gets confirmed.
+ */
+export const REPORTER_STATUSES = ["matched", "unknown_token", "collision", "bureau_code", "unknown_bureau_code", "no_slot", "no_filename"] as const;
+export type ReporterStatus = (typeof REPORTER_STATUSES)[number];
+
+export interface ReporterResolution {
+  status: ReporterStatus;
+  /** The slot as the file name spelled it (the reporter token, else the code): post_decisions.slot_raw */
+  slotRaw: string | null;
+  /** The reporter token, upper-cased, matched or not */
+  reporterToken: string | null;
+  /** The district code: the places file's (districtCode) or a code-shaped token it does not carry (unknownCode) */
+  bureauCode: string | null;
+  /** The district the code stands for, when known */
+  bureauDistrict: string | null;
+  /** The matched roster handle, without the @; null unless `status` is "matched" */
+  reporterHandle: string | null;
+}
+
+/** The FileTags fields resolveReporterStatus reads (stories.file_tags, or fileTags()) */
+export interface ReporterSlotTags {
+  reporter: string | null;
+  districtCode: string | null;
+  district: string | null;
+  unknownCode?: string | null;
+}
+
+/**
+ * The reporter status of one breaking file, from the file name ONLY (never the post's text or handles: brief L1).
+ * A reporter token decides the status when there is one (matched / collision / unknown_token); otherwise the
+ * district code does (bureau_code / unknown_bureau_code); otherwise no_slot. The bureau fields are filled
+ * whenever the name carries a code, whatever the status.
+ */
+export function resolveReporterStatus(fileName: string | null | undefined, tags: ReporterSlotTags | null | undefined, rules: ReporterRules): ReporterResolution {
+  const bureauCode = tags?.districtCode ?? tags?.unknownCode ?? null;
+  const bureauDistrict = tags?.districtCode ? (tags.district ?? null) : null;
+  const base = { reporterToken: null, reporterHandle: null, bureauCode, bureauDistrict };
+  if (!fileName || !fileName.trim()) return { ...base, status: "no_filename", slotRaw: null, bureauCode: null, bureauDistrict: null };
+  const token = tags?.reporter ? reporterKey(tags.reporter) || null : null;
+  if (token) {
+    const slot = { ...base, reporterToken: token, slotRaw: tags!.reporter };
+    const hit = rules.byToken.get(token);
+    if (hit) return { ...slot, status: "matched", reporterHandle: hit.handle };
+    if (rules.conflicts.has(token)) return { ...slot, status: "collision" };
+    return { ...slot, status: "unknown_token" };
+  }
+  if (tags?.districtCode) return { ...base, status: "bureau_code", slotRaw: tags.districtCode };
+  if (tags?.unknownCode) return { ...base, status: "unknown_bureau_code", slotRaw: tags.unknownCode };
+  return { ...base, status: "no_slot", slotRaw: null };
+}
+
 export interface ReporterPick {
   match: ReporterMatch | null;
   /** The token we were given but could not place. Log these: it is how the roster gets completed. */

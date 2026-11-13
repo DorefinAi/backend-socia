@@ -47,6 +47,7 @@ import {
   type PostTagContext, type TagPlaces,
 } from "../src/breaking/post-tags";
 import { inferHeadlineDistrict } from "../src/breaking/parse";
+import { bookLeadTagDistrict } from "../src/breaking/compose";
 
 /**
  * The floor table. `exact` = exact-set posts measured on fx-replay at dc6ecde (13 Nov 2026), `posts` = the
@@ -100,7 +101,7 @@ export function replayContext(): PostTagContext {
   // The places file's district tags are known-good normalisation targets, as in the worker
   const normaliser = parseHashtagNormalise(cfg("hashtag-normalise.json"), undefined, book.districts.map((d) => d.tag));
   // The draft-side inference runs too, so a leak from it into the emitted run would show up as a score drop
-  return { places, normaliser, inferDistrict: (headline) => inferHeadlineDistrict(book, headline)?.tag ?? null };
+  return { places, normaliser, inferDistrict: (headline) => inferHeadlineDistrict(book, headline)?.tag ?? null, leadTagDistrict: bookLeadTagDistrict(book) };
 }
 
 export function scoreDay(day: Day, texts: readonly string[], ctx: PostTagContext = replayContext()): DayScore {

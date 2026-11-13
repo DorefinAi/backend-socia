@@ -233,7 +233,13 @@ export function parseDistricts(json: unknown, problem: (message: string) => void
   return { rajasthan, outside, signals };
 }
 
-type PlaceKind = "rajasthan" | "outside";
+export type PlaceKind = "rajasthan" | "outside";
+
+/**
+ * Which side of the border a Latin tag names, or null: the replay reads districts.json (TagPlaces), the live
+ * composer its places file (compose.ts bookPlaceKind). videoLabelBrand takes either.
+ */
+export type PlaceKindLookup = (tag: string) => PlaceKind | null;
 
 /** Which list a tag is on, also through its "#<Place>News" stem ("#JaipurNews" → Jaipur) */
 export function tagPlace(tag: string, places: TagPlaces): { kind: PlaceKind; place: string } | null {
@@ -303,6 +309,8 @@ export function isVideoHeadline(line1: string): boolean {
 }
 
 /**
+ * The ONE implementation of the video channel-label brand (V1): the live composer (composeBreaking) and the replay
+ * reference (resolveBrand, composePostTags) both call it.
  * The brand a video headline's channel label names, or null when it names none (§2.2). The label is what follows
  * the LAST "|" or "।" separator: "<title> | Rajasthan News" and "<title> | Jaipur News" are Rajasthan (a label that
  * starts with "Rajasthan" or with a Rajasthan district: "Sikar Crime News", "Sawai Madhopur"); "| Madhya Pradesh
@@ -310,7 +318,8 @@ export function isVideoHeadline(line1: string): boolean {
  * list — are national. Anything else ("| BJP Padyatra", a Hindi clause after a danda, the colon form) is not a
  * channel label, and the caller keeps its own default.
  */
-export function videoLabelBrand(line1: string, places: TagPlaces = EMPTY_TAG_PLACES): typeof BRAND_RAJASTHAN | typeof BRAND_NATIONAL | null {
+export function videoLabelBrand(line1: string, places: TagPlaces | PlaceKindLookup = EMPTY_TAG_PLACES): typeof BRAND_RAJASTHAN | typeof BRAND_NATIONAL | null {
+  const kindOf: PlaceKindLookup = typeof places === "function" ? places : (t) => tagPlace(t, places)?.kind ?? null;
   const h = stripLinks(line1).replace(new RegExp(`(?:\\s+#${TAG_CHAR}+)+\\s*$`, "u"), "").trim();
   const cut = Math.max(h.lastIndexOf("|"), h.lastIndexOf("।"));
   if (cut < 0) return null;
@@ -321,8 +330,8 @@ export function videoLabelBrand(line1: string, places: TagPlaces = EMPTY_TAG_PLA
   if (/^rajasthan$/i.test(words[0] ?? "")) return BRAND_RAJASTHAN;
   // The longest run of leading words that is a place tag: "Sawai Madhopur", "SriGanganagar", "Sikar" (of "Sikar Crime")
   for (let n = words.length; n >= 1; n--) {
-    const p = tagPlace(words.slice(0, n).join(""), places);
-    if (p) return p.kind === "rajasthan" ? BRAND_RAJASTHAN : BRAND_NATIONAL;
+    const kind = kindOf(words.slice(0, n).join(""));
+    if (kind) return kind === "rajasthan" ? BRAND_RAJASTHAN : BRAND_NATIONAL;
   }
   return /\snews$/i.test(label) ? BRAND_NATIONAL : null;
 }
@@ -520,6 +529,13 @@ export interface PostTagContext {
    * given here by a caller that has the places file (parse.ts deskPlacePrefix and isHeadlineLabel). None: not checked.
    */
   deskPlacePrefix?: (headline: string) => boolean;
+  /**
+   * The district a Hindi leading tag names through the town→district table ("#किशनगढ़:" → "Ajmer"), or null for a
+   * place the table does not know ("#आकोला:"): compose.ts bookLeadTagDistrict. A TAG the desk wrote, so it decides
+   * the brand as composeBreaking's stated district does (N3); it is not emitted. A town only in the headline's TEXT
+   * never reaches this (FL5). None: a Hindi leading tag decides nothing, as before.
+   */
+  leadTagDistrict?: (tag: string) => string | null;
 }
 
 export interface PostTags {
@@ -586,7 +602,10 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
     if (leadNorm[1] && isDevanagari(leadNorm[1])) lead.push(leadNorm[1]);
   } else if (policy === "emit") lead.push(policyTag!);
   // The desk rule's tag means "filed from that desk", not where the story is: it never decides the brand
-  const brand = resolveBrand({ lead: format === "A" ? leadNorm[0] : null, trail: trailNorm, video, headline: line1 }, ctx.places);
+  // A Hindi leading tag the town→district table knows ("#किशनगढ़:") decides as its district would (N3)
+  const lead0 = format === "A" ? leadNorm[0]! : null;
+  const brandLead = lead0 && isDevanagari(lead0) ? (ctx.leadTagDistrict?.(lead0) ?? lead0) : lead0;
+  const brand = resolveBrand({ lead: brandLead, trail: trailNorm, video, headline: line1 }, ctx.places);
   if (brand.unknownDistrict) flags.push(`unknown_district:${brand.unknownDistrict}`);
 
   const trail: string[] = [];

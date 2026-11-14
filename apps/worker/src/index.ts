@@ -22,7 +22,7 @@ import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, need, sa
 import { SamvadiaIngest } from "./stages/samvadia";
 import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
-import { institutionHandles, phaseOneData } from "./data-files";
+import { nightlyInstitutions, reloadDataFiles, startDataFiles } from "./data-files";
 import { convertNext } from "./stages/convert";
 import { NightlyFeatures, SEARCH_SWEEP_IDLE_MS, StorySearchSweep, housekeeping, syncHandles } from "./stages/crons";
 import { Ingest, STABLE_MS } from "./stages/ingest";
@@ -195,10 +195,25 @@ async function main(): Promise<void> {
     heartbeat = setInterval(beat, WORKER_HEARTBEAT_MS);
   }
 
-  if (cfg.roles.includes("pipeline")) {
+  // The data files, one set per process, each read once at startup: the pipeline composes from them; the maintenance
+  // role's nightly reporter features build their prior candidates from them, re-checked on disk first (R3)
+  const data = await startDataFiles({
+    pipeline: cfg.roles.includes("pipeline"), maintenance: cfg.roles.includes("maintenance"),
+    log: stageLog(cfg.roles.includes("pipeline") ? "ingest" : "crons"), onStatus: (status) => recordDataFileStatus(db, status),
+  });
+  if (data) {
+    // S3: the one reload loop. Every 60 s the files are checked again (a broken one re-read whatever its timestamp:
+    // R1; a directory change re-checks the reporters and beats at once: S5), so a fix reaches /ingest/status and logs
+    // "back on" without waiting for a story. Its first tick reads what startup did not (places, normalise, campaigns
+    // in the pipeline's process); what startup read is still fresh, so nothing is read or logged twice.
+    const pipeline = cfg.roles.includes("pipeline");
+    const reloadLog = stageLog(pipeline ? "ingest" : "crons");
+    loops.start({ name: "data-files", idleMs: 60_000, log: reloadLog, tick: () => reloadDataFiles(data, pipeline).then(() => false) });
+  }
+
+  if (cfg.roles.includes("pipeline") && data) {
     const log = stageLog("ingest");
     const dictionaries = new Dictionaries(db, cfg.orgId, log);
-    const data = phaseOneData(log, (status) => recordDataFileStatus(db, status));
     const composeOpts = { cardOnDemand: cfg.phase === 1, data, exploreRate: cfg.reporterPrior.exploreRate };
     loops.start({ name: "convert", idleMs: 1000, log, tick: () => convertNext(db, storage!, log, data) });
     loops.start({ name: "compose", idleMs: 1000, log, tick: () => composeNext(db, dictionaries, log, composeOpts) });
@@ -241,15 +256,18 @@ async function main(): Promise<void> {
     loops.start({ name: "trends", idleMs: 5000, log, tick: () => job.tick() });
   }
 
-  if (cfg.roles.includes("maintenance")) {
+  // `data` is always there with the maintenance role (startDataFiles)
+  if (cfg.roles.includes("maintenance") && data) {
     const log = stageLog("crons");
     loops.start({ name: "maintenance", idleMs: 30_000, log, tick: () => housekeeping(db, log) });
     // Its own loop: new and edited stories reach the search index within ~10 s (and a backfill runs batch after batch)
     const searchSweep = new StorySearchSweep(db, log);
     loops.start({ name: "story-search", idleMs: SEARCH_SWEEP_IDLE_MS, log, tick: () => searchSweep.tick() });
     // Its own loop: a slow snapshot never holds up the housekeeping above
-    // The prior candidates it lists are the directory's institution handles (R2), read from the files at each run
-    const features = new NightlyFeatures(db, pool, cfg.orgId, log, cfg.reporterPrior.smoothingM, () => institutionHandles(log));
+    // The prior candidates it lists are the directory's institution handles (R2, P3, D2). Before each run the directory
+    // and beats files are re-checked on disk (R3); while one is broken the run FAILS and is retried hourly, writing no
+    // snapshot (R2, R4)
+    const features = new NightlyFeatures(db, pool, cfg.orgId, log, cfg.reporterPrior.smoothingM, () => nightlyInstitutions(data));
     loops.start({ name: "reporter-features", idleMs: 60_000, log, tick: () => features.tick() });
   }
 

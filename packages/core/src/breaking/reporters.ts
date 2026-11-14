@@ -28,7 +28,7 @@
 import { fold } from "../fold";
 import { HANDLE } from "./syntax";
 import { DataFileRejected } from "./post-tags";
-import { addHandleType, handleTypeProblem, mergeHandleTypes, type HandleType } from "./handle-types";
+import { addHandleType, isPriorHandleType, handleTypeProblem, isHandleType, mergeHandleTypes, type HandleType } from "./handle-types";
 
 /** One entry of reporter-handles.json */
 export interface ReporterHandleEntry {
@@ -36,8 +36,11 @@ export interface ReporterHandleEntry {
   handle: string;
   /** For the draft's "why this handle" line. May be empty; the handle is then used. */
   name?: string;
-  /** Always "person" for a reporter (handle-types.ts); required like every directory entry's */
-  handle_type: HandleType;
+  /**
+   * Always "person" for a reporter (handle-types.ts); required like every directory entry's. `unknown` as read from
+   * the file (R6, 15 Nov 2026): it is a HandleType only once isHandleType has checked it.
+   */
+  handle_type: unknown;
   /**
    * EVERY Latin token spelling that appears in a file name, misspellings included. This is the join key.
    * Case, spaces and underscores are ignored. A token missing here means this reporter is never tagged.
@@ -200,9 +203,10 @@ function parseProfile(e: ReporterHandleEntry, handle: string, name: string, wher
         const lc = h.toLowerCase();
         if (check.bound?.has(lc)) reject(`${where}.prior.handles: @${h} is a district police, collector or state police handle — a reporter never brings one (brief §3.5)`);
         else if (check.directory && !check.directory.has(lc)) reject(`${where}.prior.handles: @${h} is in no directory file — a handle is never invented`);
-        else if (check.types && check.types.get(lc) !== "institution") {
-          // R2: the prior offers institutions only. Dropped, not rejected: the byline and the rest of the prior stand
-          problem(`${where}.prior.handles: @${h} is ${check.types.has(lc) ? `a ${check.types.get(lc)} handle` : "of no known handle_type"}, not an institution — dropped from the prior (a person comes from the copy, a district account from the story's own district)`);
+        else if (check.types && !isPriorHandleType(check.types.get(lc))) {
+          // R2 / P3: the prior offers institutions only, never a person, police or district account. Dropped, not
+          // rejected: the byline and the rest of the prior stand
+          problem(`${where}.prior.handles: @${h} is ${check.types.has(lc) ? `a ${check.types.get(lc)} handle` : "of no known handle_type"}, not an institution — dropped from the prior (a person comes from the copy, a police or district account from the story's own class and district)`);
           delete handles[h];
         }
       }
@@ -323,7 +327,9 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     const h = e?.handle;
     if (typeof h === "string" && HANDLE.test(h.trim())) {
       handles.add(h.trim().replace(/^@/, "").toLowerCase());
-      if (!handleTypeProblem(e!.handle_type)) addHandleType(ownTypes, h, e!.handle_type!);
+      // P4: narrowed by the guard; an entry with a bad type adds none here and is rejected (named) below
+      const type = e?.handle_type;
+      if (isHandleType(type)) addHandleType(ownTypes, h, type);
     }
   }
   const priorCheck: ReporterPriorCheck = {
@@ -342,9 +348,10 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     handles.add(e.handle.trim().replace(/^@/, "").toLowerCase());
     if (typeof e.verified !== "boolean") return problem(`${where} (${e.handle}): "verified" must be true or false`);
     // R2: every directory entry says what kind of account it is; without a valid one THIS entry is rejected
-    const badType = handleTypeProblem(e.handle_type);
-    if (badType) return problem(`${where} (${e.handle}): ${badType} — entry REJECTED${e.verified ? ", this reporter is not loaded (no byline, no desk rule, no prior) until it is fixed" : ""}`);
-    addHandleType(types, e.handle, e.handle_type!);
+    // P4: the guard is the branch condition, so the type is narrowed, never asserted
+    const type = e.handle_type;
+    if (!isHandleType(type)) return problem(`${where} (${e.handle}): ${handleTypeProblem(type)} — entry REJECTED${e.verified ? ", this reporter is not loaded (no byline, no desk rule, no prior) until it is fixed" : ""}`);
+    addHandleType(types, e.handle, type);
     if (!e.verified) return;
 
     const handle = e.handle.trim().replace(/^@/, "");

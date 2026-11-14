@@ -8,7 +8,7 @@ import { HANDLE } from "./syntax";
 import { Gazetteer, type GazetteerEntry, type GazetteerMatch } from "../gazetteer";
 import { DataFileRejected } from "./post-tags";
 import { parseOffices, type Office } from "./offices";
-import { addHandleType, handleTypeProblem, type HandleType } from "./handle-types";
+import { addHandleType, handleTypeProblem, isHandleType, type HandleType } from "./handle-types";
 import { subjectKeywordCandidates, type KeywordCandidate } from "./desk-handles";
 
 export const SUBJECT_KINDS = ["person", "department", "party", "company", "institution", "police"] as const;
@@ -20,10 +20,11 @@ export interface SubjectHandleEntry {
   handle: string;
   kind: SubjectKind;
   /**
-   * institution / person / district (handle-types.ts). Not the same as `kind`: a police commissionerate (kind
-   * "police") is "district", the state police HQ is "institution".
+   * institution / person / district / police (handle-types.ts). Not the same as `kind`: a police commissionerate
+   * (kind "police") is "district", the state police HQ, the ACB and other forces are "police" (P3, D2, 15 Nov 2026).
+   * `unknown` as read from the file (R6): it is a HandleType only once isHandleType has checked it.
    */
-  handle_type: HandleType;
+  handle_type: unknown;
   title?: string;
   names_hi?: string[];
   names_en?: string[];
@@ -175,9 +176,10 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
     if (typeof e.handle !== "string" || !HANDLE.test(e.handle.trim())) return problem(`${where}: "${String(e.handle)}" is not an X handle`);
     if (!KINDS.has(String(e.kind))) return problem(`${where} (${e.handle}): kind must be one of ${SUBJECT_KINDS.join(", ")}`);
     // R2: like the checks around it, a bad handle_type skips THIS entry only (it can only make a handle not tagged)
-    const badType = handleTypeProblem(e.handle_type);
-    if (badType) return problem(`${where} (${e.handle}): ${badType}, entry rejected`);
-    addHandleType(types, e.handle, e.handle_type!);
+    // P4: the guard narrows the type, never an assertion
+    const type = e.handle_type;
+    if (!isHandleType(type)) return problem(`${where} (${e.handle}): ${handleTypeProblem(type)}, entry rejected`);
+    addHandleType(types, e.handle, type);
     if (typeof e.verified !== "boolean") return problem(`${where} (${e.handle}): "verified" must be true or false`);
     if (!e.verified || e.kind === "party") return;
     const names = [...strings(e.names_hi), ...strings(e.names_en)];

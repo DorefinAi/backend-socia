@@ -19,7 +19,7 @@
 
 import { fold } from "../fold";
 import { HANDLE } from "./syntax";
-import { addHandleType, handleTypeProblem, type HandleType } from "./handle-types";
+import { addHandleType, handleTypeProblem, isHandleType, type HandleType } from "./handle-types";
 
 /** One entry of party-handles.json */
 export interface PartyHandleEntry {
@@ -34,8 +34,11 @@ export interface PartyHandleEntry {
    * An "mla" (a member's own handle) is only ever OFFERED, verified or not, and is not the party (pickMlaHandles).
    */
   scope?: string;
-  /** institution / person / district (handle-types.ts): a party or wing is "institution", an MLA "person" */
-  handle_type: HandleType;
+  /**
+   * institution / person / district / police (handle-types.ts): a party or wing is "institution", an MLA "person".
+   * `unknown` as read from the file (R6, 15 Nov 2026): it is a HandleType only once isHandleType has checked it.
+   */
+  handle_type: unknown;
   keywords_hi?: string[];
   keywords_en?: string[];
   verified: boolean;
@@ -128,9 +131,10 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
     const scope = e.scope.trim().toLowerCase();
     if (!SCOPES.has(scope)) return problem(`${who}: unknown scope "${e.scope}", entry rejected (one of ${PARTY_SCOPES.join(", ")})`);
     if (typeof e.party !== "string" || !e.party.trim()) return problem(`${who}: "party" is missing, entry rejected`);
-    const badType = handleTypeProblem(e.handle_type);
-    if (badType) return problem(`${who}: ${badType}, entry rejected`);
-    addHandleType(types, e.handle, e.handle_type!);
+    // P4: the guard narrows the type; a missing or unknown one rejects this entry, named (O2)
+    const type = e.handle_type;
+    if (!isHandleType(type)) return problem(`${who}: ${handleTypeProblem(type)}, entry rejected`);
+    addHandleType(types, e.handle, type);
     if (typeof e.verified !== "boolean") return problem(`${who}: "verified" must be true or false, entry rejected`);
     if (badKeywords(e.keywords_hi)) return problem(`${who}: "keywords_hi" must be a list of strings, entry rejected`);
     if (badKeywords(e.keywords_en)) return problem(`${who}: "keywords_en" must be a list of strings, entry rejected`);

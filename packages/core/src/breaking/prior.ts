@@ -21,7 +21,7 @@ import type { PriorHandlePick, RuleHandlePick } from "./handles";
 import { PROPOSAL_SOURCES, beatSource, type TagSuggestion } from "./proposals";
 import { DEFAULT_PRIOR_SETTINGS, type ReporterProfile, type ReporterRules } from "./reporters";
 import { HANDLE, plainText, wholeWord } from "./syntax";
-import type { HandleType } from "./handle-types";
+import { isBeatHandleType, isPriorHandleType, type HandleType } from "./handle-types";
 
 // ─── beat-handles.json ───────────────────────────────────────────────────────
 
@@ -72,8 +72,12 @@ export interface BeatCheckOptions {
   reporters?: ReporterRules;
   /**
    * Every directory handle's handle_type (mergeHandleTypes). A beat may carry an institution or a person (offered
-   * only when its keywords match the copy: Nirmal's tourism → @KumariDiya); a DISTRICT account fails the file — a
-   * district handle (@Swachh_Jaipur, a police or a collector) comes only from the copy or the story's own district.
+   * only when its keywords match the copy: Nirmal's tourism → @KumariDiya). Any OTHER type leaves that one handle OUT
+   * of the beat, with a warning through `problem`, and the rest of the file loads (owner decisions P6 and D1, 15 Nov
+   * 2026): a district handle (@Swachh_Jaipur, a police or a collector) comes only from the copy or the story's own
+   * district, a police force (@AcbRajasthan, P3) from the copy or the story's class, and a handle with no type at all
+   * (its entry was rejected for a misspelt "District") is never guessed. Absent: not checked here; reporterPrior
+   * applies the same allow-list when it offers a beat, and warns.
    */
   types?: ReadonlyMap<string, HandleType>;
   /** Warnings that do not reject the file */
@@ -82,9 +86,11 @@ export interface BeatCheckOptions {
 
 /**
  * Checks beat-handles.json. `directory` is every handle the directory files carry (lower-cased, no @): a handle in
- * none of them fails the whole file (V11 / L8), as does a forbidden beat, a beat carrying a CM, state-government,
- * police or collector handle, two keys that differ only in case, and a keyword pattern that is unreadable or
- * matches empty text. Never silently corrected: the worker keeps its last good copy and says why.
+ * none of them fails the whole file (V11 / L8), as does a forbidden beat, a beat carrying a CM or state-government
+ * handle, two keys that differ only in case, and a keyword pattern that is unreadable or matches empty text. Never
+ * silently corrected: the worker keeps its last good copy and says why. A handle of a kind no beat may offer — a
+ * police or collector account, a district or police type, no valid type — is left out ALONE with a warning through
+ * `problem`, and the rest loads (owner decisions P6 and D1, 15 Nov 2026).
  */
 export function parseBeatHandles(json: unknown, directory: ReadonlySet<string>, opts: BeatCheckOptions = {}): BeatRules {
   if (!json || typeof json !== "object" || Array.isArray(json)) throw new DataFileRejected("beat-handles", ['expected { "education": { "keywords": "...", "handles": ["@..."] }, ... }']);
@@ -130,11 +136,21 @@ export function parseBeatHandles(json: unknown, directory: ReadonlySet<string>, 
       }
       const bare = h.trim().replace(/^@/, "");
       const lc = bare.toLowerCase();
+      const type = opts.types?.get(lc);
+      // Still the whole file: a CM / state-government handle (a second road around the office alias) and a handle in
+      // no directory file (never invented)
       if (state.has(lc)) problems.push(`"${rawKey}": @${bare} is a CM or state-government handle — those come from the office alias and the measured prior only`);
-      else if (opts.bound?.has(lc)) problems.push(`"${rawKey}": @${bare} is a district police, collector or state police handle — a reporter never brings one (brief §3.5)`);
-      else if (opts.types?.get(lc) === "district") problems.push(`"${rawKey}": @${bare} is a district handle — it comes only from the copy or the story's own district, never from a reporter's beat`);
       else if (!directory.has(lc)) problems.push(`"${rawKey}": @${bare} is in no directory file — add it to one (verified) first; a handle is never invented`);
-      else handles.push(bare);
+      // D1 (owner, 15 Nov 2026): a handle of a kind no beat may offer is LEFT OUT, alone, with a warning; the rest of
+      // the beat and of the file load (the O2 / P6 rule: reject the bad entry, keep the rest). Before D1 a police,
+      // collector or district handle rejected the whole file.
+      else if (opts.bound?.has(lc)) opts.problem?.(`"${rawKey}": @${bare} is a district police, collector or state police handle — a reporter never brings one (brief §3.5); left out of this beat (D1)`);
+      else if (type === "district") opts.problem?.(`"${rawKey}": @${bare} is a district handle — it comes only from the copy or the story's own district, never from a reporter's beat; left out of this beat (D1)`);
+      else if (type === "police") opts.problem?.(`"${rawKey}": @${bare} is a police handle — it comes only from the copy or the story's class, never from a reporter's beat; left out of this beat (D1)`);
+      else if (opts.types && !isBeatHandleType(type)) {
+        // P6: institution or person only, exact. No known type (its entry was rejected: "District", a typo) → out
+        opts.problem?.(`"${rawKey}": @${bare} has ${type === undefined ? "no valid handle_type in any directory file" : `the handle_type "${type}"`} — a beat offers only "institution" or "person", so it is left out of this beat (P6)`);
+      } else handles.push(bare);
     }
     beats.set(key, { key, pattern, handles: Object.freeze(handles) });
   }
@@ -173,10 +189,11 @@ export interface PriorInput {
   directory: ReadonlySet<string> | null | undefined;
   /**
    * Every directory handle's handle_type (mergeHandleTypes over the directory files), lower-cased without the @. The
-   * MEASURED prior offers a handle only when it is an "institution" here (R2). Empty or absent: no measured handle
-   * is offered (fail closed) and `warnings` says why. A declared beat may offer a person (it needs the copy to match
-   * its keywords, so the reporter alone never brings it: owner decision 2, 14 Nov) but never a handle typed
-   * "district" here (@Swachh_Jaipur: decision 1).
+   * MEASURED prior offers a handle only when it is an "institution" here (R2) — never police, district or a person
+   * (P3, 15 Nov). A declared beat offers only an "institution" or a "person" here (it needs the copy to match its
+   * keywords, so the reporter alone never brings it: owner decision 2, 14 Nov) — never a district handle
+   * (@Swachh_Jaipur: decision 1), a police handle, or one with no known type (P6, 15 Nov). Empty or absent: neither
+   * the measured prior nor a beat offers a handle (fail closed) and `warnings` says why.
    */
   types?: ReadonlyMap<string, HandleType> | null;
 }
@@ -216,8 +233,8 @@ export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: Be
     const n = p.prior.n;
     if (!types && Object.keys(p.prior.handles).length) out.warnings.push("the directory's handle types are missing, so the reporter prior offers no measured handles (fail closed)");
     const scored = Object.entries(p.prior.handles)
-      // Institutions only (R2): a person or district handle never comes from who filed the story
-      .filter(([h]) => types?.get(h.toLowerCase()) === "institution")
+      // Institutions only (R2, P3): a person, police or district handle never comes from who filed the story
+      .filter(([h]) => isPriorHandleType(types?.get(h.toLowerCase())))
       .map(([h, r]) => ({ key: h, r, score: smoothedRate(r, n, s.base.get(h.toLowerCase()) ?? 0, s.m) }))
       .filter((x) => x.score >= s.minScore)
       .sort(byScore);
@@ -247,15 +264,25 @@ export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: Be
   // Declared beats: only what the X team TOLD us (beats_source "desk"); an observed or unstated label offers nothing
   if (p.beatsSource !== "desk") return out;
   const text = plainText(input.text);
+  let untyped = false;
   for (const label of p.beats) {
     const key = label.trim().toLowerCase();
     const beat = beats.beats.get(key);
     if (!beat || !beat.pattern.test(text)) continue;
+    if (!types && beat.handles.length) untyped = true;
     for (const h of beat.handles) {
-      if (!ok(h) || types?.get(h.toLowerCase()) === "district") continue;
+      if (!ok(h)) continue;
+      // P6: an institution or a person only, exact; anything else (district, police, no known type) is left out —
+      // and said (R8), so a beat handle that stops being offered is never silent
+      const t = types?.get(h.toLowerCase());
+      if (!isBeatHandleType(t)) {
+        if (types) out.warnings.push(`declared beat ${key}: @${h} is skipped — its handle_type is ${t === undefined ? "missing" : `"${t}"`}, and a beat offers only an institution or a person`);
+        continue;
+      }
       seen.add(h.toLowerCase());
       out.handles.push({ handle: h, reason: "beat", source: beatSource(key), detail: `declared beat: ${key} (${first(p.name)}, told to us by the desk), and the copy matches it` });
     }
   }
+  if (untyped) out.warnings.push("the directory's handle types are missing, so the reporter's declared beats offer no handles (fail closed)");
   return out;
 }

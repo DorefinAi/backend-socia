@@ -1014,7 +1014,8 @@ export const reporterFeatures = pgTable(
     reporter: text("reporter").notNull(),
     /** The posts the features rest on */
     n: integer("n").notNull(),
-    features: jsonb("features").$type<ReporterFeatureSet>().notNull(),
+    /** Written as ReporterFeatureSet (version 2); READ as StoredReporterFeatureSet, since older rows lack fields (P7) */
+    features: jsonb("features").$type<StoredReporterFeatureSet>().notNull(),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.orgId, t.snapshotDate, t.reporter] })],
@@ -1034,7 +1035,17 @@ export interface ReporterItemFeature {
   base: number;
 }
 
+/**
+ * The version a snapshot written NOW carries (owner decision P7, 15 Nov 2026). Version 2 added halfLifeDays, nWeighted,
+ * items[].weighted, sources[].weightedProposed / weightedTaken and prior (R5, R2). A stored snapshot with no `version`
+ * is version 1: those fields may be absent (rows written before them), so a reader takes them as optional
+ * (StoredReporterFeatureSet). A field inside the JSON, so no migration: old rows stay as they are.
+ */
+export const REPORTER_FEATURES_VERSION = 2;
+
+/** What a snapshot written now holds: version 2, every field present */
 export interface ReporterFeatureSet {
+  version: typeof REPORTER_FEATURES_VERSION;
   m: number;
   /** The recency half-life in days (R5): a post this many days before the cutoff counts half */
   halfLifeDays: number;
@@ -1059,3 +1070,29 @@ export interface ReporterFeatureSet {
    */
   prior: { eligible: boolean; minPosts: number; typed: boolean; handles: Record<string, number> };
 }
+
+/**
+ * The fields a version-1 row may lack (P7, R9): what version 2 added, and `since` / `itemsDropped`, which the very
+ * first snapshots (d4682b9, 13 Nov 2026) did not write yet
+ */
+type FeaturesV2Only = "halfLifeDays" | "nWeighted" | "prior" | "since" | "itemsDropped";
+
+/**
+ * A snapshot as READ from reporter_features (P7): any version. `version` absent = 1. The fields version 2 added are
+ * optional here, the items' `weighted` and the sources' weighted counts too, so code that reads a row has to say
+ * what it does without them (featureSetVersion tells which it has). A version-2 ReporterFeatureSet is one of these.
+ */
+export interface StoredReporterFeatureSet extends Omit<ReporterFeatureSet, "version" | FeaturesV2Only | "items" | "sources"> {
+  /** Absent on a version-1 row */
+  version?: number;
+  since?: ReporterFeatureSet["since"];
+  itemsDropped?: ReporterFeatureSet["itemsDropped"];
+  halfLifeDays?: ReporterFeatureSet["halfLifeDays"];
+  nWeighted?: ReporterFeatureSet["nWeighted"];
+  prior?: ReporterFeatureSet["prior"];
+  items: Record<string, Omit<ReporterItemFeature, "weighted"> & { weighted?: number; kind: "hashtag" | "handle" }>;
+  sources: Record<string, { proposed: number; taken: number; weightedProposed?: number; weightedTaken?: number; rate: number; smoothed: number; base: number }>;
+}
+
+/** A stored snapshot's version: 1 when it carries none (written before P7) */
+export const featureSetVersion = (f: Pick<StoredReporterFeatureSet, "version">): number => (typeof f.version === "number" ? f.version : 1);

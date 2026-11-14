@@ -575,11 +575,15 @@ describe("C1–C6: what a reporter's suggestions may carry", () => {
     expect([...b.beats.keys()]).toEqual(["education"]);
     expect(() => parseBeatHandles({ Education: { keywords: "स्कूल", handles: ["@rajeduofficial"] }, education: { keywords: "स्कूल", handles: ["@rajeduofficial"] } }, directory)).toThrow(/listed twice/);
   });
-  it("C3: a police or collector handle, verified or not, fails a beat file and never comes from the measured prior", () => {
+  it("C3: a police or collector handle, verified or not, is left out of a beat (D1) and never comes from the measured prior", () => {
     const unverified = parseHandleRules({ version: 1, districts: { Salumbar: [{ handle: "@DMSalumbar", handle_type: "district", role: "collector", verified: false }] } });
     expect(unverified.bound!.has("dmsalumbar")).toBe(true);
     const dir = new Set([...directory, "dmsalumbar"]);
-    expect(() => parseBeatHandles({ admin: { keywords: "प्रशासन", handles: ["@DMSalumbar"] } }, dir, { bound: unverified.bound! })).toThrow(/police, collector/);
+    // D1 (15 Nov 2026): left out of the beat alone, with a warning; the file loads
+    const warned: string[] = [];
+    const b = parseBeatHandles({ admin: { keywords: "प्रशासन", handles: ["@DMSalumbar", "@rajeduofficial"] } }, dir, { bound: unverified.bound!, problem: (m) => warned.push(m) });
+    expect(b.beats.get("admin")!.handles).toEqual(["rajeduofficial"]);
+    expect(warned.join(" ")).toMatch(/@DMSalumbar is a district police, collector or state police handle.*left out of this beat \(D1\)/);
     // At load: a prior naming one rejects that reporter's entry (O2), named by handle; the rest of the file loads
     const entry = { handle: "@a_rep", handle_type: "person", names_en: ["A_REP"], verified: true, prior: { n: 50, handles: { DMSalumbar: 0.9 } } };
     const other = { handle: "@b_rep", handle_type: "person", names_en: ["B_REP"], verified: true };

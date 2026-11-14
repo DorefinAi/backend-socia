@@ -39,7 +39,7 @@
 
 import { fold } from "../fold";
 import { HANDLE } from "./syntax";
-import { addHandleType, handleTypeProblem, type HandleType } from "./handle-types";
+import { addHandleType, handleTypeProblem, isHandleType, type HandleType } from "./handle-types";
 import type { PlainRuleId, PriorRuleId } from "./proposals";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleData, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_PARTY_RULES, namesAnyParty, pickMlaHandles, pickPartyHandles, type PartyRules } from "./parties";
@@ -53,7 +53,7 @@ export interface DistrictHandleEntry {
   /** "@CP_Jodhpur" (the @ is optional) */
   handle: string;
   role: "police" | "collector" | "govt" | "cm";
-  /** institution / person / district (handle-types.ts): every district police and collector is "district" */
+  /** institution / person / district / police (handle-types.ts): every district police and collector is "district", the state police "police" */
   handle_type: HandleType;
   verified: boolean;
   source?: string;
@@ -123,12 +123,13 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
   const rules: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {}, all, bound, types };
   /** Whether the entry's handle_type is valid; a bad one is reported and the entry rejected */
   const typed = (e: DistrictHandleEntry, where: string): boolean => {
-    const bad = handleTypeProblem(e.handle_type);
-    if (bad) {
-      problem(`${where} (${e.handle}): ${bad}, entry rejected`);
+    // P4: the guard is the branch condition, so the type is narrowed, never asserted (the file is untrusted JSON)
+    const t: unknown = e.handle_type;
+    if (!isHandleType(t)) {
+      problem(`${where} (${e.handle}): ${handleTypeProblem(t)}, entry rejected`);
       return false;
     }
-    addHandleType(types, bare(e), e.handle_type);
+    addHandleType(types, bare(e), t);
     return true;
   };
   for (const [i, e] of entries(root!.state, "state").entries()) {

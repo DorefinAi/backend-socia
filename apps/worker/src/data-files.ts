@@ -1,11 +1,14 @@
-// The phase-1 data files (config/rajasthan-places.json, config/district-handles.json, config/subject-handles.json):
-// edited without a code
-// change and read again when they change (checked at most once a minute). A broken edit keeps the last good
-// copy and logs why, so a typo never stops the desk. Whether each file is readable goes to /ingest/status.
+// The phase-1 data files in apps/worker/config: the places file, the four directory files (district-, subject-, party-
+// and reporter-handles.json), beat-handles.json, hashtag-normalise.json and campaigns.json. Edited without a code
+// change and read again when they change: checked once a minute by the reload loop (reloadDataFiles) and on a story's
+// read; a file marked broken is read again on every check whatever its timestamp (R1), and the reporters and beats
+// files again whenever a directory file they are checked against changes or recovers (R5, S5). A broken edit keeps
+// the last good copy and logs why — when the error changes, and once an hour while it stays (R7) — so a typo never
+// stops the desk. Whether each file is readable goes to /ingest/status, from the pipeline's process only.
 
 import {
   DataFileRejected, EMPTY_BEAT_RULES, EMPTY_HANDLE_RULES, EMPTY_NORMALISER, EMPTY_PARTY_RULES, EMPTY_REPORTER_RULES, EMPTY_SUBJECT_RULES, EMPTY_SUGGEST_RULES, PlaceBook,
-  mergeHandleTypes, parseBeatHandles, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules,
+  isPriorHandleType, mergeHandleTypes, parseBeatHandles, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules,
   type BeatRules, type HandleRules, type HandleType, type PartyRules, type ReporterRules, type SubjectRules, type SuggestRules, type TagNormaliser,
 } from "@socia/core";
 import type { DataFileStatus } from "@socia/db";
@@ -38,25 +41,67 @@ const FALLBACK_VERSION = "0";
 
 export type OnDataStatus = (status: DataFileStatus) => void | Promise<void>;
 
+/** While a file stays broken, its error is logged again (as a reminder) this often; a new error at once (R7) */
+export const BROKEN_REMINDER_MS = 60 * 60_000;
+
 export class JsonDataFile<T> {
   private cached: { value: T; version: string } | null = null;
   private checkedAt = 0;
   private mtimeMs: number | null = null;
   private lastOk: boolean | null = null;
   private lastMessage: string | null = null;
-  /** The mtime of a version that failed its checks: not parsed or reported again until the file changes */
-  private rejectedMtime: number | null = null;
+  /** Successful parses so far: every one gets a version label of its own (S6), whatever the file's mtime */
+  private parses = 0;
+  /** The read under way, shared by every caller that arrives meanwhile (S4): one parse, one "back on" */
+  private inflight: Promise<{ value: T; version: string }> | null = null;
+  /** The dependencies' stamp the held copy was parsed against */
+  private depKey: string | null = null;
+  /** The error last logged and when (R7: logged when it changes, and once an hour while it stays) */
+  private errorKey: string | null = null;
+  private errorLoggedAt = 0;
 
   constructor(
-    private readonly name: DataFileStatus["file"],
-    private readonly path: string,
+    readonly name: DataFileStatus["file"],
+    readonly path: string,
     /** Parses the JSON; reports skipped entries through `problem` */
     private readonly parse: (json: unknown, problem: (message: string) => void) => T,
     private readonly log: Logger,
     /** Used (and cached like a real read) when there has never been a good read; without it the file is required */
     private readonly fallback?: T,
     private readonly onStatus?: OnDataStatus,
+    /**
+     * The files the parse is checked against (R5 / R8 / S1 / S5, 15 Nov 2026): the reporters and beats files are
+     * checked against the directory files' handles and types, using ONLY the copies those files' own loaders hold.
+     * Every read of this file first brings them up to date (their own get(): a broken one is retried by its own loader
+     * and logged by it, never read from disk by this one). When their stamps changed — a directory file changed or
+     * recovered — this file is parsed again at once, whatever its own timestamp, so a beat handle dropped for its type
+     * comes back as soon as the type is fixed, in the same story or reload tick, without a restart.
+     */
+    private readonly deps?: readonly { stamp(): string; get(): Promise<unknown> }[],
   ) {}
+
+  /** This copy's identity for a dependant's `deps`: its version and whether it loaded */
+  stamp(): string {
+    return `${this.cached?.version ?? "-"}/${String(this.lastOk)}`;
+  }
+
+  /** get(), skipping the once-a-minute wait: the file is checked on disk now (R3: the nightly run's re-check) */
+  async refresh(): Promise<{ value: T; version: string }> {
+    // A read already under way may have been the quick one: let it finish, then check the disk
+    if (this.inflight) await this.inflight.catch(() => undefined);
+    this.checkedAt = 0;
+    return this.get();
+  }
+
+  /** R7: an error is logged when it differs from the last one, and as a reminder once an hour while it stays */
+  private logFailure(key: string, fields: Record<string, unknown>, message: string): void {
+    const now = Date.now();
+    const same = key === this.errorKey;
+    if (same && now - this.errorLoggedAt < BROKEN_REMINDER_MS) return;
+    this.errorKey = key;
+    this.errorLoggedAt = now;
+    this.log.error({ ...fields, file: this.name, path: this.path }, same ? `${message} (still broken)` : message);
+  }
 
   /** The value last loaded (a good read or the fallback), without reading the file; null before the first get() */
   current(): T | null {
@@ -66,6 +111,15 @@ export class JsonDataFile<T> {
   /** The value last read from the FILE (never the fallback), without reading it; null when there is none yet */
   loaded(): T | null {
     return this.cached && this.cached.version !== FALLBACK_VERSION ? this.cached.value : null;
+  }
+
+  /**
+   * Whether the file LOADED at its last read (P5, 15 Nov 2026): true only when that read passed and its copy is the
+   * one held. False while the file is rejected, unreadable or missing — even with a last good copy still in use — and
+   * before the first read. Entries skipped one by one (O2) do not count: the file itself loaded.
+   */
+  ok(): boolean {
+    return this.lastOk === true && this.loaded() !== null;
   }
 
   private async report(ok: boolean, message?: string, skipped?: number): Promise<void> {
@@ -79,36 +133,56 @@ export class JsonDataFile<T> {
     );
   }
 
-  async get(): Promise<{ value: T; version: string }> {
+  /** The file's copy, read again when it is due (once a minute, at once when broken or a dependency changed) */
+  get(): Promise<{ value: T; version: string }> {
+    // S4: callers that arrive while a read is under way share it, so it parses (and says "back on") once
+    if (this.inflight) return this.inflight;
+    const read = this.read().finally(() => {
+      if (this.inflight === read) this.inflight = null;
+    });
+    this.inflight = read;
+    return read;
+  }
+
+  private async read(): Promise<{ value: T; version: string }> {
+    // S5: the dependencies first, so their stamps below are the ones this read is checked against
+    if (this.deps) await Promise.all(this.deps.map((d) => d.get().catch(() => undefined)));
     const now = Date.now();
-    if (now - this.checkedAt < RECHECK_MS && this.cached) return this.cached;
+    const depKey = this.deps ? this.deps.map((d) => d.stamp()).join("|") : null;
+    // A dependency changed since this copy was parsed: check it now, not after the minute (R5)
+    const depsChanged = this.cached !== null && this.lastOk !== null && depKey !== this.depKey;
+    if (!depsChanged && now - this.checkedAt < RECHECK_MS && this.cached) return this.cached;
     this.checkedAt = now;
-    let seen: number | null = null;
     try {
       const { mtimeMs } = await stat(this.path);
-      seen = mtimeMs;
-      // The version that was rejected, unchanged: keep what we have, say nothing new
-      if (mtimeMs === this.rejectedMtime && this.cached) return this.cached;
-      if (mtimeMs !== this.mtimeMs || !this.cached) {
+      // R1 (15 Nov 2026): while the file is marked broken it is read again on every tick WHATEVER its timestamp — a
+      // file restored with its old mtime (a Windows copy, a backup) or one that failed on a passing EBUSY recovers
+      const broken = this.lastOk === false;
+      if (broken || depsChanged || mtimeMs !== this.mtimeMs || !this.cached) {
+        this.depKey = depKey;
         const problems: string[] = [];
         const value = this.parse(JSON.parse(await readFile(this.path, "utf8")), (m) => problems.push(m));
-        this.cached = { value, version: String(Math.round(mtimeMs)) };
+        // S6: every successful parse gets a version label of its own (mtime.parse-number), so whatever is cached by
+        // version is rebuilt, and a label never repeats — not for a restored old mtime, not for a re-check
+        this.parses += 1;
+        this.cached = { value, version: `${Math.round(mtimeMs)}.${this.parses}` };
         this.mtimeMs = mtimeMs;
-        this.rejectedMtime = null;
         if (problems.length) this.log.warn({ file: this.name, problems }, "data file entries skipped");
         this.log.info({ file: this.name, path: this.path }, "data file loaded");
+        if (broken) this.log.info({ file: this.name, path: this.path }, `back on: ${this.name}`);
+        this.errorKey = null;
         await this.report(true, undefined, problems.length);
       }
     } catch (err) {
       const keeping = this.cached ? "using the last good copy" : this.fallback !== undefined ? "using none" : "breaking stories wait for it";
       if (err instanceof DataFileRejected) {
         // A file that fails its checks is refused WHOLE, loudly (b6 fix brief P5): every problem in the log and
-        // in /ingest/status, never a quiet skip of the bad entry. Once per version of the file.
-        this.rejectedMtime = seen;
-        this.log.error({ file: this.name, path: this.path, problems: err.problems }, `data file rejected; ${keeping}`);
+        // in /ingest/status, never a quiet skip of the bad entry. Logged when the problems change, and hourly (R7).
+        this.logFailure(`rejected:${JSON.stringify(err.problems)}`, { problems: err.problems }, `data file rejected; ${keeping}`);
         await this.report(false, `The ${this.name} file was rejected (${err.problems.length} problem${err.problems.length === 1 ? "" : "s"}: ${err.problems.slice(0, 3).join("; ")}${err.problems.length > 3 ? "; ..." : ""}); ${keeping}. Fix the file; nothing in it is used until it passes.`);
       } else {
-        this.log.error({ err, file: this.name, path: this.path }, `data file could not be read; ${keeping}`);
+        const e = err as { code?: unknown; message?: unknown };
+        this.logFailure(`unreadable:${String(e?.code ?? "")}:${String(e?.message ?? err)}`, { err }, `data file could not be read; ${keeping}`);
         await this.report(false, `The ${this.name} file could not be read; ${keeping}.`);
       }
       if (!this.cached && this.fallback !== undefined) this.cached = { value: this.fallback, version: FALLBACK_VERSION };
@@ -178,28 +252,23 @@ interface DirectoryInfo {
 
 /**
  * What a reporter's prior or a declared beat may offer (a handle is never invented) and must never offer (police,
- * collectors, the CM and state government). The copies already loaded from file when there are; else each file is
- * read here ONCE for this check (they are re-read only when the checked file itself changes). A file that cannot
- * be read adds nothing and is logged.
+ * collectors, the CM and state government), from the copies the directory files' OWN loaders hold — never a read of
+ * the disk here (S1, 15 Nov 2026). The checked file's loader brings them up to date first (JsonDataFile `deps`). A
+ * file with no loaded copy adds nothing and makes the result incomplete, silently: its own loader retries it on every
+ * reload tick and logs it (R7: when the error changes, and once an hour), so this check adds no second line a minute.
  */
-function directoryInfo(files: DirectorySources, env: NodeJS.ProcessEnv, log: Logger): DirectoryInfo {
+function directoryInfo(files: DirectorySources): DirectoryInfo {
   let complete = true;
-  const read = <T>(f: JsonDataFile<T>, name: string, path: string, parse: (j: unknown) => T): T | null => {
+  const read = <T>(f: JsonDataFile<T>): T | null => {
     const cur = f.loaded();
-    if (cur) return cur;
-    try {
-      return parse(JSON.parse(readFileSync(path, "utf8")));
-    } catch (err) {
-      complete = false;
-      log.warn({ err, file: name, path }, "directory file could not be read for the reporter-prior checks; its handles count as unknown");
-      return null;
-    }
+    if (!cur) complete = false;
+    return cur;
   };
   const lc = (hs: Iterable<string> | undefined) => [...(hs ?? [])].map((h) => h.replace(/^@/, "").toLowerCase());
-  const handles = read(files.handles, "handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j));
-  const subjects = read(files.subjects, "subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j) => parseSubjectHandles(j));
-  const parties = read(files.parties, "parties", env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j) => parsePartyHandles(j));
-  const reporters = files.reporters ? read(files.reporters, "reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j) => parseReporterHandles(j)) : null;
+  const handles = read(files.handles);
+  const subjects = read(files.subjects);
+  const parties = read(files.parties);
+  const reporters = files.reporters ? read(files.reporters) : null;
   return {
     directory: new Set([...lc(handles?.all), ...lc(subjects?.handles), ...lc(parties?.handles), ...lc(reporters?.handles)]),
     bound: new Set(lc(handles?.bound)),
@@ -209,28 +278,90 @@ function directoryInfo(files: DirectorySources, env: NodeJS.ProcessEnv, log: Log
   };
 }
 
+/** The four directory files: every handle's handle_type comes from them together (mergeHandleTypes) */
+export type DirectoryFiles = Pick<PhaseOneData, "handles" | "subjects" | "parties" | "reporters">;
+
+const directoryFiles = (data: DirectoryFiles) => [data.handles, data.subjects, data.parties, data.reporters] as const;
+
 /**
- * The directory's INSTITUTION handles (R2), lower-cased without the @, read from the four directory files now: the
- * only handles the nightly reporter features list as prior candidates. Read on each call (once a day), so it needs no
- * pipeline role. A file that cannot be read adds nothing and is logged; a handle two files disagree about takes the
- * more restrictive type (mergeHandleTypes), so a broken or disputed entry can only leave a handle OUT.
+ * The directory files that did NOT load at their last read (P5, 15 Nov 2026): rejected, unreadable, missing, or never
+ * read. Any one of them turns the reporter prior and the declared beats OFF for the story being composed: a handle's
+ * type is the most restrictive of the four files' (mergeHandleTypes), so a missing file could make a district or
+ * police account look like an institution — and a type is never guessed from the files that did load. Normal tagging
+ * is not touched: it keeps running on each file's last good copy (JsonDataFile.get).
  */
-export function institutionHandles(log: Logger, env = process.env): Set<string> {
-  const read = <T>(name: string, path: string, parse: (j: unknown) => T): T | null => {
-    try {
-      return parse(JSON.parse(readFileSync(path, "utf8")));
-    } catch (err) {
-      log.warn({ err, file: name, path }, "directory file could not be read for the nightly prior candidates; its institutions are left out");
-      return null;
-    }
-  };
-  const types = mergeHandleTypes(
-    read("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j))?.types,
-    read("subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j) => parseSubjectHandles(j))?.types,
-    read("parties", env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j) => parsePartyHandles(j))?.types,
-    read("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j) => parseReporterHandles(j))?.types,
-  );
-  return new Set([...types].filter(([, t]) => t === "institution").map(([h]) => h));
+export function brokenDirectoryFiles(data: DirectoryFiles): { file: DataFileStatus["file"]; path: string }[] {
+  return directoryFiles(data).filter((f) => !f.ok()).map((f) => ({ file: f.name, path: f.path }));
+}
+
+/** The directory files and the beats file, in the order each must be read: every file after the ones it is checked against */
+export type CheckedFiles = DirectoryFiles & Pick<PhaseOneData, "beats">;
+const inLoadOrder = (data: CheckedFiles) => [data.handles, data.subjects, data.parties, data.reporters, data.beats] as const;
+
+/**
+ * Reads the directory files and the beats file ONCE, in order (small item, 15 Nov 2026): each is parsed a single time
+ * and logged a single time, and the reporters and beats checks find the directory already in memory instead of
+ * reading it from disk again. A file that cannot be read is logged by its own loader and keeps its fallback.
+ */
+export async function loadDataFiles(data: CheckedFiles): Promise<void> {
+  for (const f of inLoadOrder(data)) await f.get().catch(() => undefined);
+}
+
+/**
+ * The data files of a worker process. At startup only the directory files and the beats file are read (in order,
+ * once each: loadDataFiles); the places, normalise and campaigns files are read by the first reload tick, or the first
+ * breaking story, whichever comes first — also once. The pipeline composes from them and the maintenance role's
+ * nightly reporter features build their prior candidates from them. Null when the process has neither role. The
+ * data-file status (/ingest/status) is recorded by the pipeline only, so two processes never both report it.
+ */
+export async function startDataFiles(opts: { pipeline: boolean; maintenance: boolean; log: Logger; onStatus?: OnDataStatus; env?: NodeJS.ProcessEnv }): Promise<PhaseOneData | null> {
+  if (!opts.pipeline && !opts.maintenance) return null;
+  const data = phaseOneData(opts.log, opts.pipeline ? opts.onStatus : undefined, opts.env);
+  await loadDataFiles(data);
+  return data;
+}
+
+/**
+ * One tick of the data files' reload loop (S3, 15 Nov 2026): every 60 s, in whichever process loads the files, each
+ * one is checked again the way a story would check it (JsonDataFile.get: re-parsed when changed, every tick while
+ * broken: R1), so a fix shows in /ingest/status — and "back on" is logged — without waiting for a story or the nightly.
+ * A changed directory file makes the reporters and beats files re-check in the same tick (S5). `all` adds the files
+ * only the pipeline reads (places, normalise, campaigns). Never throws: a file that cannot be read is its own
+ * loader's to log (R7).
+ */
+export async function reloadDataFiles(data: PhaseOneData, all: boolean): Promise<void> {
+  for (const f of inLoadOrder(data)) await f.get().catch(() => undefined);
+  if (all) for (const f of [data.places, data.normalise, data.campaigns]) await f.get().catch(() => undefined);
+}
+
+/** The nightly prior candidates cannot be built today: the snapshot run fails and is tried again in an hour (R4) */
+export class PriorCandidatesUnavailable extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PriorCandidatesUnavailable";
+  }
+}
+
+/**
+ * The directory's INSTITUTION handles (R2, P3, D2), lower-cased without the @: the only handles the nightly reporter
+ * features list as prior candidates. Owner decisions of 15 Nov 2026:
+ *   R3  first the four directory files and the beats file are checked on disk again (JsonDataFile.refresh: re-parsed
+ *       when changed or broken), so the nightly never works from copies older than the files;
+ *   R2  while ANY directory file is broken it builds no candidates at all — the composer's rule (priorGate), never
+ *       candidates from a last good copy;
+ *   R4  that, or an empty list, THROWS: the run is a failure, retried every hour until it succeeds that day, and no
+ *       snapshot is written meanwhile (the previous day's stays the latest).
+ */
+export async function nightlyInstitutions(data: CheckedFiles): Promise<Set<string>> {
+  for (const f of inLoadOrder(data)) await f.refresh().catch(() => undefined);
+  const broken = brokenDirectoryFiles(data);
+  if (broken.length) {
+    throw new PriorCandidatesUnavailable(`the ${broken.map((b) => b.file).join(", ")} directory file${broken.length === 1 ? "" : "s"} did not load (${broken.map((b) => b.path).join(", ")}): no prior candidates are built and no snapshot is written until ${broken.length === 1 ? "it loads" : "they load"}`);
+  }
+  const types = mergeHandleTypes(data.handles.loaded()?.types, data.subjects.loaded()?.types, data.parties.loaded()?.types, data.reporters.loaded()?.types);
+  const out = new Set([...types].filter(([, t]) => isPriorHandleType(t)).map(([h]) => h));
+  if (!out.size) throw new PriorCandidatesUnavailable("the directory files hold no institution handle: no prior candidates are built and no snapshot is written");
+  return out;
 }
 
 export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process.env): PhaseOneData {
@@ -248,11 +379,12 @@ export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process
   // or one in no directory file, rejects the file; when a directory file cannot be read the directory part of that
   // check waits for the composer (which drops any handle outside the directory) rather than take every byline down
   const reporters = new JsonDataFile("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j, problem) => {
-    const d = directoryInfo({ handles, subjects, parties }, env, log);
-    if (!d.complete) problem("a directory file could not be read, so the prior's handles were checked against police and collectors only");
+    const d = directoryInfo({ handles, subjects, parties });
+    if (!d.complete) problem("a directory file has no loaded copy, so the prior's handles were checked against police and collectors only");
     // A prior handle that is not an institution is dropped from the prior and reported (R2); the entry still loads
     return parseReporterHandles(j, problem, d.complete ? { directory: d.directory, bound: d.bound, types: d.types } : { bound: d.bound });
-  }, log, EMPTY_REPORTER_RULES, onStatus);
+    // Parsed again whenever a directory file changes or recovers: its prior is re-checked against the new types (R5)
+  }, log, EMPTY_REPORTER_RULES, onStatus, [handles, subjects, parties]);
   return {
     places,
     handles,
@@ -260,10 +392,15 @@ export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process
     reporters,
     parties,
     // No beats file (or one naming a handle in no directory file): no declared-beat suggestions
+    // P6 / D1: a beat handle whose type is not exactly "institution" or "person" (a police or collector account
+    // included) is left out alone, with a warning; the rest loads. The composer applies the same allow-list to every
+    // beat it offers, warns when it skips one, and offers none while a directory file is broken (P5). R5 / R8: parsed
+    // again whenever a directory file changes or recovers, so a handle dropped for its type comes back once the type
+    // is fixed, and a beats file refused while the directory was unreadable is read again — no restart needed.
     beats: new JsonDataFile("beats", env.BEAT_HANDLES_FILE ?? BEAT_HANDLES_FILE, (j, problem) => {
-      const d = directoryInfo({ handles, subjects, parties, reporters }, env, log);
+      const d = directoryInfo({ handles, subjects, parties, reporters });
       return parseBeatHandles(j, d.directory, { bound: d.bound, stateHandles: d.stateHandles, types: d.types, reporters: reporters.loaded() ?? undefined, problem });
-    }, log, EMPTY_BEAT_RULES, onStatus),
+    }, log, EMPTY_BEAT_RULES, onStatus, [handles, subjects, parties, reporters]),
     // No normalise file: typos stay as the desk typed them (still flagged near the brand tags)
     normalise: new JsonDataFile("normalise", env.HASHTAG_NORMALISE_FILE ?? HASHTAG_NORMALISE_FILE, (j, problem) => parseHashtagNormalise(j, problem, placeTags(places, placesPath)), log, EMPTY_NORMALISER, onStatus),
     // No campaigns file: no campaign or keyword tags offered

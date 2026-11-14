@@ -9,7 +9,7 @@ import {
   recordProposal, reporterStatusReport, reworkBase, reworkRatio, setDecisionLogger, snapshotReporterFeatures, voidOutcome, type ProposalRecord,
 } from "../src/decisions";
 import { claimDraft, copyPosted, rejectDraft, restoreDraft, undoCopyPosted } from "../src/desk";
-import { postDecisions, postDrafts, reporterFeatures, type LoggedProposal } from "../src/schema";
+import { featureSetVersion, postDecisions, postDrafts, reporterFeatures, type LoggedProposal } from "../src/schema";
 import { TEST_URL, freshDb, seed } from "./helpers";
 import { and, eq } from "drizzle-orm";
 
@@ -477,7 +477,9 @@ describe("istDate", () => {
     // Every counted post was decided 8.5 hours before the day began: each counts w (R5)
     const w = recencyWeight(yesterday, TODAY_START);
     expect(w).toBeCloseTo(0.5 ** (8.5 / 24 / 14), 12);
-    expect(f).toMatchObject({ m: 20, halfLifeDays: 14, nWeighted: round4(4 * w), cutoff: TODAY_START.toISOString(), since: new Date(TODAY_START.getTime() - 90 * 86_400_000).toISOString(), itemsDropped: 0, reworkMean: 0.1 });
+    // P7: a new snapshot says it is version 2
+    expect(featureSetVersion(f)).toBe(2);
+    expect(f).toMatchObject({ version: 2, m: 20, halfLifeDays: 14, nWeighted: round4(4 * w), cutoff: TODAY_START.toISOString(), since: new Date(TODAY_START.getTime() - 90 * 86_400_000).toISOString(), itemsDropped: 0, reworkMean: 0.1 });
     // base 3/10 (unweighted); smoothed (3w + 20·0.3) / (4w + 20)
     expect(f.items["@rajgovofficial"]).toEqual({ kind: "handle", count: 3, weighted: round4(3 * w), rate: 0.75, base: 0.3, smoothed: round4((3 * w + 6) / (4 * w + 20)) });
     for (const k of ["@leak", "@ancient", "@rejected", "@neversent"]) expect(f.items[k]).toBeUndefined();
@@ -634,8 +636,8 @@ describe("istDate", () => {
     expect(inc.smoothed).toBeGreaterThan(rg.smoothed);
     // R2: the prior candidates are institutions only (the CM is a person: not listed, though counted as an item)
     expect(d.features.items["@bhajanlalbjp"]).toBeDefined();
-    expect(Object.keys(d.features.prior.handles).sort()).toEqual(["incrajasthan", "rajgovofficial"]);
-    expect(d.features.prior.eligible).toBe(true);
+    expect(Object.keys(d.features.prior?.handles ?? {}).sort()).toEqual(["incrajasthan", "rajgovofficial"]);
+    expect(d.features.prior?.eligible).toBe(true);
 
     const q = await row("quiet");
     expect(q.n).toBe(20);
@@ -645,7 +647,54 @@ describe("istDate", () => {
     const sh = await row("short");
     expect(sh.n).toBe(19);
     expect(sh.features.nWeighted).toBeCloseTo(19 * fresh, 3);
-    expect(sh.features.prior.eligible).toBe(false);
+    expect(sh.features.prior?.eligible).toBe(false);
+  });
+
+  it("P7: an old (version 1) snapshot with none of the version-2 fields reads without throwing", async () => {
+    // A row as the code before 944eeb1 wrote it: no version, no halfLifeDays / nWeighted / prior, no weighted counts.
+    // Written straight to the table (no migration: the version is a field inside the JSON)
+    const v1 = {
+      m: 20, cutoff: "2026-11-01T18:30:00.000Z", since: "2026-08-03T18:30:00.000Z", itemsDropped: 0, reworkMean: null,
+      items: { "@rajgovofficial": { kind: "handle", count: 3, rate: 0.75, smoothed: 0.4, base: 0.3 } },
+      sources: { reporter_prior: { proposed: 4, taken: 3, rate: 0.75, smoothed: 0.75, base: 0.75 } },
+    };
+    await h.db.execute(sql`INSERT INTO reporter_features (org_id, snapshot_date, reporter, n, features) VALUES (${s.org.id}, '2026-11-02', 'oldtimer', 4, ${JSON.stringify(v1)}::jsonb)`);
+    const [old] = await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "oldtimer"), eq(reporterFeatures.snapshotDate, "2026-11-02")));
+    const f = old!.features;
+    // Read the way the type now makes a reader read it: every version-2 field optional
+    const read = () => ({
+      version: featureSetVersion(f),
+      halfLifeDays: f.halfLifeDays ?? null,
+      nWeighted: f.nWeighted ?? null,
+      prior: Object.keys(f.prior?.handles ?? {}),
+      eligible: f.prior?.eligible ?? false,
+      weighted: f.items["@rajgovofficial"]?.weighted ?? null,
+      weightedTaken: f.sources.reporter_prior?.weightedTaken ?? null,
+    });
+    expect(read).not.toThrow();
+    expect(read()).toEqual({ version: 1, halfLifeDays: null, nWeighted: null, prior: [], eligible: false, weighted: null, weightedTaken: null });
+    // The type says so: reading a version-2 field as if it were always there does not compile (never called)
+    // @ts-expect-error P7: `prior` is absent on a version-1 row
+    const unguarded = () => f.prior.handles;
+    expect(typeof unguarded).toBe("function");
+  });
+
+  it("R9: the very first snapshots (d4682b9, 13 Nov) had no `since` and no `itemsDropped` either: read as optional too", async () => {
+    // Exactly the fields d4682b9's ReporterFeatureSet had: m, cutoff, items, sources, reworkMean
+    const first = {
+      m: 20, cutoff: "2026-11-12T18:30:00.000Z", reworkMean: 0.1,
+      items: { "#Jaipur": { kind: "hashtag", count: 2, rate: 0.5, smoothed: 0.3, base: 0.2 } },
+      sources: {},
+    };
+    await h.db.execute(sql`INSERT INTO reporter_features (org_id, snapshot_date, reporter, n, features) VALUES (${s.org.id}, '2026-11-13', 'firstday', 4, ${JSON.stringify(first)}::jsonb)`);
+    const [row] = await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "firstday"), eq(reporterFeatures.snapshotDate, "2026-11-13")));
+    const f = row!.features;
+    const read = () => ({ version: featureSetVersion(f), since: f.since ?? null, itemsDropped: f.itemsDropped ?? 0, prior: Object.keys(f.prior?.handles ?? {}) });
+    expect(read).not.toThrow();
+    expect(read()).toEqual({ version: 1, since: null, itemsDropped: 0, prior: [] });
+    // @ts-expect-error R9: `since` may be absent on a version-1 row
+    const unguarded = (): string => f.since;
+    expect(typeof unguarded).toBe("function");
   });
 
   it("R2: with no institution list the snapshot lists no prior candidates (fail closed)", async () => {

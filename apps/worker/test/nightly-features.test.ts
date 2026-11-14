@@ -8,6 +8,7 @@ import pino from "pino";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { reporterPriorSettings } from "../src/config";
 import { FEATURES_ERROR_KV, FEATURES_KV, NightlyFeatures } from "../src/stages/crons";
+import { PriorCandidatesUnavailable } from "../src/data-files";
 
 const URL_ = process.env.TEST_DATABASE_URL;
 
@@ -95,6 +96,64 @@ describe("reporter prior settings", () => {
     expect(at("error")).toHaveLength(1);
     expect(at("error")[0]).toMatchObject({ failures: 3 });
     expect(await getKv(h.db, FEATURES_ERROR_KV)).toMatchObject({ failures: 3, message: expect.any(String) });
+  });
+
+  it("R4: prior candidates that cannot be built (a broken directory file) or come back empty FAIL the run: no snapshot, retried hourly until it succeeds that day", async () => {
+    const { log, at } = capture();
+    const day = "2026-11-25";
+    let candidates: () => Set<string> = () => {
+      throw new PriorCandidatesUnavailable("the parties directory file did not load (party-handles.json): no prior candidates are built and no snapshot is written until it loads");
+    };
+    const job = new NightlyFeatures(h.db, h.pool, orgId, log, 20, async () => candidates());
+    const rows = async () => (await h.db.select().from(reporterFeatures)).filter((r) => r.snapshotDate === day);
+    const before = await getKv<{ day: string }>(h.db, FEATURES_KV);
+    let t = new Date(`${day}T00:30:00Z`).getTime();
+
+    expect(await job.run(new Date(t))).toBeNull();
+    // Nothing written, the day not marked done: the previous day's snapshot stays the latest
+    expect(await rows()).toEqual([]);
+    expect(await getKv(h.db, FEATURES_KV)).toEqual(before);
+    expect(at("warn").at(-1)!.msg).toMatch(/prior candidates could not be built, so no snapshot was taken; trying again in an hour/);
+    expect(await getKv(h.db, FEATURES_ERROR_KV)).toMatchObject({ message: expect.stringMatching(/parties directory file did not load/) });
+    // Not tried again within the hour
+    let asked = 0;
+    candidates = () => {
+      asked++;
+      return new Set<string>();
+    };
+    expect(await job.run(new Date(t + 30 * 60_000))).toBeNull();
+    expect(asked).toBe(0);
+    // An hour on: tried again; an EMPTY list is a failure too
+    t += 3600_000 + 1;
+    expect(await job.run(new Date(t))).toBeNull();
+    expect(asked).toBe(1);
+    expect(await rows()).toEqual([]);
+    // Fixed: the next hourly try writes that day's snapshot, with its candidates
+    candidates = () => new Set(["rajgovofficial"]);
+    t += 3600_000 + 1;
+    expect(await job.run(new Date(t))).toBe(1);
+    expect(await rows()).toHaveLength(1);
+    expect((await rows())[0]!.features.prior).toMatchObject({ typed: true });
+    expect(await getKv(h.db, FEATURES_KV)).toMatchObject({ day });
+  });
+
+  it("S2: a run that failed at 23:50 does not hold the next day back — it runs at 00:00 — and the missed day gives the real reason", async () => {
+    const { log, at } = capture();
+    // The last snapshot is 2026-11-25 (above). The 27th's runs fail all day, the last at 23:50 IST
+    let candidates: () => Set<string> = () => {
+      throw new PriorCandidatesUnavailable("the parties directory file did not load (party-handles.json)");
+    };
+    const job = new NightlyFeatures(h.db, h.pool, orgId, log, 20, async () => candidates());
+    expect(await job.run(new Date("2026-11-27T18:20:00Z"))).toBeNull(); // 23:50 IST on the 27th
+    candidates = () => new Set(["rajgovofficial"]);
+    // 00:00 IST on the 28th, ten minutes later: the new day clears the hour's wait
+    expect(await job.run(new Date("2026-11-27T18:30:00Z"))).toBe(1);
+    expect(await getKv(h.db, FEATURES_KV)).toMatchObject({ day: "2026-11-28" });
+    const missed = at("warn").filter((l) => /days with no snapshot/.test(l.msg));
+    expect(missed).toHaveLength(1);
+    expect(missed[0]).toMatchObject({ lastDay: "2026-11-25", today: "2026-11-28", missedDays: 2, failedOn: "2026-11-27" });
+    expect(missed[0]!.msg).toBe("reporter features: days with no snapshot — previous run failed: the parties directory file did not load (party-handles.json)");
+    expect(at("warn").filter((l) => /worker was not running/.test(l.msg))).toEqual([]);
   });
 });
 

@@ -1,7 +1,7 @@
 // Phase 1 end to end on a real Postgres: breaking files land in day folders on a copy of the share and come
 // out as ready X drafts with no card (card on demand). Needs TEST_DATABASE_URL. No Chromium.
 
-import { copyFile, mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,10 +10,12 @@ import {
 import { LocalStorage } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
 import pino from "pino";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { BreakingShareSource, ShareUnreachable, type ShareFs } from "../src/breaking-source";
-import { DataUnavailable, institutionHandles, phaseOneData } from "../src/data-files";
-import { Dictionaries, composeNext } from "../src/stages/compose";
+import {
+  BROKEN_REMINDER_MS, DataUnavailable, PriorCandidatesUnavailable, brokenDirectoryFiles, loadDataFiles, nightlyInstitutions, phaseOneData, reloadDataFiles, startDataFiles,
+} from "../src/data-files";
+import { Dictionaries, composeNext, priorGate } from "../src/stages/compose";
 import { convertNext } from "../src/stages/convert";
 import { Ingest } from "../src/stages/ingest";
 
@@ -97,9 +99,322 @@ describe("data files fail loudly (b6 fix brief P5, no database)", () => {
     const shipped = phaseOneData(log, (s) => void statuses.push(s));
     await Promise.all([shipped.handles.get(), shipped.subjects.get(), shipped.parties.get(), shipped.reporters.get()]);
     expect(statuses.filter((s) => /handle_type|not an institution/.test(s.message ?? ""))).toEqual([]);
-    const inst = institutionHandles(log);
+    const inst = await nightlyInstitutions(shipped);
     for (const h of ["rajgovofficial", "incrajasthan", "bjp4rajasthan", "rajcmo"]) expect(inst.has(h), h).toBe(true);
     for (const h of ["bhajanlalbjp", "svoruganti1466", "jaipur_police", "kotapolice", "dcdmjaipur", "rituraj9999"]) expect(inst.has(h), h).toBe(false);
+    // P3 / D2: the police accounts and the central armed police forces are typed "police": never a candidate either
+    for (const h of ["policerajasthan", "rajpolicehelp", "acbrajasthan", "delhipolice", "crpfindia", "bsf_india"]) expect(inst.has(h), h).toBe(false);
+  });
+
+  it("R3 + R2: the nightly re-checks the files on disk first, and builds NO candidates while a directory file is broken", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const parties = join(dir, "party-handles.json");
+    await copyFile(new URL("../config/party-handles.json", import.meta.url), parties);
+    const data = phaseOneData(log, undefined, { PARTY_HANDLES_FILE: parties });
+    await loadDataFiles(data);
+    expect((await nightlyInstitutions(data)).has("incrajasthan")).toBe(true);
+
+    // R3: an institution added on disk a moment ago (inside the loaders' one-minute wait) is in tonight's candidates
+    const file = JSON.parse(await readFile(parties, "utf8")) as { entries: unknown[] };
+    file.entries.push({ handle: "@NewPartyX", handle_type: "institution", party: "newx", scope: "state", keywords_en: ["NEWPARTYX"], verified: true });
+    await writeFile(parties, JSON.stringify(file));
+    await utimes(parties, new Date(), new Date(Date.now() + 5_000));
+    expect((await nightlyInstitutions(data)).has("newpartyx")).toBe(true);
+
+    // R2: half-saved at night. The composer turns the prior off; the nightly does the same — no candidates from the
+    // last good copy — and says which file
+    await writeFile(parties, '{ "version": 1, "entries": [ { "handle": "@INCRaj');
+    await utimes(parties, new Date(), new Date(Date.now() + 10_000));
+    await expect(nightlyInstitutions(data)).rejects.toBeInstanceOf(PriorCandidatesUnavailable);
+    await expect(nightlyInstitutions(data)).rejects.toThrow(/the parties directory file did not load .*no prior candidates are built and no snapshot is written/);
+    expect(priorGate(data, log)).toMatch(/parties directory file did not load/);
+    // A process where it never loaded: the same
+    const never = phaseOneData(log, undefined, { PARTY_HANDLES_FILE: parties });
+    await loadDataFiles(never);
+    await expect(nightlyInstitutions(never)).rejects.toBeInstanceOf(PriorCandidatesUnavailable);
+  });
+
+  it("R1: a broken file restored with its OLD timestamp is back on within 60 s, and says \"back on\" once", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const parties = join(dir, "party-handles.json");
+    const good = await readFile(new URL("../config/party-handles.json", import.meta.url), "utf8");
+    const OLD = new Date("2026-01-01T00:00:00Z");
+    await writeFile(parties, good);
+    await utimes(parties, OLD, OLD);
+    const lines: { level: number; msg?: string }[] = [];
+    const capture = pino({ level: "info" }, { write: (line: string) => void lines.push(JSON.parse(line)) });
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const data = phaseOneData(capture, undefined, { PARTY_HANDLES_FILE: parties });
+      await data.parties.get();
+      expect(data.parties.ok()).toBe(true);
+      // Broken (a half-saved edit), then restored from a backup: the restored copy carries the OLD mtime again
+      await writeFile(parties, '{ "version": 1, "entries": [ { "handle": "@INCRaj');
+      await utimes(parties, new Date(), new Date());
+      clock += 61_000;
+      await data.parties.get();
+      expect(data.parties.ok()).toBe(false);
+      await writeFile(parties, good);
+      await utimes(parties, OLD, OLD);
+      clock += 61_000;
+      await data.parties.get();
+      expect(data.parties.ok()).toBe(true);
+      expect(brokenDirectoryFiles(data).map((b) => b.file)).not.toContain("parties");
+      clock += 61_000;
+      await data.parties.get();
+      expect(lines.filter((l) => l.msg === "back on: parties")).toHaveLength(1);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("R7: a broken file's error is logged when it changes and once an hour while it stays, not every minute", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const parties = join(dir, "party-handles.json");
+    await writeFile(parties, '{ "version": 1, "entries": [ { "handle": "@INCRaj');
+    const errors: { msg?: string }[] = [];
+    const capture = pino({ level: "error" }, { write: (line: string) => void errors.push(JSON.parse(line)) });
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const data = phaseOneData(capture, undefined, { PARTY_HANDLES_FILE: parties });
+      // 59 one-minute ticks (just under an hour), the file read again on each (R1): one error line
+      for (let i = 0; i < 59; i++) {
+        await data.parties.get();
+        clock += 61_000;
+      }
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.msg).toMatch(/data file could not be read; using none/);
+      // Still broken an hour after the first line: one reminder
+      clock = clock + BROKEN_REMINDER_MS;
+      await data.parties.get();
+      expect(errors).toHaveLength(2);
+      expect(errors[1]!.msg).toMatch(/\(still broken\)$/);
+      // A different error: at once
+      await writeFile(parties, "{ not json at all");
+      clock += 61_000;
+      await data.parties.get();
+      expect(errors).toHaveLength(3);
+      expect(errors[2]!.msg).not.toMatch(/still broken/);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("R5 + R8: fixing a \"District\" typo in a directory file brings the beat handle back, without a restart", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const subjectsPath = join(dir, "subject-handles.json");
+    const good = await readFile(new URL("../config/subject-handles.json", import.meta.url), "utf8");
+    const typo = JSON.parse(good) as { entries: { handle: string; handle_type: string }[] };
+    typo.entries.find((e) => e.handle === "@KumariDiya")!.handle_type = "District";
+    await writeFile(subjectsPath, JSON.stringify(typo));
+    const warned: { file?: string; problems?: string[] }[] = [];
+    const capture = pino({ level: "warn" }, { write: (line: string) => void warned.push(JSON.parse(line)) });
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const data = phaseOneData(capture, undefined, { SUBJECT_HANDLES_FILE: subjectsPath });
+      await loadDataFiles(data);
+      // The typo: the subject entry is rejected, so @KumariDiya has no type and is left out of the tourism beat (P6)
+      expect((await data.beats.get()).value.beats.get("tourism")!.handles).toEqual([]);
+      expect(warned.filter((w) => w.file === "beats").flatMap((w) => w.problems ?? []).join(" ")).toMatch(/"tourism": @KumariDiya has no valid handle_type.*left out of this beat/);
+
+      // Fixed in the subject file. The beats file itself is untouched (same mtime): it is parsed again because a
+      // directory file it is checked against changed — and S5: in the SAME read, which brings the subject file up to
+      // date first (no earlier subjects.get(), no "one story late")
+      await writeFile(subjectsPath, good);
+      await utimes(subjectsPath, new Date(), new Date(Date.now() + 5_000));
+      clock += 61_000;
+      expect((await data.beats.get()).value.beats.get("tourism")!.handles).toEqual(["KumariDiya"]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("S5: the reload loop sees a directory fix and re-checks the beats in the same tick", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const subjectsPath = join(dir, "subject-handles.json");
+    const good = await readFile(new URL("../config/subject-handles.json", import.meta.url), "utf8");
+    const typo = JSON.parse(good) as { entries: { handle: string; handle_type: string }[] };
+    typo.entries.find((e) => e.handle === "@KumariDiya")!.handle_type = "District";
+    await writeFile(subjectsPath, JSON.stringify(typo));
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const data = (await startDataFiles({ pipeline: true, maintenance: false, log, env: { SUBJECT_HANDLES_FILE: subjectsPath } }))!;
+      expect(data.beats.current()!.beats.get("tourism")!.handles).toEqual([]);
+      await writeFile(subjectsPath, good);
+      await utimes(subjectsPath, new Date(), new Date(Date.now() + 5_000));
+      clock += 61_000;
+      await reloadDataFiles(data, false);
+      // No story was composed: the beats copy in memory is already the re-checked one
+      expect(data.beats.current()!.beats.get("tourism")!.handles).toEqual(["KumariDiya"]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("S1: subject-handles.json broken from startup — 10 minutes of reload ticks give at most one error line per file, and no disk re-reads by the beats check", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const subjectsPath = join(dir, "subject-handles.json");
+    await writeFile(subjectsPath, '{ "version": 2, "entries": [ { "handle": "@Kumari');
+    const lines: { level: number; msg?: string; file?: string }[] = [];
+    const capture = pino({ level: "info" }, { write: (line: string) => void lines.push(JSON.parse(line)) });
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      // The shipped beats name @KumariDiya, which only the (broken) subject file carries: the beats are refused too
+      const data = (await startDataFiles({ pipeline: true, maintenance: false, log: capture, env: { SUBJECT_HANDLES_FILE: subjectsPath } }))!;
+      for (let i = 0; i < 10; i++) {
+        clock += 61_000;
+        await reloadDataFiles(data, false);
+      }
+      expect(data.subjects.ok()).toBe(false);
+      // No warning a minute from the beats or reporters check reading the broken file from disk (S1)
+      expect(lines.filter((l) => /directory file could not be read/.test(l.msg ?? ""))).toEqual([]);
+      // Each broken file says so once in the 10 minutes (the hourly reminder is R7's test)
+      const errorsBy = new Map<string, number>();
+      for (const l of lines) if (l.level >= 50) errorsBy.set(l.file ?? "?", (errorsBy.get(l.file ?? "?") ?? 0) + 1);
+      expect(errorsBy.get("subjects")).toBe(1);
+      for (const [file, n] of errorsBy) expect(n, file).toBeLessThanOrEqual(1);
+      expect(lines.filter((l) => l.level >= 50 && /still broken/.test(l.msg ?? ""))).toEqual([]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("S3: the reload loop updates /ingest/status — \"back on\" shows with no story composed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const parties = join(dir, "party-handles.json");
+    const good = await readFile(new URL("../config/party-handles.json", import.meta.url), "utf8");
+    await writeFile(parties, '{ "version": 1, "entries": [ { "handle": "@INCRaj');
+    const statuses: { file: string; ok: boolean }[] = [];
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const data = (await startDataFiles({ pipeline: true, maintenance: true, log, onStatus: (s) => void statuses.push(s), env: { PARTY_HANDLES_FILE: parties } }))!;
+      expect(statuses.filter((s) => s.file === "parties").at(-1)).toMatchObject({ ok: false });
+      await writeFile(parties, good);
+      clock += 61_000;
+      await reloadDataFiles(data, true);
+      expect(statuses.filter((s) => s.file === "parties").at(-1)).toMatchObject({ ok: true });
+      // The first tick also read the pipeline-only files, once each
+      for (const f of ["places", "normalise", "campaigns"]) expect(statuses.filter((s) => s.file === f), f).toEqual([expect.objectContaining({ ok: true })]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("S4: callers that arrive during a read share it — one parse, one \"back on\"", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const parties = join(dir, "party-handles.json");
+    const good = await readFile(new URL("../config/party-handles.json", import.meta.url), "utf8");
+    await writeFile(parties, "{ not json");
+    const lines: { msg?: string; file?: string }[] = [];
+    const capture = pino({ level: "info" }, { write: (line: string) => void lines.push(JSON.parse(line)) });
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const data = phaseOneData(capture, undefined, { PARTY_HANDLES_FILE: parties });
+      await data.parties.get();
+      await writeFile(parties, good);
+      clock += 61_000;
+      // A story's compose, the reload loop and the reporters/beats checks, all at once
+      const reads = await Promise.all([data.parties.get(), data.parties.get(), data.reporters.get(), data.beats.get(), data.parties.get()]);
+      expect(new Set([reads[0], reads[1], reads[4]]).size).toBe(1);
+      expect(lines.filter((l) => l.msg === "back on: parties")).toHaveLength(1);
+      expect(lines.filter((l) => l.msg === "data file loaded" && l.file === "parties")).toHaveLength(1);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("S6: every successful parse gets a version label of its own", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const parties = join(dir, "party-handles.json");
+    const good = await readFile(new URL("../config/party-handles.json", import.meta.url), "utf8");
+    const OLD = new Date("2026-01-01T00:00:00Z");
+    await writeFile(parties, good);
+    await utimes(parties, OLD, OLD);
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      const data = phaseOneData(log, undefined, { PARTY_HANDLES_FILE: parties });
+      const versions = [(await data.parties.get()).version];
+      // Broken, then restored with the OLD mtime (R1): the same mtime parsed again
+      await writeFile(parties, "{ not json");
+      await utimes(parties, new Date(), new Date());
+      clock += 61_000;
+      await data.parties.get();
+      await writeFile(parties, good);
+      await utimes(parties, OLD, OLD);
+      clock += 61_000;
+      versions.push((await data.parties.get()).version);
+      // A plain edit
+      await utimes(parties, new Date(), new Date(Date.now() + 5_000));
+      clock += 61_000;
+      versions.push((await data.parties.get()).version);
+      expect(new Set(versions).size).toBe(3);
+      expect(versions[0]).toMatch(/^\d+\.1$/);
+      expect(versions[1]!.split(".")[0]).toBe(versions[0]!.split(".")[0]);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("startup, maintenance only: each data file is read and logged once; the nightly needs no second read", async () => {
+    const lines: { level: number; msg?: string; file?: string }[] = [];
+    const capture = pino({ level: "info" }, { write: (line: string) => void lines.push(JSON.parse(line)) });
+    const statuses: unknown[] = [];
+    expect(await startDataFiles({ pipeline: false, maintenance: false, log: capture })).toBeNull();
+    const data = (await startDataFiles({ pipeline: false, maintenance: true, log: capture, onStatus: (s) => void statuses.push(s) }))!;
+    const loadedOnce = () => {
+      const by = new Map<string, number>();
+      for (const l of lines) if (l.msg === "data file loaded") by.set(l.file!, (by.get(l.file!) ?? 0) + 1);
+      return Object.fromEntries(by);
+    };
+    expect(loadedOnce()).toEqual({ handles: 1, subjects: 1, parties: 1, reporters: 1, beats: 1 });
+    // No directory file read a second time from disk for the reporters' or the beats' checks
+    expect(lines.filter((l) => /directory file could not be read/.test(l.msg ?? ""))).toEqual([]);
+    // The status is the pipeline's to record, not this process's
+    expect(statuses).toEqual([]);
+    // The nightly run: the files are re-checked on disk (R3), unchanged, so nothing is parsed or logged again
+    expect((await nightlyInstitutions(data)).has("incrajasthan")).toBe(true);
+    expect(loadedOnce()).toEqual({ handles: 1, subjects: 1, parties: 1, reporters: 1, beats: 1 });
+    // Only the routine per-entry notes (beat labels with no key yet); no error and no second read
+    expect(lines.filter((l) => l.level >= 40 && l.msg !== "data file entries skipped")).toEqual([]);
+  });
+
+  it("P5: a directory file that did not load turns the prior and beats off (logged once, named); back on when it loads", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const parties = join(dir, "party-handles.json");
+    await writeFile(parties, "{ not json");
+    const lines: { level: number; msg?: string; files?: { file: string; path: string }[] }[] = [];
+    const capture = pino({ level: "info" }, { write: (line: string) => void lines.push(JSON.parse(line)) });
+    const data = phaseOneData(log, undefined, { PARTY_HANDLES_FILE: parties });
+    await Promise.all([data.handles.get(), data.subjects.get(), data.parties.get(), data.reporters.get()]);
+    expect(brokenDirectoryFiles(data)).toEqual([{ file: "parties", path: parties }]);
+    const off = priorGate(data, capture);
+    expect(off).toBe("the reporter prior and declared beats are off: the parties directory file did not load");
+    // The desk's line names the file, never its path on the server; the log has both
+    expect(off).not.toContain(dir);
+    const errs = lines.filter((l) => l.level >= 50);
+    expect(errs).toHaveLength(1);
+    expect(errs[0]!.msg).toMatch(/reporter prior and declared beats are OFF: the directory file parties \(.*party-handles\.json\) did not load/);
+    expect(errs[0]!.files).toEqual([{ file: "parties", path: parties }]);
+    // The next story: still off, not logged again
+    expect(priorGate(data, capture)).toBe(off);
+    expect(lines.filter((l) => l.level >= 50)).toHaveLength(1);
+
+    // Fixed: back on, and said once
+    await copyFile(new URL("../config/party-handles.json", import.meta.url), parties);
+    await utimes(parties, new Date(), new Date(Date.now() + 5_000));
+    (data.parties as unknown as { checkedAt: number }).checkedAt = 0;
+    await data.parties.get();
+    expect(brokenDirectoryFiles(data)).toEqual([]);
+    expect(priorGate(data, capture)).toBeNull();
+    expect(lines.at(-1)!.msg).toMatch(/back on/);
   });
 
   it("R2: a district-handles entry with a bad handle_type is rejected alone and reported; a reporter's person handle is dropped from its prior", async () => {
@@ -320,6 +635,54 @@ describe("BreakingShareSource (no database)", () => {
     // A restart skips the first-start files and the ingested ones without reading them again
     expect(await settle(ingestFor())).toBe(0);
     expect(await h.db.select().from(stories)).toHaveLength(2);
+  }, 60_000);
+
+  it("P5: a broken party-handles.json turns the reporter prior and beats off, says so loudly, and the draft keeps its normal tags", async () => {
+    // Nirmal (file-name token NIRMAL): a measured prior (@RajGovOfficial) and a desk-declared tourism beat
+    // (@KumariDiya on "पर्यटन"). The same copy, filed twice: once with every directory file good, once with a
+    // half-saved party file.
+    const copy = "पर्यटन विभाग की नई योजना पर बैठक\nप्रदेश में पर्यटकों की संख्या बढ़ाने पर चर्चा\n";
+    const draftFor = async (name: string, d: ReturnType<typeof phaseOneData>, lg: pino.Logger) => {
+      const ingest = ingestFor();
+      expect(await settle(ingest)).toBe(0);
+      await put("29_OCTOBER_2026", name, `${name.replace(/\.txt$/, "")}\n\n${copy}`);
+      await ingest.scan();
+      clock += 3000;
+      expect(await ingest.scan()).toBe(1);
+      while (await convertNext(h.db, store, lg, d));
+      while (await composeNext(h.db, new Dictionaries(h.db, orgId), lg, { cardOnDemand: true, data: d, exploreRate: 0 }));
+      const [story] = await h.db.select().from(stories).where(eq(stories.status, "composed"));
+      const [draft] = await h.db.select().from(postDrafts).where(eq(postDrafts.storyId, story!.id));
+      return draft!;
+    };
+    const pick = (dr: typeof postDrafts.$inferSelect) => dr.handlePick as { suggested: { handle: string; reason: string }[]; warnings: string[]; reporterToken: string | null };
+
+    const good = await draftFor("BTN_RJ_BREAKING_7001_29OCT_US_CONTROL_NIRMAL_big.txt", data, log);
+    expect(pick(good).reporterToken).toBe("NIRMAL");
+    const offered = pick(good).suggested.filter((s) => s.reason === "prior" || s.reason === "beat").map((s) => `${s.handle} (${s.reason})`);
+    expect(offered).toEqual(expect.arrayContaining(["@RajGovOfficial (prior)", "@KumariDiya (beat)"]));
+
+    await h.db.execute(sql`TRUNCATE published_posts, post_drafts, stories, ingested_files, kv CASCADE`);
+    // The party file loads, then is half-saved: its loader keeps the last good copy for the normal tags
+    const parties = join(dir, "party-handles.json");
+    await copyFile(new URL("../config/party-handles.json", import.meta.url), parties);
+    const lines: { level: number; msg?: string; files?: { file: string }[] }[] = [];
+    const capture = pino({ level: "error" }, { write: (line: string) => void lines.push(JSON.parse(line)) });
+    const broken = phaseOneData(capture, undefined, { PARTY_HANDLES_FILE: parties });
+    await broken.parties.get();
+    await writeFile(parties, '{ "version": 1, "entries": [ { "handle": "@INCRaj');
+    await utimes(parties, new Date(), new Date(Date.now() + 5_000));
+    (broken.parties as unknown as { checkedAt: number }).checkedAt = 0;
+    const bad = await draftFor("BTN_RJ_BREAKING_7002_29OCT_US_CONTROL_NIRMAL_big.txt", broken, capture);
+
+    // No prior and no beat suggestion this run
+    expect(pick(bad).suggested.filter((s) => s.reason === "prior" || s.reason === "beat")).toEqual([]);
+    expect(pick(bad).warnings).toContain("the reporter prior and declared beats are off: the parties directory file did not load");
+    // The error, naming the file
+    expect(lines.some((l) => /reporter prior and declared beats are OFF: the directory file parties \(/.test(l.msg ?? "") && l.files?.[0]?.file === "parties")).toBe(true);
+    // Drafting did not stop, and the post is the one the good run made: the same text, tags and handles
+    expect(bad).toMatchObject({ status: "ready", bodyText: good.bodyText, hashtags: good.hashtags, mentions: good.mentions, hashtagSuggestions: good.hashtagSuggestions });
+    expect(pick(bad).suggested).toEqual(pick(good).suggested.filter((s) => s.reason !== "prior" && s.reason !== "beat"));
   }, 60_000);
 
   it("D1: when the decision log cannot be written at all, the draft still goes through", async () => {

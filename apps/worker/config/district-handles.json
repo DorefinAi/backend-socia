@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "_handle_type_note": "Every entry carries \"handle_type\" (reporter directory changes v2, R2): every district police and collector is \"district\"; in `state`, @RajGovOfficial, @RajCMO (the CM's office) and @PoliceRajasthan are \"institution\", @BhajanlalBjp \"person\". An entry without a valid one is rejected alone. The reporter prior offers institutions only.",
+  "_handle_type_note": "Every entry carries \"handle_type\", one of \"institution\" (the owner's \"organisation\"), \"person\", \"district\" or \"police\" (reporter directory changes v2, R2; \"police\" added by owner decision P3, 15 Nov 2026): every district police and collector is \"district\"; in `state`, @RajGovOfficial and @RajCMO (the CM's office) are \"institution\", @PoliceRajasthan \"police\", @BhajanlalBjp \"person\". An entry without a valid one is rejected alone. The reporter prior offers institutions only: never police, collector, admin or district; a declared beat offers institutions and persons only (P6).",
   "generated": "2026-10-30",
   "district_list_note": "41 districts: 33 pre-2023 + 8 of the 2023 districts kept (Balotra, Beawar, Deeg, Didwana-Kuchaman, Khairthal-Tijara, Kotputli-Behror, Phalodi, Salumber) after the 28 Dec 2024 cabinet decision abolished Dudu, Kekri, Shahpura, Neem Ka Thana, Gangapur City, Jaipur Rural, Jodhpur Rural, Anupgarh, Sanchore.",
   "state": [
@@ -30,7 +30,7 @@
     },
     {
       "handle": "@PoliceRajasthan",
-      "handle_type": "institution",
+      "handle_type": "police",
       "role": "police",
       "verified": true,
       "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=967&isOtherDept=false",

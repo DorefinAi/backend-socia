@@ -55,7 +55,9 @@ describe("R2: every directory entry carries a valid handle_type", () => {
   it("is derived from what the files already say", () => {
     const t = (h: string) => types.get(h.toLowerCase());
     // Institutions: the state government, the parties, departments
-    for (const h of ["RajGovOfficial", "INCRajasthan", "BJP4Rajasthan", "INCIndia", "NSUIRajasthan", "rajeduofficial", "jdajaipur", "RajCMO", "PoliceRajasthan"]) expect(t(h), h).toBe("institution");
+    for (const h of ["RajGovOfficial", "INCRajasthan", "BJP4Rajasthan", "INCIndia", "NSUIRajasthan", "rajeduofficial", "jdajaipur", "RajCMO"]) expect(t(h), h).toBe("institution");
+    // Police forces that are not one district's (P3), and the central armed police forces (D2), 15 Nov 2026
+    for (const h of ["PoliceRajasthan", "RajPoliceHelp", "AcbRajasthan", "DelhiPolice", "crpfindia", "BSF_India"]) expect(t(h), h).toBe("police");
     // People: the CM, the Chief Secretary, ministers, MLAs, reporters
     for (const h of ["BhajanlalBjp", "svoruganti1466", "KumariDiya", "officialkharra", "BMacharyaBJP", "rituraj9999", "satyatv99_news", "bhanwar_83"]) expect(t(h), h).toBe("person");
     // District accounts: every district police and collector, and the commissionerates in subject-handles.json
@@ -69,7 +71,12 @@ describe("R2: every directory entry carries a valid handle_type", () => {
     const a = new Map<string, HandleType>([["x", "institution"], ["y", "person"], ["z", "institution"]]);
     const b = new Map<string, HandleType>([["X", "district"], ["y", "institution"], ["@w", "institution"]]);
     expect(Object.fromEntries(mergeHandleTypes(a, b, null, undefined))).toEqual({ x: "district", y: "person", z: "institution", w: "institution" });
-    expect(HANDLE_TYPES).toEqual(["institution", "person", "district"]);
+    expect(HANDLE_TYPES).toEqual(["institution", "person", "district", "police"]);
+    // P3: police is at least as strict as district, whichever file says what and in which order
+    const p = new Map<string, HandleType>([["acb", "police"], ["kp", "district"], ["x", "police"]]);
+    const q = new Map<string, HandleType>([["acb", "institution"], ["kp", "police"], ["x", "person"]]);
+    expect(Object.fromEntries(mergeHandleTypes(p, q))).toEqual({ acb: "police", kp: "police", x: "police" });
+    expect(Object.fromEntries(mergeHandleTypes(q, p))).toEqual({ acb: "police", kp: "police", x: "police" });
   });
 });
 
@@ -308,10 +315,13 @@ describe("Decision 1: @Swachh_Jaipur is a district handle — never from the pri
       expect(d.mentions.map((m) => m.toLowerCase())).not.toContain("@swachh_jaipur");
     }
   });
-  it("a declared beat may not carry a district handle: the beats file fails at load, and the prior skips it at compose", () => {
-    const file = { sanitation: { keywords: "स्वच्छता", handles: ["@Swachh_Jaipur"] } };
-    expect(() => parseBeatHandles(file, directory, { types })).toThrow(DataFileRejected);
-    expect(() => parseBeatHandles(file, directory, { types })).toThrow(/district handle/);
+  it("a declared beat may not carry a district handle: left out alone at load (D1), and the prior skips it at compose", () => {
+    const file = { sanitation: { keywords: "स्वच्छता", handles: ["@Swachh_Jaipur", "@rajeduofficial"] } };
+    // D1 (15 Nov 2026): that one handle is left out with a warning; the rest of the beat and the file load
+    const warned: string[] = [];
+    const strict = parseBeatHandles(file, directory, { types, problem: (m) => warned.push(m) });
+    expect(strict.beats.get("sanitation")!.handles).toEqual(["rajeduofficial"]);
+    expect(warned.join(" ")).toMatch(/@Swachh_Jaipur is a district handle.*left out of this beat \(D1\)/);
     // A beats file checked without types still never offers it
     const loose = parseBeatHandles(file, directory);
     const p = { ...rituraj, beats: ["sanitation"], beatsSource: "desk" as const };
@@ -442,4 +452,173 @@ describe("P1/P2: the owner's five court/crime sentences (filed by @vyaskamalkant
     expect(d.mentions).toEqual(["@jaipur_police"]);
   });
 });
+});
+
+// ─── Review decisions P3 and P6 (owner, 15 Nov 2026) ─────────────────────────
+
+describe("P3: the police accounts are typed police — the prior never suggests police, collector, admin or district", () => {
+  const POLICE = ["PoliceRajasthan", "RajPoliceHelp", "AcbRajasthan", "DelhiPolice", "crpfindia", "BSF_India"];
+  const nirmal = reporters.profiles!.get("nirmaltiwaribki")!;
+  const seeded = (handles: Record<string, number>) => ({ ...nirmal, prior: { n: 100, handles, hashtags: {}, source: null } });
+  const offer = (profile: ReturnType<typeof seeded>, t: ReadonlyMap<string, HandleType> = types) =>
+    reporterPrior({ profile, text: "", taken: new Set(), takenTags: new Set(), districtBound: new Set(), directory, types: t }, reporters).handles.map((h) => h.handle);
+
+  it("a reporter given @AcbRajasthan in their seed prior: it is never suggested", () => {
+    // At load: dropped from the prior, reported as a police handle; the reporter and the rest of the prior load
+    const problems: string[] = [];
+    const r = parseReporterHandles({
+      version: 1,
+      entries: [{ handle: "@a_rep", handle_type: "person", names_en: ["A_REP"], verified: true, prior: { n: 60, handles: { AcbRajasthan: 0.9, RajGovOfficial: 0.5 } } }],
+    }, (m) => problems.push(m), { directory, types });
+    expect(Object.keys(r.profiles!.get("a_rep")!.prior!.handles)).toEqual(["RajGovOfficial"]);
+    expect(problems.join(" ")).toMatch(/@AcbRajasthan is a police handle, not an institution — dropped/);
+
+    // At compose, even from a roster loaded with no type check (the seed still holds it) and with no police guard
+    const unchecked = parseReporterHandles({
+      version: 1,
+      entries: [{ handle: "@a_rep", handle_type: "person", names_en: ["A_REP"], verified: true, prior: { n: 60, handles: { AcbRajasthan: 0.9 } } }],
+    });
+    expect(Object.keys(unchecked.profiles!.get("a_rep")!.prior!.handles)).toEqual(["AcbRajasthan"]);
+    const profile = unchecked.profiles!.get("a_rep")!;
+    expect(reporterPrior({ profile, text: "", taken: new Set(), takenTags: new Set(), districtBound: new Set(), directory, types }, unchecked).handles).toEqual([]);
+    const arep = parseReporterHandles({
+      version: 1,
+      entries: [{ handle: "@a_rep", handle_type: "person", names_en: ["AREP"], verified: true, prior: { n: 60, handles: { AcbRajasthan: 0.9 } } }],
+    });
+    // ...and on a whole draft about an ACB raid filed by that reporter
+    const d = draft(fileFor("AREP"), ["एसीबी ने पटवारी को रिश्वत लेते रंगे हाथों पकड़ा", "आरोपी से पूछताछ जारी"], arep);
+    // The file name names the seeded reporter (so the prior ran), and still no @AcbRajasthan from it
+    expect(d.unmatchedReporter ?? null).toBeNull();
+    expect(d.proposals.some((p) => p.source === "reporter_prior")).toBe(false);
+    expect(d.handleSuggestions.filter((h) => h.reason === "prior")).toEqual([]);
+    // Control: the same reporter with an institution in the seed IS offered it on the same draft
+    const control = draft(fileFor("AREP"), ["एसीबी ने पटवारी को रिश्वत लेते रंगे हाथों पकड़ा", "आरोपी से पूछताछ जारी"], parseReporterHandles({
+      version: 1,
+      entries: [{ handle: "@a_rep", handle_type: "person", names_en: ["AREP"], verified: true, prior: { n: 60, handles: { AcbRajasthan: 0.9, INCRajasthan: 0.9 } } }],
+    }));
+    expect(control.handleSuggestions.filter((h) => h.reason === "prior").map((h) => h.handle)).toEqual(["INCRajasthan"]);
+  });
+
+  it("none of the five police accounts comes from the prior, whatever its rate; before P3 (typed institution) they would have", () => {
+    const all: Record<string, number> = { RajGovOfficial: 0.6 };
+    for (const h of POLICE) all[h] = 0.95;
+    expect(offer(seeded(all))).toEqual(["RajGovOfficial"]);
+    // The old typing, to show what P3 closes: the same seed with the five typed "institution" offers all of them
+    const before = new Map(types);
+    for (const h of POLICE) before.set(h.toLowerCase(), "institution");
+    expect(offer(seeded(all), before).sort()).toEqual([...POLICE, "RajGovOfficial"].sort());
+  });
+
+  it("the prior offers institutions only: never police, a district account (Settings police / collector / admin) or a person", () => {
+    const one = (h: string) => offer(seeded({ [h]: 0.95 }));
+    for (const h of POLICE) expect(one(h), h).toEqual([]);
+    // A Settings police, collector or admin handle is "district" in the directory (settingsHandleType)
+    for (const h of ["jaipur_police", "DcDmJaipur", "Swachh_Jaipur"]) expect(one(h), h).toEqual([]);
+    for (const h of ["BhajanlalBjp", "KumariDiya"]) expect(one(h), h).toEqual([]);
+    expect(one("INCRajasthan")).toEqual(["INCRajasthan"]);
+  });
+
+  it("nothing else moves: the desk's ranking puts a police account where an institution sat (the other text rules)", () => {
+    for (const h of POLICE) {
+      const pickOf: HandlePick = { handle: h, reason: "subject", title: h };
+      expect(suggestionTier(pickOf, types), h).toBe("text_other");
+      const asInstitution = new Map(types);
+      asInstitution.set(h.toLowerCase(), "institution");
+      expect(suggestionTier(pickOf, asInstitution), h).toBe("text_other");
+    }
+    // The state police's tagging role comes from `role`, not the type: still the state police rule and a guard
+    expect(rules.state.police).toContain("PoliceRajasthan");
+    expect(rules.bound!.has("policerajasthan")).toBe(true);
+  });
+
+  it("D1: a police account in the beats file leaves out THAT ONE handle with a warning; the rest of the file loads", () => {
+    const file = {
+      crime: { keywords: "एसीबी|सीमा", handles: ["@AcbRajasthan", "@BSF_India", "@rajeduofficial"] },
+      tourism: { keywords: "पर्यटन", handles: ["@KumariDiya"] },
+    };
+    const warned: string[] = [];
+    const b = parseBeatHandles(file, directory, { types, problem: (m) => warned.push(m) });
+    expect(b.beats.get("crime")!.handles).toEqual(["rajeduofficial"]);
+    expect(b.beats.get("tourism")!.handles).toEqual(["KumariDiya"]);
+    expect(warned.join(" ")).toMatch(/"crime": @AcbRajasthan is a police handle.*left out of this beat \(D1\)/);
+    expect(warned.join(" ")).toMatch(/"crime": @BSF_India is a police handle.*left out of this beat \(D1\)/);
+    // A handle in no directory file still refuses the whole file (never invented), as does a CM / state handle
+    expect(() => parseBeatHandles({ crime: { keywords: "एसीबी", handles: ["@AcbRajasthan", "@NoSuchX"] } }, directory, { types })).toThrow(DataFileRejected);
+  });
+
+  it("D2: every central armed police force in the directory is typed police — never a prior or beat handle", () => {
+    expect(types.get("bsf_india")).toBe("police");
+    expect(types.get("crpfindia")).toBe("police");
+    expect(offer(seeded({ BSF_India: 0.95, crpfindia: 0.95, RajGovOfficial: 0.6 }))).toEqual(["RajGovOfficial"]);
+    // Normal tagging is unchanged: the subject entry still matches its own names (kind "institution")
+    expect(subjects.gazetteer.find("सीमा सुरक्षा बल के जवानों ने घुसपैठिए को पकड़ा").some((m) => m.entry.data.handle === "BSF_India")).toBe(true);
+  });
+
+  it("R8: a beat handle skipped at compose for its type says so in the warnings", () => {
+    const loose = parseBeatHandles({ sanitation: { keywords: "स्वच्छता", handles: ["@AcbRajasthan", "@rajeduofficial"] } }, directory);
+    const p = { ...nirmal, prior: null, beats: ["sanitation"], beatsSource: "desk" as const };
+    const out = reporterPrior({ profile: p, text: "स्वच्छता अभियान", taken: new Set(), takenTags: new Set(), districtBound: new Set(), directory, types }, reporters, loose);
+    expect(out.handles.map((h) => h.handle)).toEqual(["rajeduofficial"]);
+    expect(out.warnings).toEqual(["declared beat sanitation: @AcbRajasthan is skipped — its handle_type is \"police\", and a beat offers only an institution or a person"]);
+  });
+});
+
+describe("P6: a declared beat offers institution or person handles only — exact, lower-case", () => {
+  // A subject entry typed "District" (capital D): its loader rejects it, so the handle is in the directory with NO type
+  const problems: string[] = [];
+  const subjectsX = parseSubjectHandles({
+    version: 2,
+    entries: [
+      { handle: "@SwachhTestX", handle_type: "District", kind: "department", title: "Swachh X", names_hi: ["स्वच्छता मिशन एक्स"], verified: true },
+      { handle: "@EduTestX", handle_type: "institution", kind: "department", title: "Edu X", names_hi: ["शिक्षा विभाग एक्स"], verified: true },
+    ],
+  }, (m) => problems.push(m));
+  const dirX = new Set([...directory, ...(subjectsX.handles ?? [])]);
+  const typesX = mergeHandleTypes(rules.types, subjects.types, subjectsX.types, parties.types, reporters.types);
+  const file = { sanitation: { keywords: "स्वच्छता", handles: ["@SwachhTestX", "@EduTestX", "@KumariDiya"] } };
+  const rituraj = reporters.profiles!.get("rituraj9999")!;
+  const onBeat = { ...rituraj, prior: null, beats: ["sanitation"], beatsSource: "desk" as const };
+  const offered = (b: ReturnType<typeof parseBeatHandles>, t: ReadonlyMap<string, HandleType> | null = typesX) =>
+    reporterPrior({ profile: onBeat, text: "स्वच्छता अभियान की समीक्षा", taken: new Set(), takenTags: new Set(), districtBound: new Set(), directory: dirX, types: t }, reporters, b);
+
+  it("an entry typed \"District\" is not offered by a beat: left out at load with a warning, the rest of the beat loads", () => {
+    expect(problems.join(" ")).toMatch(/@SwachhTestX\): "handle_type" "District" is not one of institution, person, district, police, entry rejected/);
+    expect(dirX.has("swachhtestx")).toBe(true);
+    expect(typesX.has("swachhtestx")).toBe(false);
+    const warned: string[] = [];
+    const b = parseBeatHandles(file, dirX, { types: typesX, problem: (m) => warned.push(m) });
+    expect(b.beats.get("sanitation")!.handles).toEqual(["EduTestX", "KumariDiya"]);
+    expect(warned.join(" ")).toMatch(/"sanitation": @SwachhTestX has no valid handle_type in any directory file — a beat offers only "institution" or "person", so it is left out of this beat \(P6\)/);
+    expect(offered(b).handles.map((h) => h.handle)).toEqual(["EduTestX", "KumariDiya"]);
+  });
+
+  it("and at compose, from a beats file loaded without types: still never offered", () => {
+    const loose = parseBeatHandles(file, dirX);
+    expect(loose.beats.get("sanitation")!.handles).toEqual(["SwachhTestX", "EduTestX", "KumariDiya"]);
+    const out = offered(loose);
+    expect(out.handles.map((h) => h.handle)).toEqual(["EduTestX", "KumariDiya"]);
+    expect(out.handles.every((h) => h.reason === "beat")).toBe(true);
+  });
+
+  it("any other type is left out at compose too (district, police); no types at all: no beat handle, and it says why", () => {
+    const loose = parseBeatHandles(file, dirX);
+    for (const t of ["district", "police"] as const) {
+      const odd = new Map(typesX);
+      odd.set("edutestx", t);
+      expect(offered(loose, odd).handles.map((h) => h.handle), t).toEqual(["KumariDiya"]);
+    }
+    for (const t of [null, new Map<string, HandleType>()]) {
+      const out = offered(loose, t);
+      expect(out.handles).toEqual([]);
+      expect(out.warnings.join(" ")).toMatch(/declared beats offer no handles \(fail closed\)/);
+    }
+  });
+
+  it("the shipped beats load whole with the directory's types: every handle is an institution or a person", () => {
+    const warned: string[] = [];
+    const shipped = parseBeatHandles(cfg("beat-handles.json"), directory, { types, problem: (m) => warned.push(m) });
+    expect(warned).toEqual([]);
+    for (const b of shipped.beats.values()) for (const h of b.handles) expect(["institution", "person"], h).toContain(types.get(h.toLowerCase()));
+    expect([...shipped.beats.keys()].sort()).toEqual([...beats.beats.keys()].sort());
+  });
 });

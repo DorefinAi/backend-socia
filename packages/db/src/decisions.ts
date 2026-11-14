@@ -12,7 +12,7 @@ import type pg from "pg";
 import type { Db, Executor } from "./client";
 import * as schema from "./schema";
 import {
-  postDecisions, postDrafts, reporterFeatures, stories,
+  REPORTER_FEATURES_VERSION, postDecisions, postDrafts, reporterFeatures, stories,
   type Decision, type ItemOutcome, type LoggedItemOutcome, type LoggedProposal, type ReporterFeatureSet,
 } from "./schema";
 
@@ -625,6 +625,8 @@ async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date,
       const values = reporters.map(({ r, n, nw, rework }) => {
         const mine = items.filter((i) => i.r === r);
         const features: ReporterFeatureSet = {
+          // P7: a row with no version is version 1 (StoredReporterFeatureSet); every new row says which it is
+          version: REPORTER_FEATURES_VERSION,
           m, cutoff: cutoff.toISOString(), since: since.toISOString(), halfLifeDays: FEATURE_HALF_LIFE_DAYS, nWeighted: round(nw),
           itemsDropped: Math.max(0, (mine[0]?.distinct_items ?? 0) - FEATURE_MAX_ITEMS),
           items: {}, sources: {}, reworkMean: rework === null ? null : round(rework),

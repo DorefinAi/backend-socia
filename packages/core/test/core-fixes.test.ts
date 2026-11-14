@@ -3,7 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BRAND_NATIONAL, BRAND_RAJASTHAN, PlaceBook, namesOffice, composePostTags, deskPlacePrefix, inferHeadlineDistrict, composeBreaking, isHeadlineLabel, parseBeatHandles, parseBreaking, parseHashtagNormalise, slotFromTags, type BreakingDraft, parseDistricts, parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, reporterPrior } from "../src";
+import { BRAND_NATIONAL, BRAND_RAJASTHAN, PlaceBook, namesOffice, composePostTags, deskPlacePrefix, inferHeadlineDistrict, composeBreaking, isHeadlineLabel, mergeHandleTypes, parseBeatHandles, parseBreaking, parseHashtagNormalise, slotFromTags, type BreakingDraft, parseDistricts, parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, reporterPrior } from "../src";
 import { WORD_CHAR, wholeWord } from "../src/breaking/syntax";
 
 const cfg = (f: string) => JSON.parse(readFileSync(new URL(`../../../apps/worker/config/${f}`, import.meta.url), "utf8"));
@@ -64,7 +64,9 @@ describe("R4: a beat keyword matches whole words only", () => {
   it("on the prior: a declared education beat is not offered for a boarding-house story", () => {
     const nirmalLike = { ...reporters.profiles!.get("rituraj9999")!, prior: null, beats: ["education"], beatsSource: "desk" as const };
     const districtBound = new Set<string>();
-    const run = (text: string) => reporterPrior({ profile: nirmalLike, text, taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles.filter((h) => h.reason === "beat").map((h) => h.handle);
+    // The handle types, as the composer always passes them (P6: a beat offers nothing without them)
+    const types = mergeHandleTypes(rules.types, subjects.types, parties.types, reporters.types);
+    const run = (text: string) => reporterPrior({ profile: nirmalLike, text, taken: new Set(), takenTags: new Set(), districtBound, directory, types }, reporters, beats).handles.filter((h) => h.reason === "beat").map((h) => h.handle);
     expect(run("बोर्डिंग हाउस में आग")).toEqual([]);
     expect(run("बोर्ड परीक्षा का परिणाम जारी").length).toBeGreaterThan(0);
   });

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "_handle_type_note": "Every entry carries \"handle_type\" (reporter directory changes v2, R2), apart from `kind`: person entries are \"person\"; departments, institutions, companies, parties and statewide or national forces are \"institution\"; an account tied to one district (the Jaipur and Jodhpur police commissionerates, Nagar Nigam Jaipur) is \"district\". An entry without a valid one is skipped and reported. The reporter prior offers institutions only; a person the copy names is shown above it.",
+  "_handle_type_note": "Every entry carries \"handle_type\" (reporter directory changes v2, R2), apart from `kind`: person entries are \"person\"; departments, institutions, companies and parties are \"institution\" (the owner's \"organisation\"); a police force that is not one district's (@PoliceRajasthan, @RajPoliceHelp, @AcbRajasthan, @DelhiPolice) and every central armed police force (@crpfindia, @BSF_India) is \"police\" (owner decisions P3 and D2, 15 Nov 2026; until then \"institution\"); an account tied to one district (the Jaipur and Jodhpur police commissionerates, Nagar Nigam Jaipur) is \"district\". An entry without a valid one is skipped and reported. The reporter prior offers institutions only (never police or district); a declared beat offers institutions and persons only (P6); a person the copy names is shown above it.",
   "_note": "The people and organisations a breaking story is about, and their X handles. Edited without a code change; the worker reads it again within a minute. Only entries with \"verified\": true are tagged, never kind \"party\". kind: person | department | party | company | institution | police. names_* / keywords_* are matched as whole words (Hindi and English) in the headline (first) or the points. District police and collectors stay in district-handles.json.",
   "offices": {
     "_note": "An office named WITHOUT its holder ('CM ने भी स्वयं दी आहुतियां'): its handles are OFFERED, never tagged (reporter-prior brief 2026-11-13 §6). Resolved through the office, not the person, so it survives a change of officeholder. In 2,476 published posts an unnamed CM mention occurred 66 times, the desk tagged the CM on 0, and 26 were another state's CM or a former one. An alias is a whole word ('CM' never inside CMO, CMHO, ACM; 'मुख्यमंत्री' never inside 'उपमुख्यमंत्री'). exclude_same_sentence: any of these in the same sentence makes it another office. 'डिप्टी' / 'Deputy' / 'उप' were added to the brief's list so 'डिप्टी सीएम दिया कुमारी' is not the CM. Exclusions match without case ('former CM', 'FORMER CM'), anywhere in the sentence; an abbreviation's dot ('डॉ.', 'Dr.') does not end a sentence. exclude_next_to_alias: see its note. Handles must be entries of this file.",
@@ -1368,7 +1368,7 @@
     },
     {
       "handle": "@PoliceRajasthan",
-      "handle_type": "institution",
+      "handle_type": "police",
       "kind": "police",
       "title": "Rajasthan Police Headquarters",
       "names_hi": [],
@@ -1386,7 +1386,7 @@
     },
     {
       "handle": "@RajPoliceHelp",
-      "handle_type": "institution",
+      "handle_type": "police",
       "kind": "police",
       "title": "Rajasthan Police Helpdesk",
       "names_hi": [],
@@ -1448,7 +1448,7 @@
     },
     {
       "handle": "@AcbRajasthan",
-      "handle_type": "institution",
+      "handle_type": "police",
       "kind": "police",
       "title": "Anti Corruption Bureau, Rajasthan",
       "names_hi": [],
@@ -2483,7 +2483,7 @@
     },
     {
       "handle": "@BSF_India",
-      "handle_type": "institution",
+      "handle_type": "police",
       "kind": "institution",
       "title": "सीमा सुरक्षा बल",
       "names_hi": [
@@ -2523,7 +2523,7 @@
     },
     {
       "handle": "@DelhiPolice",
-      "handle_type": "institution",
+      "handle_type": "police",
       "kind": "police",
       "title": "Delhi Police",
       "names_hi": [],
@@ -2541,7 +2541,7 @@
     },
     {
       "handle": "@crpfindia",
-      "handle_type": "institution",
+      "handle_type": "police",
       "kind": "police",
       "title": "Central Reserve Police Force",
       "names_hi": [],

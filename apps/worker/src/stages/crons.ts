@@ -105,19 +105,26 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00
  * decisions made before the day began (L5); the snapshot has its own 60 s statement budget. A snapshot already
  * taken is never overwritten, so a restart or a second worker does no harm.
  *
- * Never throws. A failure is retried an hour later, logged at warn, and at error from the third in a row; the
- * last one is kept in kv. Days the worker never got to (it was down) are logged when it comes back.
+ * Never throws. A failure is retried an hour later (or at once when the IST day changes: S2), logged at warn, and at
+ * error from the third in a row; the last one is kept in kv. Days with no snapshot are logged when one is next taken,
+ * with the reason: the last failure if runs failed (S2), else the worker was not running.
  * NOTHING reads these features yet.
  */
 export class NightlyFeatures {
   private lastDay: string | null | undefined = undefined;
   private failedAt = 0;
   private failures = 0;
+  /** The last failure since the last snapshot taken, and its IST day: the reason a missed day is given (S2) */
+  private lastError: { day: string; message: string } | null = null;
 
   constructor(
     private readonly db: Db, private readonly pool: Pool, private readonly orgId: string, private readonly log: Logger, private readonly m = 20,
-    /** The directory's institution handles (R2): the only prior candidates a snapshot lists; none: it lists none */
-    private readonly institutions: () => ReadonlySet<string> | null = () => null,
+    /**
+     * The directory's institution handles (R2, P3, D2): the only prior candidates a snapshot lists. In the worker it is
+     * nightlyInstitutions: the files re-checked on disk (R3), and a throw while one is broken (R2). A throw or an empty
+     * set fails the run (R4). The default, null (no list at all: the snapshot lists none), is for tests only.
+     */
+    private readonly institutions: () => ReadonlySet<string> | null | Promise<ReadonlySet<string> | null> = () => null,
   ) {}
 
   /** Loop tick: always false (nothing more to do straight away) */
@@ -129,6 +136,9 @@ export class NightlyFeatures {
   /** Takes today's snapshot when it is due; the reporters it holds, or null when nothing ran or it failed */
   async run(now = new Date()): Promise<number | null> {
     const today = istDate(now);
+    // S2 (15 Nov 2026): a new IST day clears the wait — a run that failed at 23:50 does not hold the next day's snapshot
+    // back until 00:50
+    if (this.failedAt && istDate(new Date(this.failedAt)) !== today) this.failedAt = 0;
     // The backoff comes first: a failed kv read waits the hour too, rather than being tried (and escalated) every tick
     if (this.failedAt && now.getTime() - this.failedAt < FEATURES_RETRY_MS) return null;
     try {
@@ -138,19 +148,34 @@ export class NightlyFeatures {
     }
     if (this.lastDay === today) return null;
 
+    // R4 (15 Nov 2026): the prior candidates first. A build that fails (a directory file missing or broken) or comes
+    // back empty is a FAILURE, not an empty snapshot: nothing is written, the day is not marked done, and it is tried
+    // again in an hour until it succeeds that day; the previous day's snapshot stays the latest meanwhile
+    let institutions: ReadonlySet<string> | null;
+    try {
+      institutions = await this.institutions();
+      if (institutions && institutions.size === 0) throw new Error("the prior candidates came back empty");
+    } catch (err) {
+      return this.failed(now, err, "reporter features: the prior candidates could not be built, so no snapshot was taken");
+    }
     let snap: Awaited<ReturnType<typeof snapshotReporterFeatures>>;
     try {
-      snap = await snapshotReporterFeatures(this.pool, this.orgId, now, this.m, { institutions: this.institutions() });
+      snap = await snapshotReporterFeatures(this.pool, this.orgId, now, this.m, { institutions });
     } catch (err) {
       return this.failed(now, err, "reporter features snapshot failed");
     }
+    // S2: the real reason for days with no snapshot — the runs failed while the worker was up, or it was not running
+    const failedBefore = this.lastError;
     if (this.lastDay && daysBetween(this.lastDay, today) > 1) {
-      this.log.warn({ lastDay: this.lastDay, today, missedDays: daysBetween(this.lastDay, today) - 1 }, "reporter features: days with no snapshot (the worker was not running)");
+      const missed = { lastDay: this.lastDay, today, missedDays: daysBetween(this.lastDay, today) - 1 };
+      if (failedBefore) this.log.warn({ ...missed, failedOn: failedBefore.day, failures: this.failures }, `reporter features: days with no snapshot — previous run failed: ${failedBefore.message}`);
+      else this.log.warn(missed, "reporter features: days with no snapshot (the worker was not running)");
     }
     this.lastDay = today;
     this.failedAt = 0;
     this.failures = 0;
-    this.log.info({ ...snap }, "reporter features snapshot taken");
+    this.lastError = null;
+    this.log.info({ ...snap, ...(failedBefore && { afterFailure: failedBefore.message }) }, "reporter features snapshot taken");
     try {
       await setKv(this.db, FEATURES_KV, { day: today, at: now.toISOString(), reporters: snap.reporters, written: snap.written });
     } catch (err) {
@@ -163,6 +188,7 @@ export class NightlyFeatures {
   private async failed(now: Date, err: unknown, msg: string): Promise<null> {
     this.failedAt = now.getTime();
     this.failures += 1;
+    this.lastError = { day: istDate(now), message: err instanceof Error ? err.message : String(err) };
     const level = this.failures >= FEATURES_ESCALATE_AFTER ? "error" : "warn";
     this.log[level]({ err, failures: this.failures }, `${msg}; trying again in an hour`);
     try {

@@ -18,8 +18,39 @@ import {
 } from "@socia/db";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import { nextStoryIsolated } from "./isolate";
-import type { PhaseOneData } from "../data-files";
+import { BROKEN_REMINDER_MS, brokenDirectoryFiles, type DirectoryFiles, type PhaseOneData } from "../data-files";
 import type { Logger } from "pino";
+
+/**
+ * The broken directory files last logged, per data instance, and when: the error is logged when the set changes and
+ * as a reminder once an hour while it stays (R7), never once per story
+ */
+const priorOffLogged = new WeakMap<DirectoryFiles, { key: string; at: number }>();
+
+/**
+ * Whether the reporter prior and the declared beats may run for this story (owner decision P5, 15 Nov 2026). When
+ * any directory file (district-, subject-, party- or reporter-handles.json) did not load at its last read, both are
+ * OFF: a handle's type is the most restrictive of the four files', so without one of them a police or district
+ * account could pass for an institution, and a type is never guessed from the files that did load. Returns the line
+ * the draft carries in its warnings, or null when they may run. Logs an error naming the files when the set of
+ * broken files changes, and says when they are back. Normal tagging is untouched: text matches, districts and party
+ * keywords keep running on each file's last good copy, and the draft is composed as usual.
+ */
+export function priorGate(data: DirectoryFiles, log: Logger): string | null {
+  const broken = brokenDirectoryFiles(data);
+  const names = broken.map((b) => b.file).join(", ");
+  const last = priorOffLogged.get(data) ?? { key: "", at: 0 };
+  const now = Date.now();
+  const reminder = broken.length > 0 && last.key === names && now - last.at >= BROKEN_REMINDER_MS;
+  if (last.key !== names || reminder) {
+    priorOffLogged.set(data, { key: names, at: now });
+    if (broken.length) {
+      log.error({ files: broken }, `reporter prior and declared beats are OFF${reminder ? " (still)" : ""}: the directory file${broken.length === 1 ? "" : "s"} ${broken.map((b) => `${b.file} (${b.path})`).join(", ")} did not load; drafts keep their normal tags from the last good copies. Fix the file${broken.length === 1 ? "" : "s"} to turn them back on`);
+    } else log.info("reporter prior and declared beats are back on: every directory file loaded");
+  }
+  // The desk sees the file's name, never its path on the server (like /ingest/status)
+  return broken.length ? `the reporter prior and declared beats are off: the ${names} directory file${broken.length === 1 ? "" : "s"} did not load` : null;
+}
 
 const RELOAD_MS = 60_000;
 /**
@@ -225,6 +256,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   // hashtag); the file name fills a gap, cross-checks, and is the only source of the byline.
   const slot = slotFromTags(tags);
   const reporters = mergedReporters(roster, reportersVersion, learnedReporters, topicsVersion, log);
+  // P5: every directory file was read just above; if one did not load, no prior or beat suggestion for this story
+  const priorOff = priorGate(opts.data, log);
   const out = composeBreaking(
     {
       headline,
@@ -248,6 +281,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       topics, subjects, desk, reporters, parties, normaliser, suggestRules, beats,
       // The story's own arrival, so a re-saved or replayed file keeps the campaign window it came in
       at: story.createdAt,
+      // Off only while a directory file is broken (P5); the emitted post is the same either way (L7)
+      reporterPrior: priorOff === null,
     },
   );
   const needsCheck = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
@@ -279,6 +314,7 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       // because it is routine and would drown the rest
       warnings: [
         ...out.warnings,
+        ...(priorOff ? [priorOff] : []),
         ...(out.unmatchedReporter ? [`the file names ${out.unmatchedReporter}, who is not in the reporter list, so no byline was added`] : []),
       ],
       handles: out.handles.map((h) => ({ handle: `@${h.handle}`, reason: h.reason, ...(h.title && { title: h.title }) })),

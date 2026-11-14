@@ -614,7 +614,7 @@ export const trendItems = pgTable(
  * code, a reporter filing outside their usual district.
  */
 export interface DraftHandlePick {
-  /** incident, administration, political, government, judicial, soft, leader_post, other */
+  /** incident, administration, political, government, soft, leader_post, other ("judicial" on drafts composed before the handle fixes P1/P2) */
   cls: StoryClass;
   why: string;
   warnings: string[];

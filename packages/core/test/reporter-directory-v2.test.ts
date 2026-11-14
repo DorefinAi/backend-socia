@@ -360,12 +360,10 @@ describe("v4 B2: the reporter's byline is allowed on court stories (as the handl
     // A crime word anywhere in the story makes it a crime story
     expect(isCourtStory("हाईकोर्ट में सुनवाई", ["पहली बात", "दूसरी बात", "पुलिस ने पूछताछ की"])).toBe(false);
   });
-  it("the judicial class needs a court word and no crime word: 'जस्टिस' beside 'आरोपी' is a crime story", () => {
+  it("court words are not a class (the owner's rule as written): the class comes from the story's other words", () => {
     expect(classify({ headline: "जस्टिस शर्मा ने आरोपी की अर्जी पर दिए निर्देश", points: [], leaderPost: false }).cls).toBe("incident");
-    expect(classify({ headline: "हाईकोर्ट में याचिका पर सुनवाई", points: [], leaderPost: false }).cls).toBe("judicial");
-    // Bail alone is not a court word; a crime word in the last line still makes it crime
-    expect(classify({ headline: "जमानत मिली, परिवार में खुशी", points: [], leaderPost: false }).cls).not.toBe("judicial");
-    expect(classify({ headline: "हाईकोर्ट में सुनवाई", points: ["एक", "दो", "थाने में दर्ज हुआ था मामला"], leaderPost: false }).cls).not.toBe("judicial");
+    expect(classify({ headline: "हाईकोर्ट में याचिका पर सुनवाई", points: [], leaderPost: false }).cls).toBe("other");
+    expect(classify({ headline: "हाईकोर्ट ने हत्या के मामले में सुनाई सजा", points: [], leaderPost: false }).cls).toBe("incident");
   });
   it("@vyaskamalkant on a court headline: the byline goes on the post, and nothing else", () => {
     const d = draft(fileFor("KAMALKANT", "JPR3"), ["हाईकोर्ट ने भर्ती परीक्षा पर याचिका की सुनवाई की", "अगली सुनवाई 20 नवंबर को"]);
@@ -421,6 +419,22 @@ describe("P1/P2: the owner's five court/crime sentences (filed by @vyaskamalkant
     const d = kamal("जमानत पर रिहा आरोपी फिर गिरफ्तार");
     expect(d.cls).toBe("incident");
     expect(d.mentions).toEqual(["@jaipur_police"]);
+  });
+  it("court story test: a court story whose other words tag the police keeps them AND gets the reporter", () => {
+    const d = kamal("हाईकोर्ट जा रहे वकील की कार की टक्कर, दो घायल");
+    expect(isCourtStory("हाईकोर्ट जा रहे वकील की कार की टक्कर, दो घायल", [])).toBe(true);
+    expect(d.cls).toBe("incident");
+    expect(d.mentions).toEqual(["@jaipur_police", "@vyaskamalkant"]);
+  });
+  it("court story test: a court story whose other words tag the collector keeps the collector AND gets the reporter", () => {
+    const d = kamal("हाईकोर्ट के आदेश पर जिला कलेक्टर ने किया निरीक्षण");
+    expect(d.cls).toBe("administration");
+    expect(d.mentions).toEqual(["@DcDmJaipur", "@vyaskamalkant"]);
+  });
+  it("court story test: a court story naming a leader keeps the leader AND gets the reporter", () => {
+    const d = kamal("हाईकोर्ट के फैसले पर मुख्यमंत्री भजनलाल शर्मा ने दी प्रतिक्रिया");
+    expect(d.mentions[0]).toBe("@BhajanlalBjp");
+    expect(d.mentions.at(-1)).toBe("@vyaskamalkant");
   });
   it("a crime word anywhere in the story (not only the first lines) makes it crime: police kept, no court reporter", () => {
     const d = kamal("हाईकोर्ट परिसर के बाहर वकीलों में मारपीट", ["दोनों पक्षों में कहासुनी", "मौके पर भीड़ जुटी", "पुलिस ने दो लोगों को हिरासत में लिया"]);

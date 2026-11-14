@@ -40,7 +40,7 @@ export const BREAKING_CUT = "...";
 /**
  * Bumped when the layout changes, so drafts of each format can be told apart.
  * b2: category hashtags, the cut after a linking word, subject handles, police/collector only when acting.
- * b4: story-class routing, 3 slots, party and reporter handles, the judicial class, no government fallback.
+ * b4: story-class routing, 3 slots, party and reporter handles, the judicial class (gone since the handle fixes P1/P2), no government fallback.
  * b5: the footer is the only hashtag applied on its own; topic rules are offered to the desk instead.
  * b6: URLs out of every line read; desk tag typos normalised; an inferred district, campaign and #ACB tags
  *     offered, never applied; handle suggestions (HASHTAG_HANDLE_CHANGES_v3).

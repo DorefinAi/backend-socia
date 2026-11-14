@@ -25,7 +25,8 @@ describe("story class", () => {
     expect(cls("जिला कलेक्टर ने किया निरीक्षण")).toBe("administration");
     expect(cls("मुख्यमंत्री भजनलाल शर्मा का दौरा")).toBe("political");
     expect(cls("मुख्य सचिव ने जारी की अधिसूचना")).toBe("government");
-    expect(cls("हाईकोर्ट में सुनवाई टली")).toBe("judicial");
+    // Court words are not a class (handle fixes P1/P2, the owner's rule as written): they only allow the reporter
+    expect(cls("हाईकोर्ट में सुनवाई टली")).toBe("other");
     expect(cls("गोवर्धन पूजा की तैयारी, मंदिर में श्रद्धालुओं की भीड़")).toBe("soft");
     expect(cls("बाजार में रौनक")).toBe("other");
     expect(classify({ headline: "पुलिस ने किया गिरफ्तार", points: [], leaderPost: true }).cls).toBe("leader_post");
@@ -39,9 +40,9 @@ describe("story class", () => {
     expect(classify({ headline: "बाजार में रौनक", points: ["पुलिस ने चोरी के आरोपी को पकड़ा"], leaderPost: false }).why).toMatch(/from the body/);
   });
 
-  it("keeps the measured order: judicial over incident only with no crime word, result over political, political over mourning", () => {
-    // P1/P2: a court word and a crime word make a crime story; with no crime word a court ruling stays judicial
-    expect(cls("हाईकोर्ट ने हत्या के मामले में सुनाई उम्रकैद की सजा")).toBe("judicial");
+  it("keeps the measured order: result over political, political over mourning; court words never decide the class", () => {
+    // P1/P2: the class comes from the other words, with or without a crime word
+    expect(cls("हाईकोर्ट ने हत्या के मामले में सुनाई उम्रकैद की सजा")).toBe("incident");
     expect(cls("हाईकोर्ट में फर्जी जमानत आदेश अपलोड करने के मामले में बड़ी कार्रवाई, आरोपी गिरफ्तार")).toBe("incident");
     // A bulletin that names the winner is still a bulletin: 18 of 23 result posts tagged nobody
     expect(cls("सरपंच चुनाव का परिणाम घोषित, प्रत्याशी बनवारी लाल 827 मतों से विजयी")).toBe("soft");

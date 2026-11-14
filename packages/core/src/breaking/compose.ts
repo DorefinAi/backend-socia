@@ -404,6 +404,26 @@ const tagPlace = (book: PlaceBook, raw: string) => {
 };
 
 /**
+ * What a hashtag stands for, to tell two tags apart: its lowercased text, and the place it names when the places file
+ * knows it ("#Jaipur", "#jaipur", "#JaipurNews" and "#जयपुर" all name the district Jaipur). A town keys on its Hindi
+ * name, a district or national place on its Latin tag.
+ */
+function tagKeys(book: PlaceBook, tag: string): string[] {
+  const bare = tag.replace(/^#/, "").normalize("NFC");
+  const keys = [`t:${bare.toLowerCase()}`];
+  const p = tagPlace(book, bare);
+  if (p) keys.push(p.kind === "town" ? `p:town:${p.hi}` : `p:${p.kind}:${(p.districts[0]?.tag ?? p.tag).toLowerCase()}`);
+  return keys;
+}
+
+/** The keys (tagKeys) of every hashtag in some lines of copy */
+function copyTagKeys(book: PlaceBook, lines: readonly string[]): Set<string> {
+  const keys = new Set<string>();
+  for (const line of lines) for (const m of line.matchAll(HASHTAG)) if (m[1] !== undefined) for (const k of tagKeys(book, m[1])) keys.add(k);
+  return keys;
+}
+
+/**
  * A video post's brand when no place is stated: true for Rajasthan, false for national, null when nothing decides
  * (the caller keeps its default). The first place hashtag in the copy decides first, as in resolveBrand; then the
  * channel label after the headline's last "|" or "।".
@@ -547,7 +567,10 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
 
   const townTag = story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : "";
   const lineOne = place ?? (policy?.layer === "emit" ? policy.district : null);
-  const tags = [lineOne ? `#${lineOne.tag}` : "", townTag].filter(Boolean);
+  // A tag the headline already carries without a colon ("#Jaipur जयपुर में…", "…#JaipurNews") is not added again
+  // in front of it (desk fixes 14 Nov, point 6)
+  const headlineTagKeys = copyTagKeys(book, [headline]);
+  const tags = [lineOne ? `#${lineOne.tag}` : "", townTag].filter((t) => t && !tagKeys(book, t).some((k) => headlineTagKeys.has(k)));
 
   // ── added after every rule above has finished, as suggestions only: nothing above moves (brief §3.5, L7) ──
   const handleSuggestions = [...picked.suggestions];
@@ -573,9 +596,11 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     offered.push(...prior.hashtags);
     priorWarnings.push(...prior.warnings);
   }
-  // First occurrence of each tag wins; never the footer, never a tag already in line 1
-  const inLineOne = new Set(tags.map((t) => t.toLowerCase()));
-  const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && o.tag.toLowerCase() !== footer.toLowerCase() && (policy?.layer !== "emit" || !inLineOne.has(o.tag.toLowerCase())));
+  // First occurrence of each tag wins; never the footer, never a tag already in line 1's prefix or anywhere in the
+  // headline or points (the same tag, any case, or the same place as "#<Place>News")
+  const onPost = copyTagKeys(book, [headline, ...story.points]);
+  for (const t of tags) for (const k of tagKeys(book, t)) onPost.add(k);
+  const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && o.tag.toLowerCase() !== footer.toLowerCase() && !tagKeys(book, o.tag).some((k) => onPost.has(k)));
   const hashtagSuggestions = hashtagSuggestionItems.map((o) => o.tag);
   const prefix = tags.length && !deskRun ? `${tags.join(" ")}: ` : "";
   // Room for lines 1–2: the limit less the footer and its blank line

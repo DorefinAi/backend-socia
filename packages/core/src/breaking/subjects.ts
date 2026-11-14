@@ -8,6 +8,7 @@ import { HANDLE } from "./syntax";
 import { Gazetteer, type GazetteerEntry, type GazetteerMatch } from "../gazetteer";
 import { DataFileRejected } from "./post-tags";
 import { parseOffices, type Office } from "./offices";
+import { subjectKeywordCandidates, type KeywordCandidate } from "./desk-handles";
 
 export const SUBJECT_KINDS = ["person", "department", "party", "company", "institution", "police"] as const;
 export type SubjectKind = (typeof SUBJECT_KINDS)[number];
@@ -101,6 +102,8 @@ export interface SubjectRules {
   handles?: ReadonlySet<string>;
   /** `offices`: an office named without its holder, offered only (offices.ts) */
   offices?: readonly Office[];
+  /** The verified, non-party English names and keywords as handle keyword candidates (desk-handles.ts subjectKeywordCandidates) */
+  keywordCandidates?: readonly KeywordCandidate[];
 }
 
 export const EMPTY_SUBJECT_RULES: SubjectRules = { gazetteer: new SubjectGazetteer([]), count: 0 };
@@ -187,5 +190,5 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
   const office = parseOffices((root as { offices?: unknown }).offices, handles, (root as { office_exclusion_lists?: unknown }).office_exclusion_lists);
   for (const m of office.problems) reject(m);
   if (rejects.length) throw new DataFileRejected("subject-handles", rejects);
-  return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles, offices: office.offices };
+  return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles, offices: office.offices, keywordCandidates: subjectKeywordCandidates(json) };
 }

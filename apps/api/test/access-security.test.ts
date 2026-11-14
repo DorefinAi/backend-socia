@@ -214,9 +214,9 @@ describe("SlidingLimiter", () => {
     const ruleOk = await call(who.admin!, "PATCH", `/hashtag-rules/${rule.body.id}`, { priority: 5, aliases: ["Pink City"] });
     expect(ruleOk.body).toMatchObject({ id: rule.body.id, orgId, priority: 5, aliases: ["Pink City"], active: true });
 
-    const handle = await call(who.admin!, "POST", "/handles", { entityName: "CMO Rajasthan", aliases: [], handle: "@RajCMO", priority: 1 });
+    const handle = await call(who.admin!, "POST", "/handles", { entityName: "CMO Rajasthan", aliases: [], handle: "@RajCMO", priority: 1, type: "admin" });
     expect(handle.status).toBe(200);
-    expect((await call(who.admin!, "POST", "/handles", { entityName: "X", aliases: [], handle: "x", priority: 1, source: "wikidata" })).status).toBe(400);
+    expect((await call(who.admin!, "POST", "/handles", { entityName: "X", aliases: [], handle: "x", priority: 1, type: "admin", source: "wikidata" })).status).toBe(400);
     for (const body of [{ orgId: randomUUID() }, { id: randomUUID() }, { verifiedAt: null }, { source: "spoof" }, { platform: "instagram" }]) {
       expect((await call(who.admin!, "PATCH", `/handles/${handle.body.id}`, body)).status).toBe(400);
     }

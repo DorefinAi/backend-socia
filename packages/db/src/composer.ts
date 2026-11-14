@@ -3,9 +3,9 @@
 // action makes a story directly (a Web Scraper trend).
 
 import { RuleComposer, handleGazetteer, hashtagGazetteer, type HashtagRule, type MatchType } from "@socia/core";
-import { and, count, eq, isNotNull, max, notInArray } from "drizzle-orm";
+import { and, count, eq, isNotNull, max, notInArray, sql } from "drizzle-orm";
 import type { Db } from "./client";
-import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs } from "./schema";
+import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs, publishedPosts } from "./schema";
 
 /** A fingerprint of both dictionaries: any edit, add or delete changes it */
 export async function dictionaryFingerprint(db: Db, orgId: string): Promise<string> {
@@ -52,4 +52,29 @@ export async function loadRuleComposer(db: Db, orgId: string, version?: string):
     ),
   });
   return { composer, version: v };
+}
+
+/** A handle that is safe to put in a regular expression: an X handle's letters, digits and underscore only */
+const PLAIN_HANDLE = /^[A-Za-z0-9_]{1,15}$/;
+
+/**
+ * How many of the org's live published posts (not recalled) carry each handle as a whole "@handle", any case: the
+ * "posted at least 2 times" count that takes a Settings handle out of suggest-only (handle fixes F1, G4).
+ * "@JaipurMetro" is counted in "… @JaipurMetro @jaipur_police", not in "@JaipurMetroRail". Handles are given bare or
+ * with the @; the map is keyed by the lower-cased bare handle. A handle that is not a plain X handle counts 0.
+ */
+export async function handlePostedUses(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, number>> {
+  const keys = [...new Set(handles.map((h) => h.trim().replace(/^@+/, "").toLowerCase()))];
+  const out = new Map<string, number>(keys.map((k) => [k, 0]));
+  const plain = keys.filter((k) => PLAIN_HANDLE.test(k));
+  if (!plain.length) return out;
+  const res = await db.execute<{ handle: string; n: number }>(sql`
+    SELECT h.handle, count(p.id)::int AS n
+    FROM unnest(ARRAY[${sql.join(plain.map((k) => sql`${k}`), sql`, `)}]::text[]) AS h(handle)
+    LEFT JOIN ${publishedPosts} p
+      ON p.org_id = ${orgId} AND p.recalled_at IS NULL
+     AND p.text ~* ('(^|[^A-Za-z0-9_])@' || h.handle || '([^A-Za-z0-9_]|$)')
+    GROUP BY h.handle`);
+  for (const r of res.rows) out.set(r.handle, Number(r.n));
+  return out;
 }

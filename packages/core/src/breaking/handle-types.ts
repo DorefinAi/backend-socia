@@ -54,3 +54,23 @@ export function addHandleType(map: Map<string, HandleType>, handle: string, type
   const cur = map.get(k);
   if (!cur || RESTRICTION[type] > RESTRICTION[cur]) map.set(k, type);
 }
+
+// ─── Settings handle types (handle fixes F1, 14 Nov 2026) ───────────────────────────────────────────────
+//
+// A handle added in Settings (handle_directory source "manual", or promoted from Wikidata staging) carries one of
+// the owner's six types (handle_directory.entity_type, migration 0029). Only police, collector and admin handles
+// may be matched by the story's district; every other type only on its own keywords and names in the copy.
+
+export const SETTINGS_HANDLE_TYPES = ["police", "collector", "admin", "organisation", "person", "party"] as const;
+export type SettingsHandleType = (typeof SETTINGS_HANDLE_TYPES)[number];
+
+const SETTINGS_TYPES: ReadonlySet<string> = new Set(SETTINGS_HANDLE_TYPES);
+export const isSettingsHandleType = (v: unknown): v is SettingsHandleType => typeof v === "string" && SETTINGS_TYPES.has(v);
+
+/** The Settings types that may be matched by district: the district's police, collector and administration */
+export const DISTRICT_MATCHED_TYPES: ReadonlySet<SettingsHandleType> = new Set<SettingsHandleType>(["police", "collector", "admin"]);
+
+/** A Settings type as the code's three: police/collector/admin → district, organisation/party → institution, person → person */
+export function settingsHandleType(t: SettingsHandleType): HandleType {
+  return DISTRICT_MATCHED_TYPES.has(t) ? "district" : t === "person" ? "person" : "institution";
+}

@@ -698,8 +698,21 @@ export const handleDirectory = pgTable(
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     verifiedBy: uuid("verified_by").references(() => users.id),
     createdAt: createdAt(),
+    /**
+     * A Settings handle's type (migration 0029, handle fixes F1): police, collector, admin, organisation, person or
+     * party (core SETTINGS_HANDLE_TYPES). Required by POST /handles and staging promotion; null on desk and reporter
+     * rows. Only police, collector and admin may be matched by district; the rest only on their own names and
+     * keywords (`aliases`).
+     */
+    entityType: text("entity_type"),
   },
-  (t) => [index("handle_directory_verified_idx").on(t.orgId, t.platform).where(sql`${t.verifiedAt} IS NOT NULL`)],
+  (t) => [
+    index("handle_directory_verified_idx").on(t.orgId, t.platform).where(sql`${t.verifiedAt} IS NOT NULL`),
+    check(
+      "handle_directory_entity_type_check",
+      sql`${t.entityType} IS NULL OR ${t.entityType} IN ('police', 'collector', 'admin', 'organisation', 'person', 'party')`,
+    ),
+  ],
 );
 
 /**

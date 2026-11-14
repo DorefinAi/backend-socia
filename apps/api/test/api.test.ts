@@ -160,7 +160,7 @@ interface Client {
     const editor = await login("editor@test");
     await call(editor, "POST", "/auth/totp", { code: await freshCode("editor@test", AMIT_TOTP) });
     expect((await call(editor, "POST", "/hashtag-rules", rule)).status).toBe(200);
-    const handle = await call(editor, "POST", "/handles", { entityName: "जयपुर विकास प्राधिकरण", aliases: ["JDA"], handle: "@JDAJaipur", priority: 1 });
+    const handle = await call(editor, "POST", "/handles", { entityName: "जयपुर विकास प्राधिकरण", aliases: ["JDA"], handle: "@JDAJaipur", priority: 1, type: "organisation" });
     expect(handle.body.handle).toBe("JDAJaipur");
     expect((await call(priya, "GET", "/handles?q=JDA")).body.items).toHaveLength(1);
     expect((await call(priya, "GET", "/drafts/not-a-uuid")).status).toBe(400);

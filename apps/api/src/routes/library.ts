@@ -6,7 +6,7 @@
 // Schemas are strict (unknown keys → 400) and every insert/update is built from named fields only, so a
 // client can never set orgId, id, verifiedAt, source or any other column.
 
-import { fileLookalike } from "@socia/core";
+import { DISTRICT_MATCHED_TYPES, SETTINGS_HANDLE_TYPES, fileLookalike, usableHandleName, type SettingsHandleType } from "@socia/core";
 import { audit, handleDirectory, handleDirectoryStaging, hashtagRules } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox, type Static } from "@fastify/type-provider-typebox";
 import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
@@ -41,12 +41,20 @@ const RuleBody = Type.Object({
   negativePhrases: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 120 }), { maxItems: 30 })),
 }, { additionalProperties: false });
 
+/** A Settings handle's type (handle fixes F1): required on POST /handles and on promotion */
+const EntityType = Type.Union(SETTINGS_HANDLE_TYPES.map((t) => Type.Literal(t)));
+/**
+ * A Settings handle. `type` is required (a body without it is refused with 400). `aliases` are its keywords and
+ * names: organisation, person and party handles match ONLY on them and their names, so at least one keyword of 3 or
+ * more letters is required for those types (400 keywords_required); police, collector and admin may have none.
+ */
 const HandleBody = Type.Object({
   entityName: Type.String({ minLength: 1, maxLength: 200 }),
   entityNameHi: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
   aliases: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 30 }),
   handle: Type.String({ pattern: "^@?\\w{1,15}$" }),
   priority: Type.Integer({ minimum: 0, maximum: 1000 }),
+  type: EntityType,
 }, { additionalProperties: false });
 const DeskHandleBody = Type.Object({ handle: Type.String({ pattern: "^@?\\w{1,15}$" }) }, { additionalProperties: false });
 /** New handles one person may add from the desk per window; returning a handle the org already has is not counted */
@@ -77,7 +85,17 @@ const handleFields = (b: HandleFields) => ({
   ...(b.aliases !== undefined && { aliases: b.aliases }),
   ...(b.handle !== undefined && { handle: bare(b.handle) }),
   ...(b.priority !== undefined && { priority: b.priority }),
+  ...(b.type !== undefined && { entityType: b.type }),
 });
+
+/**
+ * Refuses a Settings handle that could only be matched by guessing (handle fixes F1): an organisation, person or party
+ * needs at least one keyword or name of its own to match on, in `aliases` (3 letters or more).
+ */
+function requireKeywords(type: SettingsHandleType, aliases: readonly string[]): void {
+  if (DISTRICT_MATCHED_TYPES.has(type) || aliases.some(usableHandleName)) return;
+  throw new HttpError(400, "keywords_required", `A ${type} handle needs at least one keyword or name (3 letters or more) to be matched on, e.g. मेट्रो, Metro, जयपुर मेट्रो.`);
+}
 
 
 export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db }) => {
@@ -201,11 +219,12 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
   app.post("/handles", { schema: { body: HandleBody } }, async (req) => {
     const { user } = guard(req);
     requirePermission(user, "page.settings");
+    requireKeywords(req.body.type, req.body.aliases);
     const [row] = await db
       .insert(handleDirectory)
       .values({
         orgId: user.orgId, entityName: req.body.entityName, entityNameHi: req.body.entityNameHi ?? null, aliases: req.body.aliases, handle: bare(req.body.handle),
-        priority: req.body.priority, source: "manual", verifiedAt: new Date(), verifiedBy: user.id,
+        priority: req.body.priority, source: "manual", entityType: req.body.type, verifiedAt: new Date(), verifiedBy: user.id,
       })
       .returning();
     await audit(db, { orgId: user.orgId, actorId: user.id, action: "handle.create", entityType: "handle", entityId: row!.id, after: row });
@@ -277,6 +296,10 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
     requirePermission(user, "page.settings");
     const [before] = await db.select().from(handleDirectory).where(and(eq(handleDirectory.id, req.params.id), eq(handleDirectory.orgId, user.orgId)));
     if (!before) throw new HttpError(404, "not_found", "This handle does not exist.");
+    // A Settings row (manual or promoted) keeps a type and, for the keyword types, a keyword: checked on the result.
+    // Desk and reporter rows have no type unless one is set here.
+    const type = req.body.type ?? (before.entityType as SettingsHandleType | null);
+    if (type) requireKeywords(type, req.body.aliases ?? before.aliases);
     // Changing who a handle points at is a new verification
     const [row] = await db
       .update(handleDirectory)
@@ -321,7 +344,11 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
   app.post(
     "/handles/staging/:id/promote",
     { schema: { params: Id, body: Type.Object(
-          { aliases: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 30 })), priority: Type.Optional(Type.Integer({ minimum: 0, maximum: 1000 })) },
+          {
+            aliases: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 30 })), priority: Type.Optional(Type.Integer({ minimum: 0, maximum: 1000 })),
+            // A promoted handle is a Settings handle: its type is required, as on POST /handles
+            type: EntityType,
+          },
           { additionalProperties: false },
         ),
       },
@@ -332,11 +359,13 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
       return db.transaction(async (tx) => {
         const [s] = await tx.select().from(handleDirectoryStaging).where(and(eq(handleDirectoryStaging.id, req.params.id), eq(handleDirectoryStaging.orgId, user.orgId))).for("update");
         if (!s || s.promotedAt) throw new HttpError(404, "not_found", "This suggestion is gone or already added.");
+        const aliases = req.body.aliases ?? s.aliases;
+        requireKeywords(req.body.type, aliases);
         const [row] = await tx
           .insert(handleDirectory)
           .values({
-            orgId: user.orgId, entityName: s.entityName, entityNameHi: s.entityNameHi, aliases: req.body.aliases ?? s.aliases, platform: s.platform,
-            handle: s.handle, priority: req.body.priority ?? 0, source: `${s.source}:${s.sourceId}`, verifiedAt: new Date(), verifiedBy: user.id,
+            orgId: user.orgId, entityName: s.entityName, entityNameHi: s.entityNameHi, aliases, platform: s.platform,
+            handle: s.handle, priority: req.body.priority ?? 0, source: `${s.source}:${s.sourceId}`, entityType: req.body.type, verifiedAt: new Date(), verifiedBy: user.id,
           })
           .returning();
         await tx.update(handleDirectoryStaging).set({ promotedAt: new Date() }).where(eq(handleDirectoryStaging.id, s.id));

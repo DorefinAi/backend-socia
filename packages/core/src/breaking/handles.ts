@@ -41,7 +41,7 @@ import { fold } from "../fold";
 import { HANDLE } from "./syntax";
 import { addHandleType, handleTypeProblem, type HandleType } from "./handle-types";
 import type { PlainRuleId, PriorRuleId } from "./proposals";
-import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
+import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleData, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_PARTY_RULES, namesAnyParty, pickMlaHandles, pickPartyHandles, type PartyRules } from "./parties";
 import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
 import { classify, isCourtStory, type StoryClass } from "./storyclass";
@@ -652,13 +652,31 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   // Handles the desk added with keywords, computed here because they ride on every class except the two
   // where the district force stands alone. Never a handle of the files (verified or not) nor a lookalike
   // of one: the files' own rules decide when those are tagged.
+  //
+  // Settings rows (handle fixes F1) differ in three ways: they are only OFFERED until the desk has posted them twice
+  // (data.settings.suggestOnly); a promoted one matched by its names is offered, not tagged, on the two classes where
+  // the district force stands alone; and police, collector and admin rows are also matched by the story's stated
+  // district, tagged (once promoted) only on their own class (police: incident, collector/admin: administration).
   const deskPicks: HandlePick[] = [];
-  if (desk.count && story.rajasthan && !EXCLUSIVE.has(cls)) {
+  if (desk.count && story.rajasthan) {
     const governed = new Set([...(rules.all ?? ruleHandles(rules)), ...(subjects.handles ?? []), ...(parties.handles ?? []), ...(reporters.handles ?? [])]);
+    const exclusive = EXCLUSIVE.has(cls);
+    const take = (d: DeskHandleData, emits: boolean) => {
+      if (fileLookalike(d.handle, governed) !== null) return;
+      const pick: HandlePick = { handle: d.handle, reason: "desk", title: d.title };
+      if (!d.settings) {
+        if (!exclusive) deskPicks.push(pick);
+      } else if (emits && !d.settings.suggestOnly) deskPicks.push(pick);
+      else suggested.push(pick);
+    };
     // Headline matches before body matches, as the files' own picks are ordered
     for (const text of [head, body]) {
-      for (const m of desk.gazetteer.find(text).sort((a, b) => a.start - b.start)) {
-        if (fileLookalike(m.entry.data.handle, governed) === null) deskPicks.push({ handle: m.entry.data.handle, reason: "desk", title: m.entry.data.title });
+      for (const m of desk.gazetteer.find(text).sort((a, b) => a.start - b.start)) take(m.entry.data, !exclusive);
+    }
+    if (district) {
+      for (const d of desk.byDistrict?.get(districtKey(district)) ?? []) {
+        const own = d.settings?.type === "police" ? cls === "incident" : cls === "administration";
+        take(d, own);
       }
     }
   }

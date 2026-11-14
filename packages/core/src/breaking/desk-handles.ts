@@ -23,9 +23,10 @@
 //     unrelated handles, and three letters are too few to judge.
 // Towns are not candidates: the places file has their Hindi names only, and a handle is Latin.
 
-import { Gazetteer } from "../gazetteer";
+import { Gazetteer, type GazetteerEntry } from "../gazetteer";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 import type { SubjectHandleEntry } from "./subjects";
+import { DISTRICT_MATCHED_TYPES, isSettingsHandleType, type SettingsHandleType } from "./handle-types";
 
 /** A Latin name looked for inside handles, and the keywords a handle gets when it is found (display first) */
 export interface KeywordCandidate {
@@ -308,11 +309,17 @@ export interface DeskHandleData {
   /** Handle without the @ */
   handle: string;
   title: string;
+  /** A Settings row (directoryHandleRules): its type, and whether it is still suggest-only. Absent: a desk-added row */
+  settings?: { type: SettingsHandleType; suggestOnly: boolean };
 }
 
 export interface DeskHandleRules {
   gazetteer: Gazetteer<DeskHandleData>;
   count: number;
+  /** The gazetteer's entries (directoryHandleRules builds on deskHandleRules' list) */
+  entries?: readonly GazetteerEntry<DeskHandleData>[];
+  /** Settings police, collector and admin rows by the district they are matched on (districtKey form) */
+  byDistrict?: ReadonlyMap<string, readonly DeskHandleData[]>;
 }
 
 export const EMPTY_DESK_HANDLE_RULES: DeskHandleRules = { gazetteer: new Gazetteer<DeskHandleData>([]), count: 0 };
@@ -323,7 +330,7 @@ export const EMPTY_DESK_HANDLE_RULES: DeskHandleRules = { gazetteer: new Gazette
  * handles and their lookalikes.
  */
 export function deskHandleRules(rows: readonly DeskHandleRow[]): DeskHandleRules {
-  const entries = rows.flatMap((r, i) => {
+  const entries = rows.flatMap((r, i): GazetteerEntry<DeskHandleData>[] => {
     const handle = r.handle.trim().replace(/^@+/, "");
     const keywords = r.aliases.map((a) => a.normalize("NFC").trim()).filter(Boolean);
     if (!handle || !keywords.length) return [];
@@ -332,42 +339,59 @@ export function deskHandleRules(rows: readonly DeskHandleRow[]): DeskHandleRules
     const [name, ...aliases] = keywords;
     return [{ id: `desk:${handle.toLowerCase()}#${i}`, name: name!, aliases, priority: 0, data: { handle, title: r.entityName || handle } }];
   });
-  return { gazetteer: new Gazetteer(entries), count: entries.length };
+  return { gazetteer: new Gazetteer(entries), count: entries.length, entries };
 }
 
-// ─── Settings handles (desk fixes 14 Nov, point 7) ──────────────────────────
+// ─── Settings handles (handle fixes F1, 14 Nov 2026) ────────────────────────
 //
-// Handles added in Settings (handle_directory source "manual") or promoted from Wikidata staging ("wikidata:Q…")
-// were never seen by the composer. They join the desk-added ones with:
-//   - the keywords a desk add of the same handle would get (deskHandleKeywords: the district and subject names inside
-//     it), under the same safety rules: a data-file handle or a lookalike, a party's or an official's handle gets
-//     nothing at all, so it is never suggested (still taggable by hand);
-//   - its own names as exact whole-word names: entity_name, entity_name_hi and every alias the editor entered.
-// Capped at MAX_HANDLE_KEYWORDS names per handle, its own names first.
+// Handles added in Settings (handle_directory source "manual") or promoted from Wikidata staging ("wikidata:Q…").
+// @JaipurMetro was tagged on 0 of the 738 posts that lead with #Jaipur, so a Settings handle is never matched on the
+// names hidden inside its handle string, and never on a district unless it is the district's own office:
+//   - every row has one of the owner's six types (handle-types.ts SETTINGS_HANDLE_TYPES; an untyped row reads as
+//     "organisation", as migration 0029 sets the old ones);
+//   - organisation, person and party rows match ONLY on their own names, whole words: entity_name, entity_name_hi
+//     and the keywords the editor entered (aliases). "मेट्रो", "Metro", "जयपुर मेट्रो" for @JaipurMetro;
+//   - police, collector and admin rows also match by district: the story's stated district is one the handle or one
+//     of its names is (@JhalawarPolice, or a keyword "झालावाड़");
+//   - a row is SUGGEST-ONLY until the desk has posted it on SETTINGS_POSTED_USES posts (the worker counts published
+//     posts carrying the @handle); after that it follows the desk rows' rule (pickHandles);
+//   - a handle of the data files or a lookalike of one is still never matched (the files decide those).
 
-/** A verified handle_directory row of any source but "desk" and "reporter", as the worker reads it */
+/** A verified Settings row, as the worker reads it */
 export interface DirectoryHandleRow extends DeskHandleRow {
   entityNameHi: string | null;
+  /** handle_directory.entity_type; null (a row from before 0029) reads as "organisation" */
+  type?: SettingsHandleType | null;
+  /** Published posts of the org that carry this @handle; absent: 0 */
+  postedUses?: number;
 }
 
 /** A name shorter than this many letters is never matched as a handle's own name ("CM", "SP") */
 export const MIN_DIRECTORY_NAME_LETTERS = 3;
+/** A Settings handle is suggested only, never put on the post, until the desk has posted it this many times */
+export const SETTINGS_POSTED_USES = 2;
 /** Letters with their vowel signs ("बूंदी" is 5, "CM" 2) */
 const letters = (s: string) => (s.match(/[\p{L}\p{M}\p{N}]/gu) ?? []).length;
 
+/** Whether a keyword or name is long enough to be matched (the API refuses a row with none for the keyword types) */
+export const usableHandleName = (s: string): boolean => letters(s.normalize("NFC").trim()) >= MIN_DIRECTORY_NAME_LETTERS;
+
+/** The row's type; an untyped row is an organisation */
+export const directoryRowType = (row: Pick<DirectoryHandleRow, "type">): SettingsHandleType => (isSettingsHandleType(row.type) ? row.type : "organisation");
+
 /**
- * The names a Settings handle is matched on: its own names, then the keywords inside the handle; [] (never suggested)
- * when the safety rules withhold the handle's keywords.
+ * The names a Settings handle is matched on: its own names only (entity_name, entity_name_hi, the keywords), each
+ * once, at most MAX_HANDLE_KEYWORDS; [] (never matched) for a data-file handle or a lookalike of one. Nothing is
+ * taken from inside the handle string.
  */
-export function directoryHandleNames(row: DirectoryHandleRow, ctx: DeskKeywordContext): string[] {
-  const { keywords, withheld } = deskHandleKeywords(row.handle, ctx);
-  if (withheld) return [];
+export function directoryHandleNames(row: DirectoryHandleRow, ctx: Pick<DeskKeywordContext, "fileHandles">): string[] {
+  if (fileLookalike(row.handle, ctx.fileHandles) !== null) return [];
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const raw of [row.entityName, row.entityNameHi ?? "", ...row.aliases, ...keywords]) {
+  for (const raw of [row.entityName, row.entityNameHi ?? "", ...row.aliases]) {
     const name = raw.normalize("NFC").replace(/\s+/g, " ").trim();
     const key = name.toLowerCase();
-    if (letters(name) < MIN_DIRECTORY_NAME_LETTERS || seen.has(key) || out.length >= MAX_HANDLE_KEYWORDS) continue;
+    if (!usableHandleName(name) || seen.has(key) || out.length >= MAX_HANDLE_KEYWORDS) continue;
     seen.add(key);
     out.push(name);
   }
@@ -375,13 +399,47 @@ export function directoryHandleNames(row: DirectoryHandleRow, ctx: DeskKeywordCo
 }
 
 /**
- * The desk-added rows (their stored keywords) and the Settings rows (directoryHandleNames) as one rule set for
- * pickHandles. A handle in both has an entry for each; pickHandles keeps one pick per handle.
+ * The districts (districtKey form: "sawaimadhopur") a police, collector or admin Settings row is matched by: a
+ * district found in the handle ("@JhalawarPolice") or one of its names that is a district's name ("झालावाड़").
+ * Every other type: none. A data-file handle or a lookalike: none.
  */
-export function directoryHandleRules(deskRows: readonly DeskHandleRow[], settingsRows: readonly DirectoryHandleRow[], ctx: DeskKeywordContext): DeskHandleRules {
-  const settings = settingsRows.flatMap((r) => {
-    const aliases = directoryHandleNames(r, ctx);
-    return aliases.length ? [{ handle: r.handle, entityName: r.entityName, aliases }] : [];
+export function directoryHandleDistricts(row: DirectoryHandleRow, ctx: Pick<DeskKeywordContext, "fileHandles">): string[] {
+  if (!DISTRICT_MATCHED_TYPES.has(directoryRowType(row)) || fileLookalike(row.handle, ctx.fileHandles) !== null) return [];
+  const keys = new Set<string>();
+  const key = (s: string) => compactLatin(s);
+  for (const m of matchHandleKeywords(row.handle, DISTRICT_CANDIDATES_GET())) keys.add(key(m.keywords[0]!));
+  const names = new Set([row.entityName, row.entityNameHi ?? "", ...row.aliases].map((n) => n.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase()).filter(Boolean));
+  for (const c of DISTRICT_CANDIDATES_GET()) {
+    if (c.keywords.some((k) => names.has(k.normalize("NFC").toLowerCase()))) keys.add(key(c.keywords[0]!));
+  }
+  return [...keys];
+}
+
+let districtCandidatesCache: KeywordCandidate[] | null = null;
+/** districtKeywordCandidates(), built once */
+const DISTRICT_CANDIDATES_GET = () => (districtCandidatesCache ??= districtKeywordCandidates());
+
+/**
+ * The desk-added rows (their stored keywords, under deskHandleRules' safety rules, unchanged) and the Settings rows
+ * (their own names; police, collector and admin also by district) as one rule set for pickHandles. A handle in both
+ * has an entry for each; pickHandles keeps one pick per handle, the desk row's rule first.
+ */
+export function directoryHandleRules(deskRows: readonly DeskHandleRow[], settingsRows: readonly DirectoryHandleRow[], ctx: Pick<DeskKeywordContext, "fileHandles">): DeskHandleRules {
+  const desk = deskHandleRules(deskRows);
+  const entries = [...(desk.entries ?? [])];
+  const byDistrict = new Map<string, DeskHandleData[]>();
+  settingsRows.forEach((r, i) => {
+    const handle = r.handle.trim().replace(/^@+/, "");
+    if (!handle) return;
+    const type = directoryRowType(r);
+    const data: DeskHandleData = { handle, title: r.entityName || handle, settings: { type, suggestOnly: (r.postedUses ?? 0) < SETTINGS_POSTED_USES } };
+    const names = directoryHandleNames(r, ctx);
+    if (names.length) {
+      const [name, ...aliases] = names;
+      entries.push({ id: `settings:${handle.toLowerCase()}#${i}`, name: name!, aliases, priority: 0, data });
+    }
+    for (const d of directoryHandleDistricts(r, ctx)) byDistrict.set(d, [...(byDistrict.get(d) ?? []), data]);
   });
-  return deskHandleRules([...deskRows, ...settings]);
+  const count = entries.length + [...byDistrict.values()].reduce((n, l) => n + l.length, 0);
+  return { gazetteer: new Gazetteer(entries), entries, byDistrict, count };
 }

@@ -5,11 +5,15 @@
 // Settings permission only: a path on the newsroom share says more about the network than a desk needs.
 
 import { istDayStart } from "@socia/core";
-import { assets, readDataFileStatus, readIngestStatus, readWorkerHeartbeat, stories, workerLiveness, type IngestStatus } from "@socia/db";
+import { assets, readDataFileStatus, readIngestStatus, readWorkerHeartbeat, requestIngestScan, stories, workerLiveness, type IngestStatus } from "@socia/db";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { and, count, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
-import { guard } from "../auth";
+import { HttpError, guard } from "../auth";
 import type { AppDeps } from "../app";
+import { SlidingLimiter } from "../limiter";
+
+/** "Scan now": at most one request per organisation in this window (F5 held down asks once) */
+export const SCAN_NOW_WINDOW_MS = 3000;
 
 export type SourceState = "ok" | "share_unreachable" | "folder_missing" | "data_file_problem" | "error" | "not_polled" | "stopped";
 
@@ -28,6 +32,17 @@ export function sourceState(status: IngestStatus | null, dataOk: boolean, worker
 }
 
 export const statusRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, config }) => {
+  const scans = new SlidingLimiter(1, SCAN_NOW_WINDOW_MS);
+  app.addHook("onClose", async () => scans.close());
+
+  // "Check now" / F5 on the desk: a kv flag the ingest loop checks every second, so the share is read straight away
+  app.post("/ingest/scan", async (req, reply) => {
+    const { user } = guard(req);
+    if (!scans.take(user.orgId)) throw new HttpError(429, "rate_limited", "A scan was just asked for. The worker is already on it.");
+    await requestIngestScan(db, user.orgId, user.id);
+    return reply.status(202).send({ queued: true });
+  });
+
   app.get("/ingest/status", async (req) => {
     const { user } = guard(req);
     const detail = user.permissions.has("page.settings");

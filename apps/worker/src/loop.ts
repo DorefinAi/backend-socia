@@ -5,10 +5,15 @@ import type { Logger } from "pino";
 
 export interface LoopOptions {
   name: string;
-  /** Returns true when it did something, so the loop goes again straight away */
-  tick: () => Promise<boolean>;
+  /**
+   * Returns true when it did something, so the loop goes again straight away; false to wait idleMs; a number
+   * to wait that many ms instead (e.g. a shorter wait while files settle)
+   */
+  tick: () => Promise<boolean | number>;
   idleMs: number;
   log: Logger;
+  /** While idle, asked every `everyMs`; true ends the wait early (e.g. the desk asked for a scan) */
+  wake?: { everyMs: number; check: () => Promise<boolean> };
 }
 
 export class Loops {
@@ -32,7 +37,19 @@ export class Loops {
     });
   }
 
-  start({ name, tick, idleMs, log }: LoopOptions): void {
+  /** Waits ms, in slices of wake.everyMs when given, ending early when wake.check() says so or on stop */
+  private async idle(ms: number, wake?: LoopOptions["wake"]): Promise<void> {
+    if (!wake) return this.sleep(ms);
+    const until = Date.now() + ms;
+    while (this.running) {
+      const left = until - Date.now();
+      if (left <= 0) return;
+      await this.sleep(Math.min(wake.everyMs, left));
+      if (!this.running || (await wake.check())) return;
+    }
+  }
+
+  start({ name, tick, idleMs, log, wake }: LoopOptions): void {
     const run = async () => {
       log.info({ loop: name }, "loop started");
       let failures = 0;
@@ -42,7 +59,7 @@ export class Loops {
         try {
           const busy = await unit;
           failures = 0;
-          if (!busy) await this.sleep(idleMs);
+          if (busy !== true) await this.idle(typeof busy === "number" ? busy : idleMs, wake);
         } catch (err) {
           failures += 1;
           log.error({ loop: name, err }, "loop tick failed");

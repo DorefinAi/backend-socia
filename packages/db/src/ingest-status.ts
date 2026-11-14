@@ -4,7 +4,9 @@
 
 import type { Db } from "./client";
 import { notify } from "./events";
+import { eq } from "drizzle-orm";
 import { getKv, setKv } from "./kv";
+import { kv } from "./schema";
 
 export const INGEST_STATUS_KEY = "ingest.status";
 const MAX_RECENT_ERRORS = 20;
@@ -120,6 +122,21 @@ export async function recordApiPhase(db: Db, phase: 1 | 2): Promise<void> {
 
 export async function readApiPhase(db: Db): Promise<{ phase: 1 | 2; at: string } | null> {
   return getKv(db, API_PHASE_KEY);
+}
+
+// ─── "Scan now" from the desk ───────────────────────────────────────────────
+
+export const ingestScanKey = (orgId: string) => `ingest.scan.${orgId}`;
+
+/** The desk asks the ingest loop to scan the share now instead of at its next poll */
+export async function requestIngestScan(db: Db, orgId: string, userId: string): Promise<void> {
+  await setKv(db, ingestScanKey(orgId), { at: new Date().toISOString(), by: userId });
+}
+
+/** True when a scan was asked for; the request is cleared in the same statement, so it is taken once */
+export async function takeIngestScanRequest(db: Db, orgId: string): Promise<boolean> {
+  const rows = await db.delete(kv).where(eq(kv.key, ingestScanKey(orgId))).returning({ key: kv.key });
+  return rows.length > 0;
 }
 
 // ─── Is the ingest worker alive ─────────────────────────────────────────────

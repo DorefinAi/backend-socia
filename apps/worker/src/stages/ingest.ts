@@ -23,7 +23,8 @@ const WATERMARK_KEY = "ingest.watermark";
 const FIRST_START_KEY = "ingest.first_start";
 /** Files older than the watermark by this much were handled before the last restart */
 const WATERMARK_GRACE_MS = 10 * 60 * 1000;
-const STABLE_MS = 2000;
+/** A file must look the same to two scans this far apart; the loop rescans after this while files settle */
+export const STABLE_MS = 2000;
 /** Draft states that went (or are going) out: a re-saved file makes a new draft instead of rewriting these */
 const SENT = ["published", "recalled", "queued", "publishing"];
 
@@ -70,6 +71,11 @@ export class Ingest {
 
   private get breaking(): boolean {
     return this.deps.layout === "breaking";
+  }
+
+  /** True when the last scan left files seen once and waiting for the settle check (the next scan can take them) */
+  get settling(): boolean {
+    return this.waiting.size > 0;
   }
 
   /** One scan of the share. Returns the number of files ingested. */

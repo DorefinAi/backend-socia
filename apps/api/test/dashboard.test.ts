@@ -4,7 +4,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WORKER_HEARTBEAT_KEY, assets, createDb, ingestedFiles, kv, orgs, postDrafts, publishedPosts, recordIngestPoll, recordWorkerHeartbeat, runMigrations, stories, users, type DbHandle } from "@socia/db";
+import { WORKER_HEARTBEAT_KEY, assets, createDb, ingestedFiles, kv, orgs, postDrafts, publishedPosts, recordIngestPoll, recordWorkerHeartbeat, runMigrations, takeIngestScanRequest, stories, users, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
 import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -18,6 +18,7 @@ const URL = process.env.TEST_DATABASE_URL;
   let h: DbHandle;
   let app: Awaited<ReturnType<typeof buildApp>>;
   let cookie = "";
+  let csrf = "";
   let samvadiaDraft = "";
   let rejectedDraft = "";
   let orgId = "";
@@ -90,6 +91,7 @@ const URL = process.env.TEST_DATABASE_URL;
     const res = await app.inject({ method: "POST", url: "/auth/login", payload: { email: "op@test", password: "correct horse battery" } });
     expect(JSON.parse(res.body).next).toBe("done");
     cookie = String(res.headers["set-cookie"]).split(";")[0]!;
+    csrf = JSON.parse(res.body).csrfToken;
   }, 60_000);
 
   afterAll(async () => {
@@ -264,5 +266,17 @@ const URL = process.env.TEST_DATABASE_URL;
     await recordWorkerHeartbeat(h.db, new Date());
     expect((await get("/ingest/status")).body.state).toBe("stopped");
     expect((await health("/healthz/worker")).status).toBe(503);
+  });
+
+  it("POST /ingest/scan sets the flag the ingest loop takes once, at most once per 3 s per org", async () => {
+    const post = () => app.inject({ method: "POST", url: "/ingest/scan", headers: { cookie, "x-csrf": csrf } });
+    expect((await app.inject({ method: "POST", url: "/ingest/scan" })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/ingest/scan", headers: { cookie } })).statusCode).toBe(403);
+    const res = await post();
+    expect(res.statusCode).toBe(202);
+    expect(JSON.parse(res.body)).toEqual({ queued: true });
+    expect((await post()).statusCode).toBe(429);
+    expect(await takeIngestScanRequest(h.db, orgId)).toBe(true);
+    expect(await takeIngestScanRequest(h.db, orgId)).toBe(false);
   });
 });

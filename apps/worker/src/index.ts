@@ -10,7 +10,7 @@
 
 import {
   OpsLog, SamvadiaReader, WORKER_HEARTBEAT_MS, WORKER_STAGE_SYSTEMS, createDb, opsLogSettings, readApiPhase, recordDataFileStatus, recordIngestPoll, recordWorkerHeartbeat,
-  setDecisionLogger, workerSystemOf,
+  setDecisionLogger, takeIngestScanRequest, workerSystemOf,
 } from "@socia/db";
 import pino from "pino";
 import { MemoryBucket, RedisBucket, type RateBucket } from "./bucket";
@@ -25,7 +25,7 @@ import { Dictionaries, composeNext } from "./stages/compose";
 import { phaseOneData } from "./data-files";
 import { convertNext } from "./stages/convert";
 import { NightlyFeatures, SEARCH_SWEEP_IDLE_MS, StorySearchSweep, housekeeping, syncHandles } from "./stages/crons";
-import { Ingest } from "./stages/ingest";
+import { Ingest, STABLE_MS } from "./stages/ingest";
 import { Publisher } from "./stages/publish";
 import { renderNext } from "./stages/render";
 import { TrendsJob } from "./stages/trends";
@@ -119,10 +119,28 @@ async function main(): Promise<void> {
     const mode = cfg.sourceMode;
     log.info({ mode, layout: cfg.sourceLayout }, breaking ? "ingest: breaking files from the share (read only)" : "ingest: text files from the share");
     let wasDown = false;
+    let scanCheckFailed = false;
     loops.start({
       name: "ingest",
       idleMs: cfg.pollSeconds * 1000,
       log,
+      // "Scan now" on the desk (POST /ingest/scan): seen within a second, and the share is read straight away
+      wake: {
+        everyMs: 1000,
+        check: async () => {
+          try {
+            const asked = await takeIngestScanRequest(db, cfg.orgId);
+            scanCheckFailed = false;
+            if (asked) log.info("scan now: asked for by the desk");
+            return asked;
+          } catch (err) {
+            // Once per outage: the scan itself reports the database being down
+            if (!scanCheckFailed) log.warn({ err }, "could not check for a scan request");
+            scanCheckFailed = true;
+            return false;
+          }
+        },
+      },
       tick: async () => {
         try {
           const taken = await ingest.scan();
@@ -142,7 +160,8 @@ async function main(): Promise<void> {
           if (!wasDown) log.error({ err }, "the share cannot be read; waiting for it");
           wasDown = true;
         }
-        return false;
+        // Files seen once and not yet settled: look again as soon as they can be taken, not after the full poll
+        return ingest.settling ? Math.min(STABLE_MS, cfg.pollSeconds * 1000) : false;
       },
     });
   }

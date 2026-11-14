@@ -123,11 +123,32 @@ const ELECTION_PROCESS = folded([
 // tagged nobody, 2 tagged an institution. So a court story does NOT tag the police even when the copy is
 // full of आरोपी and जमानत — which is exactly how "राजस्थान हाईकोर्ट में फर्जी जमानत आदेश अपलोड करने के
 // मामले में बड़ी कार्रवाई" was mis-tagged as an incident before this class existed.
-// "जस्टिस" added with Logic Update v4 B2 (14 Nov), so the class carries every word of B2's court-story list.
-const JUDICIAL = folded([
-  "हाईकोर्ट", "हाई कोर्ट", "सुप्रीम कोर्ट", "अदालत", "कोर्ट", "न्यायालय", "जमानत", "याचिका", "सुनवाई", "जस्टिस",
-  "अधिकरण", "ट्रिब्यूनल", "उपभोक्ता आयोग", "हर्जाना", "सीजेएम", "एडीजे", "लोक अदालत",
-]);
+//
+// HANDLE FIXES P1/P2 (14 Nov 2026): the court words below are the ONLY cues for the court class, whole words only, and
+// the class applies only when the story carries no crime word (CRIME_STORY_WORDS) anywhere. With a crime word it is a
+// crime story: the court words are ignored and the class comes from the other words, so "जस्टिस … के घर चोरी,
+// पुलिस ने आरोपी गिरफ्तार किया" keeps its police (P1), and "आरोपी को कोर्ट में पेश किया" (an accused produced in
+// court: crime procedure) is crime, not court (P2). "जमानत" on its own decides nothing. Gone as cues: कोर्ट, अदालत,
+// न्यायालय, जमानत, अधिकरण, ट्रिब्यूनल, उपभोक्ता आयोग, हर्जाना, सीजेएम, एडीजे, लोक अदालत.
+//
+// What the class itself does is unchanged: our reporter and no institution. The doc's "the court class never removes
+// a police tag" is held by the crime words: any story with a police, accused, arrest, FIR or police-station word is a
+// crime story and keeps its police. Measured on the 8 days, letting a court story with no crime word fall through to
+// its other words instead added 20 handles of which 4 were the desk's (police on High Court rulings: the desk tagged
+// police on 1 of 54 High Court posts) and took 5 correct reporter tags off.
+/**
+ * The court words (P2): the only cues for the court class and for the court reporter rule (isCourtStory), whole words
+ * only. "कोर्ट में पेश" and "न्यायालय में पेश" are crime words, not court words.
+ */
+export const COURT_STORY_WORDS: readonly string[] = [
+  "हाईकोर्ट", "हाई कोर्ट", "High Court", "सुप्रीम कोर्ट", "Supreme Court", "सुनवाई", "याचिका", "न्यायाधीश", "जस्टिस", "Justice",
+];
+/** The crime words (P2): a story carrying any of them anywhere is a crime story, whatever court words it also has */
+export const CRIME_STORY_WORDS: readonly string[] = [
+  "थाना", "थाने", "पुलिस", "गिरफ्तार", "आरोपी", "FIR", "एफआईआर", "मुकदमा दर्ज", "कोर्ट में पेश", "न्यायालय में पेश",
+];
+const COURT_WORDS = COURT_STORY_WORDS.map(fold);
+const CRIME_WORDS = CRIME_STORY_WORDS.map(fold);
 
 // ─── incident: the district police story ─────────────────────────────────────
 export const INCIDENT_WORDS: readonly string[] = [
@@ -147,7 +168,7 @@ export const INCIDENT_WORDS: readonly string[] = [
   // bribery and traps: the Bhilwara घूसकांड case the old list missed entirely
   "घूस", "घूसकांड", "रिश्वत", "रिश्वतखोरी", "ट्रैप", "एसीबी",
   // Deliberately NOT here: धोखाधड़ी / ठगी / जालसाजी alone. In the window these split between police
-  // stories and consumer-commission or court rulings; JUDICIAL now catches the second kind, and when the
+  // stories and consumer-commission or court rulings; the court class catches the second kind, and when the
   // police really are acting the acting-agent path in handles.ts still tags them.
 ];
 const INCIDENT = new Set(INCIDENT_WORDS.map(fold));
@@ -245,6 +266,16 @@ const GOVERNMENT = folded([
  */
 const tokens = (f: string): string[] => f.split(/[\s,।॥;:!?|()"'‘’“”\-–—.]+/u).filter(Boolean);
 
+/** Whether the text has one of the (folded) words or phrases as whole words: "कोर्टयार्ड" is not "कोर्ट" */
+const hasWhole = (text: string, list: readonly string[]): boolean => {
+  const t = ` ${tokens(fold(text.normalize("NFC"))).join(" ")} `;
+  return list.some((w) => t.includes(` ${w} `));
+};
+/** A crime word anywhere in these lines (P2) */
+const hasCrimeWord = (lines: readonly string[]): boolean => lines.some((l) => hasWhole(l, CRIME_WORDS));
+/** The court class's own test on one text: a court word, and no crime word in the story (`crime`) */
+const courtClass = (text: string, crime: boolean): boolean => !crime && hasWhole(text, COURT_WORDS);
+
 /** Whether the folded text hits a word set, by token or by phrase. */
 const hits = (f: string, words: string[], set: WordSet) => words.some((w) => set.tokens.has(w)) || set.phrases.some((p) => f.includes(p));
 const phrase = (f: string, list: readonly string[]) => list.some((p) => f.includes(p));
@@ -263,8 +294,18 @@ export function incidentStrength(text: string): "none" | "weak" | "strong" {
   const f = fold(text.normalize("NFC"));
   if (phrase(f, NOT_INCIDENT)) return "none";
   const words = tokens(f);
-  if (hits(f, words, JUDICIAL)) return "none"; // a bail order is not a crime report
+  // A court ruling is not a crime report — unless the copy carries a crime word, then it is a crime story (P1/P2)
+  if (courtClass(text, hasCrimeWord([text]))) return "none";
   const found = words.filter((w) => INCIDENT.has(w));
+  if (found.some((w) => !WEAK_INCIDENT.has(w)) || phrase(f, [fold("लगी आग"), fold("जिंदा जलाने")])) return "strong";
+  return found.length ? "weak" : "none";
+}
+
+/** incidentStrength() for a story with a crime word: its court words do not undo the crime (P1) */
+function incidentIgnoringCourt(text: string): "none" | "weak" | "strong" {
+  const f = fold(text.normalize("NFC"));
+  if (phrase(f, NOT_INCIDENT)) return "none";
+  const found = tokens(f).filter((w) => INCIDENT.has(w));
   if (found.some((w) => !WEAK_INCIDENT.has(w)) || phrase(f, [fold("लगी आग"), fold("जिंदा जलाने")])) return "strong";
   return found.length ? "weak" : "none";
 }
@@ -295,7 +336,8 @@ export interface Classification {
 }
 
 /**
- * One text's class, or null when it carries no signal. Precedence is measured, not assumed:
+ * One text's class, or null when it carries no signal. `crime`: the story has a crime word somewhere, so the court
+ * words are ignored (P1/P2). Precedence is measured, not assumed:
  *
  *   column → judicial → incident → admin officer → election result → political
  *          → mourning → devotional → election process → admin body → government
@@ -308,13 +350,13 @@ export interface Classification {
  * "विधायक के घर चोरी" is a police story; that costs the handful of posts where a leader comments on an
  * accident, and it is the cheaper of the two errors.
  */
-function decide(text: string, namedPolitical: boolean): Classification | null {
+function decide(text: string, namedPolitical: boolean, crime: boolean): Classification | null {
   const f = fold(text.normalize("NFC"));
   const words = tokens(f);
   if (hits(f, words, COLUMN)) return { cls: "soft", why: "a column or light feature, not news" };
-  if (hits(f, words, JUDICIAL)) return { cls: "judicial", why: "a court, a hearing or a commission ruling" };
+  if (courtClass(text, crime)) return { cls: "judicial", why: "a court, a hearing or a petition, and no crime word" };
   const political = namedPolitical || hits(f, words, POLITICAL);
-  const incident = incidentStrength(text);
+  const incident = crime ? incidentIgnoringCourt(text) : incidentStrength(text);
   // `incident` outranks `political` because "विधायक के घर चोरी" is a police story — but only on a real
   // crime word. A leader attacking the government is not an assault.
   if (incident === "strong" || (incident === "weak" && !political)) return { cls: "incident", why: "a crime, fire or accident" };
@@ -334,21 +376,13 @@ function decide(text: string, namedPolitical: boolean): Classification | null {
 }
 
 /**
- * Logic Update v4 B2's court-story words. A court story carries a roster reporter 56% of the time (51 of 91), like
- * political and government copy (54–67%), not like crime (17%).
- */
-export const COURT_STORY_WORDS: readonly string[] = ["हाईकोर्ट", "हाई कोर्ट", "न्यायालय", "अदालत", "कोर्ट", "जस्टिस", "याचिका", "सुनवाई", "जमानत"];
-const COURT_STORY = folded(COURT_STORY_WORDS);
-
-/**
- * A court story (v4 B2): a court word in the headline or the first two lines after it. Decides only whether the
- * reporter's byline is allowed (handles.ts); the story's class, and with it every other handle, is unchanged.
+ * A court story (Logic Update v4 B2, narrowed by the handle fixes P1/P2): a court word in the headline or the first two
+ * lines after it, and no crime word anywhere in the story. Decides only whether the reporter's byline is allowed
+ * (handles.ts); the story's class, and with it every other handle, is decided by classify().
  */
 export function isCourtStory(headline: string, points: readonly string[]): boolean {
-  return [headline, ...points.slice(0, 2)].some((line) => {
-    const f = fold(line.normalize("NFC"));
-    return hits(f, tokens(f), COURT_STORY);
-  });
+  if (hasCrimeWord([headline, ...points])) return false;
+  return [headline, ...points.slice(0, 2)].some((line) => hasWhole(line, COURT_WORDS));
 }
 
 /**
@@ -359,10 +393,11 @@ export function isCourtStory(headline: string, points: readonly string[]): boole
 export function classify(story: ClassifyInput): Classification {
   if (story.leaderPost) return { cls: "leader_post", why: "a leader's own post, quoted verbatim" };
   const named = story.namedPolitical === true;
-  const fromHead = decide(story.headline, named);
+  const crime = hasCrimeWord([story.headline, ...story.points]);
+  const fromHead = decide(story.headline, named, crime);
   if (fromHead) return fromHead;
   const body = story.points.join("\n");
-  const fromBody = decide(body, false);
+  const fromBody = decide(body, false, crime);
   if (fromBody) return { cls: fromBody.cls, why: `${fromBody.why} (from the body; the headline was silent)` };
   return { cls: "other", why: "no class matched" };
 }

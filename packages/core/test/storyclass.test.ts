@@ -39,9 +39,10 @@ describe("story class", () => {
     expect(classify({ headline: "बाजार में रौनक", points: ["पुलिस ने चोरी के आरोपी को पकड़ा"], leaderPost: false }).why).toMatch(/from the body/);
   });
 
-  it("keeps the measured order: judicial over incident, result over political, political over mourning", () => {
-    // Court copy is full of आरोपी and जमानत and the desk tagged no police on it (16 of 22 reporter-only)
-    expect(cls("हाईकोर्ट में फर्जी जमानत आदेश अपलोड करने के मामले में बड़ी कार्रवाई, आरोपी गिरफ्तार")).toBe("judicial");
+  it("keeps the measured order: judicial over incident only with no crime word, result over political, political over mourning", () => {
+    // P1/P2: a court word and a crime word make a crime story; with no crime word a court ruling stays judicial
+    expect(cls("हाईकोर्ट ने हत्या के मामले में सुनाई उम्रकैद की सजा")).toBe("judicial");
+    expect(cls("हाईकोर्ट में फर्जी जमानत आदेश अपलोड करने के मामले में बड़ी कार्रवाई, आरोपी गिरफ्तार")).toBe("incident");
     // A bulletin that names the winner is still a bulletin: 18 of 23 result posts tagged nobody
     expect(cls("सरपंच चुनाव का परिणाम घोषित, प्रत्याशी बनवारी लाल 827 मतों से विजयी")).toBe("soft");
     // A leader's condolence message is political copy: 18 of 37 mourning posts tagged a politician
@@ -69,9 +70,10 @@ describe("story class", () => {
   it("holds the guards that measurement reversed, and the four words that look safe and are not", () => {
     // A near miss is still a police matter: the desk tagged district police on 4 of 5
     expect(isIncident("हादसा टल गया, चालक बाल-बाल बचा")).toBe(true);
-    // A close contest is not a collision; a bail order is not a crime report
+    // A close contest is not a collision; a bail hearing alone is not a crime report, but its accused is (P2)
     expect(isIncident("दोनों प्रत्याशियों में कांटे की टक्कर")).toBe(false);
-    expect(isIncident("आरोपी की जमानत याचिका पर सुनवाई")).toBe(false);
+    expect(isIncident("जमानत याचिका पर सुनवाई")).toBe(false);
+    expect(isIncident("आरोपी की जमानत याचिका पर सुनवाई")).toBe(true);
     // "आंधी" is a TOWN in Jaipur Rural, not a storm: a weather word list that holds it tags its police
     expect(cls("आंधी में बारिश से फसल खराब")).not.toBe("incident");
     // "कार्यकर्ता" means "worker" generally — it made an obituary political
@@ -139,8 +141,9 @@ describe("what each class tags", () => {
     expect(pick("मुख्यमंत्री भजनलाल शर्मा ने भाजपा प्रत्याशी के लिए किया जनसंपर्क")).toEqual(["cm:BhajanlalBjp", "party:BJP4Rajasthan"]);
   });
 
-  it("gives a court story our reporter and no institution, and a festival nobody", () => {
-    expect(pick("हाईकोर्ट में आरोपी की जमानत याचिका पर सुनवाई")).toEqual([]);
+  it("gives a court story with no crime word no institution, a court story with one its police (P1), and a festival nobody", () => {
+    expect(pick("हाईकोर्ट में जमानत याचिका पर सुनवाई")).toEqual([]);
+    expect(pick("हाईकोर्ट में आरोपी की जमानत याचिका पर सुनवाई")).toEqual(["police:jaipur_police"]);
     expect(pick("गोवर्धन पूजा में उमड़े श्रद्धालु")).toEqual([]);
   });
 

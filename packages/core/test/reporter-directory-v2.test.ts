@@ -347,29 +347,37 @@ describe("Decision 2: a declared beat may offer a person, only when its keywords
 
 // ─── Logic Update v4 B2: the reporter tag on court stories ────────────────────
 
-describe("v4 B2: the reporter's byline is allowed on court stories", () => {
-  it("a court story: one of the nine words in the headline or the first two lines after it", () => {
-    for (const w of ["हाईकोर्ट", "हाई कोर्ट", "न्यायालय", "अदालत", "कोर्ट", "जस्टिस", "याचिका", "सुनवाई", "जमानत"]) {
+describe("v4 B2: the reporter's byline is allowed on court stories (as the handle fixes P1/P2 narrowed it)", () => {
+  it("a court story: a court word in the headline or the first two lines after it, and no crime word in the story", () => {
+    for (const w of ["हाईकोर्ट", "हाई कोर्ट", "High Court", "सुप्रीम कोर्ट", "Supreme Court", "सुनवाई", "याचिका", "न्यायाधीश", "जस्टिस", "Justice"]) {
       expect(isCourtStory(`मामले में ${w} का फैसला`, []), w).toBe(true);
       expect(isCourtStory("जयपुर में बैठक", [`आज ${w} में`]), `${w} in line 2`).toBe(true);
     }
-    expect(isCourtStory("जयपुर में बैठक", ["पहली बात", "दूसरी बात", "कोर्ट में पेशी होगी"])).toBe(false);
-    expect(isCourtStory("कोर्टयार्ड में कार्यक्रम", [])).toBe(false);
+    // No longer court words: a court named without its kind, or bail on its own
+    for (const w of ["कोर्ट", "अदालत", "न्यायालय", "जमानत"]) expect(isCourtStory(`मामले में ${w} का फैसला`, []), w).toBe(false);
+    expect(isCourtStory("जयपुर में बैठक", ["पहली बात", "दूसरी बात", "हाईकोर्ट में सुनवाई होगी"])).toBe(false);
+    expect(isCourtStory("हाईकोर्टयार्ड में कार्यक्रम", [])).toBe(false);
+    // A crime word anywhere in the story makes it a crime story
+    expect(isCourtStory("हाईकोर्ट में सुनवाई", ["पहली बात", "दूसरी बात", "पुलिस ने पूछताछ की"])).toBe(false);
   });
-  it("the judicial class carries every B2 word: 'जस्टिस' now classes a headline as judicial", () => {
-    expect(classify({ headline: "जस्टिस शर्मा ने आरोपी की अर्जी पर दिए निर्देश", points: [], leaderPost: false }).cls).toBe("judicial");
+  it("the judicial class needs a court word and no crime word: 'जस्टिस' beside 'आरोपी' is a crime story", () => {
+    expect(classify({ headline: "जस्टिस शर्मा ने आरोपी की अर्जी पर दिए निर्देश", points: [], leaderPost: false }).cls).toBe("incident");
+    expect(classify({ headline: "हाईकोर्ट में याचिका पर सुनवाई", points: [], leaderPost: false }).cls).toBe("judicial");
+    // Bail alone is not a court word; a crime word in the last line still makes it crime
+    expect(classify({ headline: "जमानत मिली, परिवार में खुशी", points: [], leaderPost: false }).cls).not.toBe("judicial");
+    expect(classify({ headline: "हाईकोर्ट में सुनवाई", points: ["एक", "दो", "थाने में दर्ज हुआ था मामला"], leaderPost: false }).cls).not.toBe("judicial");
   });
   it("@vyaskamalkant on a court headline: the byline goes on the post, and nothing else", () => {
     const d = draft(fileFor("KAMALKANT", "JPR3"), ["हाईकोर्ट ने भर्ती परीक्षा पर याचिका की सुनवाई की", "अगली सुनवाई 20 नवंबर को"]);
     expect(d.mentions).toEqual(["@vyaskamalkant"]);
   });
-  it("an incident whose second line is in court: the district police stay, and the reporter joins them", () => {
+  it("an incident whose second line is in court: the district police stay, and the reporter does NOT join them (crime words)", () => {
+    // Was: the reporter joined (v4 B2). The owner's rule (P2): "कोर्ट में पेश" is crime procedure, and any crime word
+    // (आरोपी, पुलिस, गिरफ्तार...) makes it a crime story, so no reporter tag.
     const lines = ["जयपुर में चोरी का आरोपी गिरफ्तार", "आरोपी को आज कोर्ट में पेश किया जाएगा", "पुलिस कर रही पूछताछ"];
     const d = draft(fileFor("KAMALKANT", "JPR3"), lines);
     expect(d.cls).toBe("incident");
-    expect(d.mentions[0]).toBe("@jaipur_police");
-    expect(d.mentions.at(-1)).toBe("@vyaskamalkant");
-    // With the court word only in the third line it is not a court story: the police alone, as before
+    expect(d.mentions).toEqual(["@jaipur_police"]);
     const later = draft(fileFor("KAMALKANT", "JPR3"), [lines[0]!, "पुलिस कर रही पूछताछ", "दूसरे साथी की तलाश जारी", "आरोपी को आज कोर्ट में पेश किया जाएगा"]);
     expect(later.mentions).toEqual(["@jaipur_police"]);
   });
@@ -382,4 +390,42 @@ describe("v4 B2: the reporter's byline is allowed on court stories", () => {
   it("@vyaskamalkant and @omsharma8888 carry the court beat (display only)", () => {
     for (const h of ["vyaskamalkant", "omsharma8888"]) expect(reporters.profiles!.get(h)).toMatchObject({ beats: ["court"], beatsSource: "observed" });
   });
+
+// ─── Handle fixes P1/P2 (14 Nov): crime stories caught by the court rule ─────────
+
+describe("P1/P2: the owner's five court/crime sentences (filed by @vyaskamalkant from Jaipur)", () => {
+  const kamal = (headline: string, points: string[] = []) => draft(fileFor("KAMALKANT", "JPR3"), [headline, ...points]);
+
+  it("P1P2 test 1: 'आरोपी को कोर्ट में पेश किया' → crime: no reporter tag; police tag kept", () => {
+    const d = kamal("जयपुर में चोरी के आरोपी को कोर्ट में पेश किया");
+    expect(isCourtStory("जयपुर में चोरी के आरोपी को कोर्ट में पेश किया", [])).toBe(false);
+    expect(d.mentions).toContain("@jaipur_police");
+    expect(d.mentions).not.toContain("@vyaskamalkant");
+  });
+  it("P1P2 test 2: 'जस्टिस … के घर चोरी, पुलिस ने आरोपी गिरफ्तार किया' → crime: police tag kept (P1)", () => {
+    const d = kamal("जस्टिस शर्मा के घर चोरी, पुलिस ने आरोपी गिरफ्तार किया");
+    expect(d.cls).toBe("incident");
+    expect(d.mentions).toContain("@jaipur_police");
+    expect(d.mentions).not.toContain("@vyaskamalkant");
+  });
+  it("P1P2 test 3: 'हाईकोर्ट में याचिका पर सुनवाई' → court: reporter tag allowed", () => {
+    expect(isCourtStory("हाईकोर्ट में याचिका पर सुनवाई", [])).toBe(true);
+    expect(kamal("हाईकोर्ट में याचिका पर सुनवाई").mentions).toContain("@vyaskamalkant");
+  });
+  it("P1P2 test 4: 'जमानत याचिका पर हाईकोर्ट में सुनवाई' (no crime words) → court", () => {
+    expect(isCourtStory("जमानत याचिका पर हाईकोर्ट में सुनवाई", [])).toBe(true);
+    expect(kamal("जमानत याचिका पर हाईकोर्ट में सुनवाई").mentions).toContain("@vyaskamalkant");
+  });
+  it("P1P2 test 5: 'जमानत पर रिहा आरोपी फिर गिरफ्तार' → crime", () => {
+    expect(isCourtStory("जमानत पर रिहा आरोपी फिर गिरफ्तार", [])).toBe(false);
+    const d = kamal("जमानत पर रिहा आरोपी फिर गिरफ्तार");
+    expect(d.cls).toBe("incident");
+    expect(d.mentions).toEqual(["@jaipur_police"]);
+  });
+  it("a crime word anywhere in the story (not only the first lines) makes it crime: police kept, no court reporter", () => {
+    const d = kamal("हाईकोर्ट परिसर के बाहर वकीलों में मारपीट", ["दोनों पक्षों में कहासुनी", "मौके पर भीड़ जुटी", "पुलिस ने दो लोगों को हिरासत में लिया"]);
+    expect(d.cls).toBe("incident");
+    expect(d.mentions).toEqual(["@jaipur_police"]);
+  });
+});
 });

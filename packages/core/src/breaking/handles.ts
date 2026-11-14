@@ -523,7 +523,7 @@ function ruleHandles(rules: HandleRules): Set<string> {
  *
  *   leader_post    → nobody, not even the reporter
  *   soft           → nobody (19.9% of posts: festivals, pujas, obituaries, columns, election bulletins)
- *   judicial       → our reporter only, no institution (16 of 22 court posts)
+ *   judicial       → our reporter only, no institution (16 of 22 court posts); never with a crime word (P1/P2)
  *   incident       → the district police, ALONE (248 of 302 police tags were the only handle)
  *   administration → the district collector, ALONE (101 of 117)
  *   political      → named leaders, then the party, then our reporter (the 3- and 4-handle shape)
@@ -688,8 +688,8 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
 
   if (cls === "judicial") {
     // ── judicial: our reporter, and no institution ──────────────────────────
-    // 16 of 22 court posts tagged the reporter and nothing else: a court story tags no police however
-    // much आरोपी and जमानत the copy carries.
+    // 16 of 22 court posts tagged the reporter and nothing else. Since the handle fixes P1/P2 the class needs a court
+    // word and NO crime word (पुलिस, थाना, आरोपी, गिरफ्तार, FIR...): a story with one is a crime story and keeps its police.
     if (!story.rajasthan) return onlyReporter();
   } else if (cls === "incident") {
     // ── incident: the district police, alone ────────────────────────────────
@@ -787,7 +787,8 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   ]);
 
   // The reporter takes the last slot, on the classes the desk puts it on — and on any court story (Logic Update v4
-  // B2: a court word in the headline or the first two lines). A court story carries a roster reporter 56% of the
+  // B2, as the handle fixes P1/P2 narrowed it: a court word in the headline or the first two lines, and no crime word
+  // in the story). A court story carries a roster reporter 56% of the
   // time, like political copy, not 17% like crime; @vyaskamalkant is the only handle on 29 of his 43 posts. Only
   // WHEN the reporter is allowed changes: who it is still comes from the file name alone, and the class (so the
   // police or the collector on an incident or administration story) is untouched.

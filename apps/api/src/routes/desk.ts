@@ -119,6 +119,14 @@ function postedSince(days: number): Date {
   return new Date(istDayStart(new Date()).getTime() - (days - 1) * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * The posted view's "today" (or last `days` days): the story was marked posted in the window, by its post records
+ * (published_posts.published_at, published_posts_draft_idx). Not the draft's updated_at, which other changes move.
+ */
+function postedInWindow(days: number): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${publishedPosts} WHERE ${publishedPosts.draftId} = ${postDrafts.id} AND ${publishedPosts.orgId} = ${postDrafts.orgId} AND ${publishedPosts.publishedAt} >= ${postedSince(days).toISOString()}::timestamptz)`;
+}
+
 /** WHERE parts for the filters, on the joined stories row */
 function filterWhere(q: { district?: string; big?: boolean; update?: boolean; desk?: string; needsCheck?: boolean }): (SQL | undefined)[] {
   // Compared as text: a hand-edited or malformed value never makes the cast fail the whole query
@@ -244,7 +252,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
             inArray(postDrafts.status, [...QUEUE_VIEWS[viewName]]),
             cursor?.id ? sql`(${sortCol}, ${postDrafts.id}) < (${cursor.at.toISOString()}::timestamptz, ${cursor.id}::uuid)` : undefined,
             cursor && !cursor.id ? lt(sortCol, cursor.at) : undefined,
-            viewName === "posted" ? gte(postDrafts.updatedAt, postedSince(req.query.days ?? 1)) : undefined,
+            viewName === "posted" ? postedInWindow(req.query.days ?? 1) : undefined,
             day ? gte(stories.createdAt, day.start) : undefined,
             day ? lt(stories.createdAt, day.end) : undefined,
             ...filterWhere(req.query),
@@ -391,7 +399,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       eq(postDrafts.orgId, user.orgId),
       eq(postDrafts.platform, "x"),
       inArray(postDrafts.status, [...QUEUE_VIEWS[viewName]]),
-      viewName === "posted" ? gte(postDrafts.updatedAt, postedSince(1)) : undefined,
+      viewName === "posted" ? postedInWindow(1) : undefined,
     );
     const desk = sql<string | null>`${stories.fileTags}->>'desk'`;
     // The desk's headline numbers are for stories received today (IST); the full view stays in `total`

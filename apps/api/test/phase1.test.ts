@@ -310,7 +310,8 @@ const tags = (over: Partial<FileTags>): FileTags => ({
   it("the posted view and its facets cover today (IST) unless asked for more days", async () => {
     const posted = (await call("GET", "/x/queue?view=posted")).body.items.map((i: { id: string }) => i.id);
     expect(posted).toContain(ids["race"]);
-    await h.db.update(postDrafts).set({ updatedAt: sql`now() - interval '3 days'` }).where(eq(postDrafts.id, ids["race"]!));
+    // "Today" is when it was posted (published_posts.published_at), not the draft's last change
+    await h.db.update(publishedPosts).set({ publishedAt: sql`now() - interval '3 days'` }).where(eq(publishedPosts.draftId, ids["race"]!));
     expect((await call("GET", "/x/queue?view=posted")).body.items.map((i: { id: string }) => i.id)).not.toContain(ids["race"]);
     expect((await call("GET", "/x/queue?view=posted&days=5")).body.items.map((i: { id: string }) => i.id)).toContain(ids["race"]);
     expect((await call("GET", "/x/queue?view=posted&days=31")).status).toBe(400);

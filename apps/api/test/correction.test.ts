@@ -77,7 +77,7 @@ type Session = { cookie: string; csrf: string };
 
   const draftRow = async (id: string) => (await h.db.select().from(postDrafts).where(eq(postDrafts.id, id)))[0]!;
   const postRows = async (id: string) => h.db.select().from(publishedPosts).where(eq(publishedPosts.draftId, id));
-  const postedItem = async (s: Session, id: string) => (await call(s, "GET", "/x/queue?view=posted")).body.items.find((i: { id: string }) => i.id === id);
+  const postedItem = async (s: Session, id: string, days = 1) => (await call(s, "GET", `/x/queue?view=posted&days=${days}`)).body.items.find((i: { id: string }) => i.id === id);
 
   beforeAll(async () => {
     h = createDb(URL_!, 5);
@@ -212,7 +212,28 @@ type Session = { cookie: string; csrf: string };
     const id = await postedDraft("kal-ki");
     await h.db.update(publishedPosts).set({ publishedAt: new Date(istDayStart(new Date()).getTime() - 60_000) }).where(eq(publishedPosts.draftId, id));
     expect(await call(who.op, "POST", `/drafts/${id}/correction`)).toMatchObject({ status: 409, body: { error: "too_late", message: "Only today's posts can be edited." } });
-    expect((await postedItem(who.op, id)).canCorrect).toBe(false);
+    // Not in Posted today any more; two days back it is, without Edit
+    expect(await postedItem(who.op, id)).toBeUndefined();
+    expect((await postedItem(who.op, id, 2)).canCorrect).toBe(false);
+  });
+
+  it("Posted today goes by when the story was posted (published_at), not by the draft's last change", async () => {
+    const id = await postedDraft("kab-post-hua");
+    const yesterday = new Date(istDayStart(new Date()).getTime() - 60_000);
+    const total = async () => (await call(who.op, "GET", "/x/queue/facets?view=posted")).body.total as number;
+    const todayTotal = await total();
+
+    // A draft last changed yesterday but posted today stays in Posted today
+    await h.db.update(postDrafts).set({ updatedAt: yesterday }).where(eq(postDrafts.id, id));
+    expect(await postedItem(who.op, id)).toMatchObject({ status: "published" });
+    expect(await total()).toBe(todayTotal);
+
+    // Posted yesterday but changed today (e.g. a later edit) is not today's: only within `days`
+    await h.db.update(postDrafts).set({ updatedAt: new Date() }).where(eq(postDrafts.id, id));
+    await h.db.update(publishedPosts).set({ publishedAt: yesterday }).where(eq(publishedPosts.draftId, id));
+    expect(await postedItem(who.op, id)).toBeUndefined();
+    expect(await postedItem(who.op, id, 2)).toMatchObject({ status: "published" });
+    expect(await total()).toBe(todayTotal - 1);
   });
 
   it("only a Copy & Posted story: a draft in the queue is invalid_state, and an edit without the hold is refused", async () => {

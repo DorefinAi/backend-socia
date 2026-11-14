@@ -13,11 +13,21 @@ import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-o
 import { HttpError, guard, requirePermission } from "../auth";
 import type { AppDeps } from "../app";
 import { DeskHandleChecks } from "../handle-keywords";
+import { HANDLE_SEARCH_LIMIT, HandleSearchFiles, mergeResults, prefixPattern, searchEntries, searchQuery, type HandleSearchItem } from "../handle-search";
 import { SlidingLimiter } from "../limiter";
 
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) }, { additionalProperties: false });
 const bare = (handle: string) => handle.replace(/^@/, "");
 const Search = Type.Object({ q: Type.Optional(Type.String({ maxLength: 100 })) }, { additionalProperties: false });
+/**
+ * GET /handles: without `mode`, the Settings list (substring match, full rows, 50). mode=prefix is the editor's @ / #
+ * lookup (handle-search.ts): exact prefix, verified only, HANDLE_SEARCH_LIMIT results as HandleSearchItem.
+ */
+const HandleSearch = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 100 })),
+  mode: Type.Optional(Type.Literal("prefix")),
+  kind: Type.Optional(Type.Union([Type.Literal("mention"), Type.Literal("hashtag")])),
+}, { additionalProperties: false });
 const Tag = Type.String({ minLength: 1, maxLength: 80 });
 
 const RuleBody = Type.Object({
@@ -74,6 +84,51 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
   const deskAdds = new SlidingLimiter(DESK_HANDLE_ADDS, DESK_HANDLE_WINDOW_MS);
   app.addHook("onClose", async () => deskAdds.close());
   const deskChecks = new DeskHandleChecks(app.log);
+  const searchFiles = new HandleSearchFiles(app.log);
+
+  /** The editor's @ lookup: verified directory rows whose handle, name, Hindi name or an alias starts with q; then the files */
+  async function searchMentions(orgId: string, q: string): Promise<HandleSearchItem[]> {
+    const like = prefixPattern(q);
+    const rows = await db
+      .select({ handle: handleDirectory.handle, entityName: handleDirectory.entityName, entityNameHi: handleDirectory.entityNameHi })
+      .from(handleDirectory)
+      .where(
+        and(
+          eq(handleDirectory.orgId, orgId),
+          eq(handleDirectory.platform, "x"),
+          isNotNull(handleDirectory.verifiedAt),
+          or(
+            ilike(sql`ltrim(${handleDirectory.handle}, '@')`, like),
+            ilike(handleDirectory.entityName, like),
+            ilike(handleDirectory.entityNameHi, like),
+            sql`EXISTS (SELECT 1 FROM unnest(${handleDirectory.aliases}) AS a(alias) WHERE a.alias ILIKE ${like})`,
+          ),
+        ),
+      )
+      .orderBy(desc(handleDirectory.priority), asc(handleDirectory.entityName))
+      .limit(HANDLE_SEARCH_LIMIT);
+    const fromDb = rows.map((r): HandleSearchItem => ({ value: `@${bare(r.handle)}`, name: r.entityName, nameHi: r.entityNameHi, source: "directory" }));
+    return mergeResults(fromDb, searchEntries(await searchFiles.handles(), q));
+  }
+
+  /** The editor's # lookup: the places file's tags, then the org's active hashtag rules, by tag prefix */
+  async function searchHashtags(orgId: string, q: string): Promise<HandleSearchItem[]> {
+    const like = prefixPattern(q);
+    const places = searchEntries(await searchFiles.placeTags(), q);
+    const rules = await db
+      .select({ name: hashtagRules.name, latin: hashtagRules.hashtagLatin, hi: hashtagRules.hashtagDevanagari })
+      .from(hashtagRules)
+      .where(and(eq(hashtagRules.orgId, orgId), eq(hashtagRules.active, true), or(ilike(sql`ltrim(${hashtagRules.hashtagLatin}, '#')`, like), ilike(sql`ltrim(${hashtagRules.hashtagDevanagari}, '#')`, like))))
+      .orderBy(desc(hashtagRules.priority), asc(hashtagRules.name))
+      .limit(HANDLE_SEARCH_LIMIT);
+    const fromRules = rules.flatMap((r) =>
+      [r.latin, r.hi]
+        .map((t) => (t ?? "").replace(/^#+/, ""))
+        .filter((t) => t && t.normalize("NFC").toLowerCase().startsWith(q) && /^[\p{L}\p{M}\p{N}_]+$/u.test(t))
+        .map((t): HandleSearchItem => ({ value: `#${t}`, name: r.name, nameHi: r.hi, source: "rules" })),
+    );
+    return mergeResults(places, fromRules);
+  }
 
   // ─── Hashtag rules ─────────────────────────────────────────────────────────
 
@@ -118,8 +173,13 @@ export const libraryRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { d
 
   // ─── Handle directory (verified only) ──────────────────────────────────────
 
-  app.get("/handles", { schema: { querystring: Search } }, async (req) => {
+  app.get("/handles", { schema: { querystring: HandleSearch } }, async (req) => {
     const { user } = guard(req);
+    if (req.query.mode === "prefix") {
+      const q = searchQuery(req.query.q);
+      if (!q) return { items: [] };
+      return { items: req.query.kind === "hashtag" ? await searchHashtags(user.orgId, q) : await searchMentions(user.orgId, q) };
+    }
     const q = req.query.q?.trim();
     const like = q ? `%${q.replace(/[%_]/g, "\\$&")}%` : null;
     return {

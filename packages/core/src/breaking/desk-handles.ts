@@ -334,3 +334,54 @@ export function deskHandleRules(rows: readonly DeskHandleRow[]): DeskHandleRules
   });
   return { gazetteer: new Gazetteer(entries), count: entries.length };
 }
+
+// ─── Settings handles (desk fixes 14 Nov, point 7) ──────────────────────────
+//
+// Handles added in Settings (handle_directory source "manual") or promoted from Wikidata staging ("wikidata:Q…")
+// were never seen by the composer. They join the desk-added ones with:
+//   - the keywords a desk add of the same handle would get (deskHandleKeywords: the district and subject names inside
+//     it), under the same safety rules: a data-file handle or a lookalike, a party's or an official's handle gets
+//     nothing at all, so it is never suggested (still taggable by hand);
+//   - its own names as exact whole-word names: entity_name, entity_name_hi and every alias the editor entered.
+// Capped at MAX_HANDLE_KEYWORDS names per handle, its own names first.
+
+/** A verified handle_directory row of any source but "desk" and "reporter", as the worker reads it */
+export interface DirectoryHandleRow extends DeskHandleRow {
+  entityNameHi: string | null;
+}
+
+/** A name shorter than this many letters is never matched as a handle's own name ("CM", "SP") */
+export const MIN_DIRECTORY_NAME_LETTERS = 3;
+/** Letters with their vowel signs ("बूंदी" is 5, "CM" 2) */
+const letters = (s: string) => (s.match(/[\p{L}\p{M}\p{N}]/gu) ?? []).length;
+
+/**
+ * The names a Settings handle is matched on: its own names, then the keywords inside the handle; [] (never suggested)
+ * when the safety rules withhold the handle's keywords.
+ */
+export function directoryHandleNames(row: DirectoryHandleRow, ctx: DeskKeywordContext): string[] {
+  const { keywords, withheld } = deskHandleKeywords(row.handle, ctx);
+  if (withheld) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [row.entityName, row.entityNameHi ?? "", ...row.aliases, ...keywords]) {
+    const name = raw.normalize("NFC").replace(/\s+/g, " ").trim();
+    const key = name.toLowerCase();
+    if (letters(name) < MIN_DIRECTORY_NAME_LETTERS || seen.has(key) || out.length >= MAX_HANDLE_KEYWORDS) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+/**
+ * The desk-added rows (their stored keywords) and the Settings rows (directoryHandleNames) as one rule set for
+ * pickHandles. A handle in both has an entry for each; pickHandles keeps one pick per handle.
+ */
+export function directoryHandleRules(deskRows: readonly DeskHandleRow[], settingsRows: readonly DirectoryHandleRow[], ctx: DeskKeywordContext): DeskHandleRules {
+  const settings = settingsRows.flatMap((r) => {
+    const aliases = directoryHandleNames(r, ctx);
+    return aliases.length ? [{ handle: r.handle, entityName: r.entityName, aliases }] : [];
+  });
+  return deskHandleRules([...deskRows, ...settings]);
+}

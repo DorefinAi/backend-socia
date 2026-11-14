@@ -1,29 +1,42 @@
 // Compose: pure rules turn a story into an X draft. The dictionaries are loaded into memory and
 // reloaded when an editor changes them; compose_version records which tables produced a draft.
 // Breaking files (phase 1) use their own layout, the district- and subject-handles files, the org's topic
-// hashtag rules for their category tags, and the handles the desk added with keywords (handle_directory, source
-// "desk"), which are suggested after the files' picks.
+// hashtag rules for their category tags, and the handle directory's verified handles with keywords: the ones the desk
+// added (source "desk", keywords stored) and the ones added in Settings or promoted from staging (their names and the
+// keywords inside the handle, desk-handles.ts directoryHandleRules), which are suggested after the files' picks.
 
 import { createHash } from "node:crypto";
 import {
-  LEADER_POST, asFileTags, assemblePostText, composeBreaking, recoverDistrictFrom, deskHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
+  LEADER_POST, asFileTags, assemblePostText, composeBreaking, recoverDistrictFrom, directoryHandleRules, districtKeywordCandidates, handleProposal, handleReason, handleSource, hashtagGazetteer,
   mergeReporterTokens, resolveReporterStatus, slotFromTags,
-  type BreakingDraft, type Composer, type DeskHandleRules, type HandlePick, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
+  type BreakingDraft, type Composer, type DeskHandleRow, type DeskHandleRules, type DirectoryHandleRow, type HandlePick, type HandleRules, type SubjectRules, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
   type TagSuggestion,
 } from "@socia/core";
 import {
   EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, ingestedFiles, loadRuleComposer, notify, postDrafts, recordProposal,
   stories, type Db, type LoggedProposal, type Tx,
 } from "@socia/db";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import { nextStoryIsolated } from "./isolate";
 import type { PhaseOneData } from "../data-files";
 import type { Logger } from "pino";
 
 const RELOAD_MS = 60_000;
+const DISTRICT_CANDIDATES = districtKeywordCandidates();
+
+/** The data files a Settings handle's keywords are checked against, and their versions as one string */
+export interface DeskRuleFiles {
+  rules: HandleRules;
+  subjects: SubjectRules;
+  version: string;
+}
 
 export class Dictionaries {
-  private cached: { composer: Composer; topics: HashtagGazetteer; desk: DeskHandleRules; learnedReporters: LearnedReporterToken[]; version: string; at: number } | null = null;
+  private cached: {
+    composer: Composer; topics: HashtagGazetteer; deskRows: DeskHandleRow[]; settingsRows: DirectoryHandleRow[]; learnedReporters: LearnedReporterToken[]; version: string; at: number;
+  } | null = null;
+  /** The handle rules built from the rows above and the data files they were checked against */
+  private deskRules: { key: string; value: DeskHandleRules } | null = null;
 
   constructor(private readonly db: Db, private readonly orgId: string) {}
 
@@ -38,12 +51,16 @@ export class Dictionaries {
     // Breaking posts take only the topic rules (category tags); their places come from the places file
     const topics = hashtagGazetteer((await activeHashtagRules(this.db, this.orgId)).filter((r) => r.matchType === "entity"));
     // The fingerprint counts verified handles and their latest verification, so an add, edit or delete reloads these
-    const desk = deskHandleRules(
-      await this.db
-        .select({ handle: handleDirectory.handle, entityName: handleDirectory.entityName, aliases: handleDirectory.aliases })
-        .from(handleDirectory)
-        .where(and(eq(handleDirectory.orgId, this.orgId), eq(handleDirectory.platform, "x"), eq(handleDirectory.source, "desk"), isNotNull(handleDirectory.verifiedAt))),
-    );
+    const deskRows = await this.db
+      .select({ handle: handleDirectory.handle, entityName: handleDirectory.entityName, aliases: handleDirectory.aliases })
+      .from(handleDirectory)
+      .where(and(eq(handleDirectory.orgId, this.orgId), eq(handleDirectory.platform, "x"), eq(handleDirectory.source, "desk"), isNotNull(handleDirectory.verifiedAt)));
+    // Handles added in Settings ("manual") or promoted from staging ("wikidata:Q…"): every verified row that is not
+    // a desk add or a learned reporter. Their keywords depend on the data files, so they are worked out in desk().
+    const settingsRows = await this.db
+      .select({ handle: handleDirectory.handle, entityName: handleDirectory.entityName, entityNameHi: handleDirectory.entityNameHi, aliases: handleDirectory.aliases })
+      .from(handleDirectory)
+      .where(and(eq(handleDirectory.orgId, this.orgId), eq(handleDirectory.platform, "x"), notInArray(handleDirectory.source, ["desk", REPORTER_SOURCE]), isNotNull(handleDirectory.verifiedAt)));
     // File-name tokens editors taught us by adding a reporter's handle to a draft by hand (desk.ts). The
     // fingerprint above counts every verified directory row, so a newly learned token reloads these too.
     const reporterRows = await this.db
@@ -51,7 +68,7 @@ export class Dictionaries {
       .from(handleDirectory)
       .where(and(eq(handleDirectory.orgId, this.orgId), eq(handleDirectory.platform, "x"), eq(handleDirectory.source, REPORTER_SOURCE), isNotNull(handleDirectory.verifiedAt)));
     const learnedReporters = reporterRows.flatMap((r) => r.aliases.map((token) => ({ handle: r.handle, token, name: r.entityName })));
-    this.cached = { composer, topics, desk, learnedReporters, version, at: Date.now() };
+    this.cached = { composer, topics, deskRows, settingsRows, learnedReporters, version, at: Date.now() };
     return this.cached;
   }
 
@@ -60,10 +77,25 @@ export class Dictionaries {
     return { composer, version };
   }
 
-  /** The org's active topic hashtag rules, for the breaking posts' category tags; the desk-added handles */
-  async topics(): Promise<{ topics: HashtagGazetteer; desk: DeskHandleRules; learnedReporters: LearnedReporterToken[]; version: string }> {
-    const { topics, desk, learnedReporters, version } = await this.load();
-    return { topics, desk, learnedReporters, version };
+  /** The org's active topic hashtag rules, for the breaking posts' category tags; the directory's keyword handles */
+  async topics(files?: DeskRuleFiles): Promise<{ topics: HashtagGazetteer; desk: DeskHandleRules; learnedReporters: LearnedReporterToken[]; version: string }> {
+    const { topics, deskRows, settingsRows, learnedReporters, version } = await this.load();
+    return { topics, desk: this.desk(deskRows, settingsRows, version, files), learnedReporters, version };
+  }
+
+  /**
+   * The desk-added and Settings handles as one rule set, rebuilt only when the directory or a data file changes.
+   * Without the data files (no breaking data loaded) a Settings row cannot be checked, so none is used (fail safe).
+   */
+  private desk(deskRows: DeskHandleRow[], settingsRows: DirectoryHandleRow[], version: string, files?: DeskRuleFiles): DeskHandleRules {
+    const key = `${version}|${files?.version ?? "-"}`;
+    if (this.deskRules?.key === key) return this.deskRules.value;
+    const value = directoryHandleRules(deskRows, files ? settingsRows : [], {
+      candidates: [...DISTRICT_CANDIDATES, ...(files?.subjects.keywordCandidates ?? [])],
+      fileHandles: files ? [...(files.rules.all ?? []), ...(files.subjects.handles ?? [])] : [],
+    });
+    this.deskRules = { key, value };
+    return value;
   }
 }
 
@@ -147,7 +179,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     opts.data.normalise.get(),
     opts.data.campaigns.get(),
     opts.data.beats.get(),
-    dictionaries.topics(),
+    // Settings handles are checked against the district- and subject-handles files (read just above and in this call)
+    opts.data.subjects.get().then(({ value, version }) => dictionaries.topics({ rules, subjects: value, version: `h${handlesVersion}.s${version}` })),
   ]);
   const { topics, desk, learnedReporters, version: topicsVersion } = dict;
   const tags = asFileTags(story.fileTags);

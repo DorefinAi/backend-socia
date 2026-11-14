@@ -10,6 +10,8 @@ import { Dictionaries, composeNext } from "../src/stages/compose";
 
 const URL_ = process.env.TEST_DATABASE_URL;
 const log = pino({ level: "silent" });
+/** The draft's mentions and its suggested handles */
+const everyHandle = (d: { mentions: string[]; mentionSuggestions: unknown }) => [...d.mentions, ...((d.mentionSuggestions as { handle: string }[] | null) ?? []).map((m) => m.handle)];
 
 (URL_ ? describe : describe.skip)("breaking compose: desk-added handles", () => {
   let h: DbHandle;
@@ -39,8 +41,15 @@ const log = pino({ level: "silent" });
       { orgId, entityName: "Kota", entityNameHi: "कोटा", aliases: ["Kota", "कोटा"], handle: "KotaNewsDesk", source: "desk", verifiedAt: now },
       // No keywords: never suggested
       { orgId, entityName: "RandomGuy123", aliases: [], handle: "RandomGuy123", source: "desk", verifiedAt: now },
-      // Not desk-added, or not verified: not this rule's
+      // Added in Settings (desk fixes 14 Nov, point 7): matched on its names and the keywords inside the handle
       { orgId, entityName: "Bundi", aliases: ["Bundi", "बूंदी"], handle: "BundiManual", source: "manual", verifiedAt: now },
+      // A Settings row whose handle names nothing: matched on its own names only (Hindi name, an alias)
+      { orgId, entityName: "Ramesh Meena", entityNameHi: "रमेश मीणा", aliases: ["रमेश मीणा जी"], handle: "rm_writes", source: "manual", verifiedAt: now },
+      // Promoted from staging
+      { orgId, entityName: "Sanganer Airport", aliases: ["सांगानेर एयरपोर्ट"], handle: "SanganerAirpt", source: "wikidata:Q1", verifiedAt: now },
+      // Settings rows the safety rules hold back: an official's, a lookalike of a file handle; and an unverified one
+      { orgId, entityName: "Tonk", entityNameHi: "टोंक", aliases: ["Tonk"], handle: "SPTonkCity", source: "manual", verifiedAt: now },
+      { orgId, entityName: "Tonk", entityNameHi: "टोंक", aliases: ["Tonk"], handle: "TonkManualX", source: "manual", verifiedAt: null },
       { orgId, entityName: "Bundi", aliases: ["Bundi", "बूंदी"], handle: "BundiUnverified", source: "desk", verifiedAt: null },
       // Should never have got keywords (set some other way): a party's, an official's, a file handle, a lookalike
       { orgId, entityName: "Kota", aliases: ["Kota", "कोटा"], handle: "BJP4Kota", source: "desk", verifiedAt: now },
@@ -61,11 +70,21 @@ const log = pino({ level: "silent" });
     expect(d.mentionSuggestions).toEqual([{ handleId: "rule:desk:JhalawarUpdates", entity: "Jhalawar", handle: "@JhalawarUpdates", exact: true, source: "desk", reason: "Jhalawar" }]);
   });
 
-  it("does not suggest it on a Kota story; no-keyword, manual and unverified rows never", async () => {
+  it("does not suggest it on a Kota story; a Settings row is matched, no-keyword and unverified rows never", async () => {
     const kota = await compose("kota-rain", "कोटा में तेज बारिश", "बूंदी में भी असर", "Kota");
-    expect(kota.mentions).toEqual(["@KotaNewsDesk"]);
+    expect(kota.mentions).toEqual(["@KotaNewsDesk", "@BundiManual"]);
     const plain = await compose("random", "RandomGuy123 ने किया पोस्ट", "", "Jaipur");
     expect(plain.mentions).toEqual([]);
+  });
+
+  it("matches a Settings or promoted row on its Hindi name and aliases; never an official's or an unverified one", async () => {
+    const person = await compose("rm-visit", "रमेश मीणा ने किया दौरा", "", "Jaipur");
+    expect(everyHandle(person)).toContain("@rm_writes");
+    const airport = await compose("airport", "सांगानेर एयरपोर्ट पर नई उड़ान", "", "Jaipur");
+    expect(everyHandle(airport)).toContain("@SanganerAirpt");
+    const tonk = await compose("tonk-fair", "टोंक में मेला शुरू", "", "Tonk");
+    expect(everyHandle(tonk)).not.toContain("@SPTonkCity");
+    expect(everyHandle(tonk)).not.toContain("@TonkManualX");
   });
 
   it("never suggests a party's or an official's desk row, a file handle or a lookalike of one", async () => {

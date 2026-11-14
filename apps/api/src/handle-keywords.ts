@@ -20,7 +20,7 @@ export const SUBJECT_HANDLES_FILE = fileURLToPath(new URL("../../worker/config/s
 export const DISTRICT_HANDLES_FILE = fileURLToPath(new URL("../../worker/config/district-handles.json", import.meta.url));
 export const REPORTER_HANDLES_FILE = fileURLToPath(new URL("../../worker/config/reporter-handles.json", import.meta.url));
 
-class WatchedJson<T> {
+export class WatchedJson<T> {
   private value: T | null = null;
   private checkedAt = 0;
   private mtimeMs: number | null = null;

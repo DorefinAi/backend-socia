@@ -645,11 +645,13 @@ describe("review r3: district hashtags count only in the headline, and only Raja
   it("#Pakistan in the headline is not a district either", () => {
     expect(file("#Pakistan की नापाक हरकत", ["सीमा पर फायरिंग"]).p.districtFrom).toBe("file_code");
   });
-  it("two different district tags in the headline: neither is stated, both are offered", () => {
+  it("two different district tags in the headline: neither is stated, and neither is offered again (already on line 1)", () => {
     const { p, d } = file("#BJP #Kota #Bundi: दोनों जिलों में सभा", ["कार्यकर्ता रहे मौजूद"], { code: "XX", reporter: "NOBODY" });
     expect(p.districtFrom).not.toBe("tag");
     expect(d.bodyText.startsWith("#BJP #Kota #Bundi: ")).toBe(true);
-    expect(d.hashtagSuggestions).toEqual(expect.arrayContaining(["#Kota", "#Bundi"]));
+    // Desk fixes 14 Nov, point 6: a suggestion never repeats a tag already in the copy
+    expect(d.hashtagSuggestions).not.toContain("#Kota");
+    expect(d.hashtagSuggestions).not.toContain("#Bundi");
     for (const h of [...policeOf("Kota"), ...policeOf("Bundi")]) expect(everyHandle(d)).not.toContain(h);
   });
 });

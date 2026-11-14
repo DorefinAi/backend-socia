@@ -122,7 +122,8 @@ describe("C-c: a Hindi '#<स्थान>न्यूज़' tag is a district 
     for (const tag of ["#जोधपुरन्यूज़", "#जोधपुरन्यूज"]) {
       const d = draft(RITURAJ, [`ग्राम पंचायत में पुनर्मतदान ${tag}`, "मतपत्र चोरी के चलते फैसला"]);
       expect(policyFired(d), tag).toBe(false);
-      expect(d.bodyText.startsWith("#Jodhpur: "), d.bodyText).toBe(true);
+      // The headline already carries the place tag: no "#Jodhpur: " in front of it (desk fixes 14 Nov, point 6)
+      expect(d.bodyText.startsWith(`ग्राम पंचायत में पुनर्मतदान ${tag}`), d.bodyText).toBe(true);
       expect([d.districtSource, d.mentions, d.hashtags, d.hashtagSuggestions], tag).toEqual([latin.districtSource, latin.mentions, latin.hashtags, latin.hashtagSuggestions]);
     }
   });

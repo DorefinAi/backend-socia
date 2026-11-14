@@ -16,8 +16,13 @@ import {
   type Decision, type ItemOutcome, type LoggedItemOutcome, type LoggedProposal, type ReporterFeatureSet,
 } from "./schema";
 
-/** The tagging logic the proposals came from: b6/b7 tags (v3) plus the reporter prior's first cut */
-export const LOGIC_VERSION = "tags-v3+prior-1";
+/**
+ * The tagging logic the proposals came from: b6/b7 tags (v3) plus the reporter prior.
+ *   prior-1  the first cut (reporter-prior brief, 13 Nov 2026)
+ *   prior-2  reporter directory changes v2: institution handles only (R2), the R3 seed table, a person or office the
+ *            copy names shown above the prior (R4), recency-weighted nightly features (R5)
+ */
+export const LOGIC_VERSION = "tags-v3+prior-2";
 
 /** One post in ten is an exploration post (brief §7.2.3): its proposals carry explore: true */
 export const EXPLORE_RATE = 0.1;
@@ -26,6 +31,17 @@ export const EXPLORE_RATE = 0.1;
 export const FEATURE_SMOOTHING_M = 20;
 /** The features' rolling window, before the start of the snapshot's day */
 export const FEATURE_WINDOW_DAYS = 90;
+/**
+ * Recency (directory changes v2, R5): a decided post counts 0.5^(age_in_days / FEATURE_HALF_LIFE_DAYS) in a rate's
+ * k and n, its age measured to the start of the snapshot's day. A post from that day counts 1, from two weeks before
+ * 0.5, from four weeks 0.25: beats shift with the news (rituraj went from 62% @RajGovOfficial to 0% on 12 Nov).
+ */
+export const FEATURE_HALF_LIFE_DAYS = 14;
+/**
+ * The fewest decided posts a reporter's measured prior rests on (brief §3.4). Read on the UNWEIGHTED count, so a
+ * reporter is not dropped for a quiet fortnight.
+ */
+export const FEATURE_MIN_POSTS = 20;
 /** At most this many items per reporter, by count */
 export const FEATURE_MAX_ITEMS = 200;
 /** Snapshots older than this are deleted */
@@ -468,6 +484,12 @@ export function minusDays(day: string, days: number): string {
 }
 
 const smooth = (count: number, n: number, base: number, m: number) => (count + m * base) / (n + m);
+
+/** A decided post's weight in the features (R5): 0.5^(age_in_days / halfLife), age to `cutoff`, never above 1 */
+export function recencyWeight(decidedAt: Date, cutoff: Date, halfLifeDays = FEATURE_HALF_LIFE_DAYS): number {
+  const ageDays = Math.max(0, (cutoff.getTime() - decidedAt.getTime()) / 86_400_000);
+  return 0.5 ** (ageDays / halfLifeDays);
+}
 const round = (x: number) => Math.round(x * 10_000) / 10_000;
 
 export interface FeatureSnapshot {
@@ -486,12 +508,23 @@ export interface SnapshotHooks {
   betweenReads?: () => Promise<void>;
 }
 
+export interface SnapshotOptions extends SnapshotHooks {
+  /**
+   * The directory's INSTITUTION handles, lower-cased without the @ (R2): the only handles a reporter's measured prior
+   * may offer, so the only ones listed in a snapshot's `prior.handles`. Absent or empty: none are listed (fail closed).
+   */
+  institutions?: ReadonlySet<string> | null;
+}
+
 /**
  * Today's snapshot of every matched reporter's features, keyed by handle.
  *
  * Only posted decisions of matched reporters made in the FEATURE_WINDOW_DAYS before today (IST) began (L5: a
  * post decided today never shapes today's numbers). Each rate is smoothed toward the desk's overall rate with m
- * pseudo-posts; at most FEATURE_MAX_ITEMS items per reporter. The counting is done in SQL.
+ * pseudo-posts, k and n RECENCY-WEIGHTED (R5: each post counts recencyWeight of its age); counts, raw rates, the
+ * base rate and `n` stay unweighted. At most FEATURE_MAX_ITEMS items per reporter. `prior` lists the institution
+ * handles only (R2), and is `eligible` when the reporter has FEATURE_MIN_POSTS decided posts, unweighted. The
+ * counting and the weights are done in SQL.
  *
  * L6 (out-of-fold target encoding) applies to an offline evaluation of these features; none exists yet, so
  * nothing here needs it.
@@ -502,7 +535,7 @@ export interface SnapshotHooks {
  * rows it cannot see). Inserts only (a snapshot already taken is kept); snapshots older than the retention go.
  */
 export async function snapshotReporterFeatures(
-  pool: pg.Pool, orgId: string, now = new Date(), m = FEATURE_SMOOTHING_M, hooks: SnapshotHooks = {},
+  pool: pg.Pool, orgId: string, now = new Date(), m = FEATURE_SMOOTHING_M, hooks: SnapshotOptions = {},
 ): Promise<FeatureSnapshot> {
   const client = await pool.connect();
   let broken: Error | undefined;
@@ -524,14 +557,16 @@ export async function snapshotReporterFeatures(
   }
 }
 
-async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date, m: number, hooks: SnapshotHooks): Promise<FeatureSnapshot> {
+async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date, m: number, hooks: SnapshotOptions): Promise<FeatureSnapshot> {
   const cutoff = istDayStart(now);
   const since = new Date(cutoff.getTime() - FEATURE_WINDOW_DAYS * 86_400_000);
   const day = istDate(now);
   return db.transaction(
     async (tx) => {
+      // w: the post's recency weight (R5), 0.5^(age_in_days / half-life), its age measured to the day's start
       const base = sql`
-        SELECT d.id, lower(ltrim(d.reporter_handle, '@')) AS r, d.final_hashtags, d.final_handles, d.item_outcomes, d.rework_ratio
+        SELECT d.id, lower(ltrim(d.reporter_handle, '@')) AS r, d.final_hashtags, d.final_handles, d.item_outcomes, d.rework_ratio,
+               power(0.5::float8, greatest(0, extract(epoch FROM (${cutoff.toISOString()}::timestamptz - d.decided_at)))::float8 / 86400.0 / ${FEATURE_HALF_LIFE_DAYS}::float8) AS w
           FROM post_decisions d
          WHERE d.org_id = ${orgId} AND d.reporter_status = 'matched' AND d.reporter_handle IS NOT NULL
            AND d.decided_at IS NOT NULL AND d.decided_at >= ${since.toISOString()}::timestamptz AND d.decided_at < ${cutoff.toISOString()}::timestamptz
@@ -541,7 +576,7 @@ async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date,
 
       const reporters = (await tx.execute(sql`
         WITH base AS (${base})
-        SELECT r, count(*)::int AS n, avg(rework_ratio)::float8 AS rework FROM base GROUP BY r`)).rows as { r: string; n: number; rework: number | null }[];
+        SELECT r, count(*)::int AS n, sum(w)::float8 AS nw, avg(rework_ratio)::float8 AS rework FROM base GROUP BY r`)).rows as { r: string; n: number; nw: number; rework: number | null }[];
       const total = reporters.reduce((a, r) => a + r.n, 0);
       if (!total) return { day, written: 0, ...(await finish(tx, orgId, day)) };
       await hooks.betweenReads?.();
@@ -555,47 +590,61 @@ async function snapshotOn(db: Pick<Db, "transaction">, orgId: string, now: Date,
       const items = (await tx.execute(sql`
         WITH base AS (${base}),
         items AS (
-          SELECT DISTINCT b.id, b.r, ${key} AS k
+          SELECT DISTINCT b.id, b.r, b.w, ${key} AS k
             FROM base b CROSS JOIN LATERAL unnest(coalesce(b.final_hashtags, '{}'::text[]) || coalesce(b.final_handles, '{}'::text[])) AS i
         ),
         tot AS (SELECT k, count(*)::int AS all_c FROM items GROUP BY k),
-        per AS (SELECT r, k, count(*)::int AS c FROM items GROUP BY r, k),
+        per AS (SELECT r, k, count(*)::int AS c, sum(w)::float8 AS cw FROM items GROUP BY r, k),
         ranked AS (
-          SELECT per.r, per.k, per.c, tot.all_c,
+          SELECT per.r, per.k, per.c, per.cw, tot.all_c,
                  row_number() OVER (PARTITION BY per.r ORDER BY per.c DESC, per.k) AS rn,
                  count(*) OVER (PARTITION BY per.r)::int AS distinct_items
             FROM per JOIN tot USING (k)
         )
-        SELECT r, k, c, all_c, distinct_items FROM ranked WHERE rn <= ${FEATURE_MAX_ITEMS}`)).rows as
-        { r: string; k: string; c: number; all_c: number; distinct_items: number }[];
+        SELECT r, k, c, cw, all_c, distinct_items FROM ranked WHERE rn <= ${FEATURE_MAX_ITEMS}`)).rows as
+        { r: string; k: string; c: number; cw: number; all_c: number; distinct_items: number }[];
 
       const sources = (await tx.execute(sql`
         WITH base AS (${base}),
         outs AS (
-          SELECT b.r, o->>'source' AS s, (o->>'outcome') IN ('kept', 'accepted') AS taken
+          SELECT b.r, b.w, o->>'source' AS s, (o->>'outcome') IN ('kept', 'accepted') AS taken
             FROM base b
             CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(b.item_outcomes) = 'array' THEN b.item_outcomes ELSE '[]'::jsonb END) AS o
            WHERE o->>'layer' IS NOT NULL AND o->>'source' IS NOT NULL
         ),
-        per AS (SELECT r, s, count(*)::int AS proposed, (count(*) FILTER (WHERE taken))::int AS taken FROM outs GROUP BY r, s)
-        SELECT r, s, proposed, taken,
+        per AS (
+          SELECT r, s, count(*)::int AS proposed, (count(*) FILTER (WHERE taken))::int AS taken,
+                 sum(w)::float8 AS wp, coalesce(sum(w) FILTER (WHERE taken), 0)::float8 AS wt
+            FROM outs GROUP BY r, s
+        )
+        SELECT r, s, proposed, taken, wp, wt,
                (sum(proposed) OVER (PARTITION BY s))::int AS all_p, (sum(taken) OVER (PARTITION BY s))::int AS all_t
-          FROM per`)).rows as { r: string; s: string; proposed: number; taken: number; all_p: number; all_t: number }[];
+          FROM per`)).rows as { r: string; s: string; proposed: number; taken: number; wp: number; wt: number; all_p: number; all_t: number }[];
 
-      const values = reporters.map(({ r, n, rework }) => {
+      const institutions = hooks.institutions && hooks.institutions.size > 0 ? hooks.institutions : null;
+      const values = reporters.map(({ r, n, nw, rework }) => {
         const mine = items.filter((i) => i.r === r);
         const features: ReporterFeatureSet = {
-          m, cutoff: cutoff.toISOString(), since: since.toISOString(),
+          m, cutoff: cutoff.toISOString(), since: since.toISOString(), halfLifeDays: FEATURE_HALF_LIFE_DAYS, nWeighted: round(nw),
           itemsDropped: Math.max(0, (mine[0]?.distinct_items ?? 0) - FEATURE_MAX_ITEMS),
           items: {}, sources: {}, reworkMean: rework === null ? null : round(rework),
+          // The minimum is read on the unweighted count (R5); the candidates are institutions only (R2)
+          prior: { eligible: n >= FEATURE_MIN_POSTS, minPosts: FEATURE_MIN_POSTS, typed: institutions !== null, handles: {} },
         };
         for (const i of mine) {
           const baseRate = i.all_c / total;
-          features.items[i.k] = { kind: i.k.startsWith("#") ? "hashtag" : "handle", count: i.c, rate: round(i.c / n), smoothed: round(smooth(i.c, n, baseRate, m)), base: round(baseRate) };
+          const kind = i.k.startsWith("#") ? "hashtag" : "handle";
+          const smoothed = round(smooth(i.cw, nw, baseRate, m));
+          features.items[i.k] = { kind, count: i.c, weighted: round(i.cw), rate: round(i.c / n), smoothed, base: round(baseRate) };
+          const bare = i.k.replace(/^@/, "");
+          if (kind === "handle" && institutions?.has(bare)) features.prior.handles[bare] = smoothed;
         }
         for (const s of sources.filter((x) => x.r === r)) {
           const baseRate = s.all_t / s.all_p;
-          features.sources[s.s] = { proposed: s.proposed, taken: s.taken, rate: round(s.taken / s.proposed), smoothed: round(smooth(s.taken, s.proposed, baseRate, m)), base: round(baseRate) };
+          features.sources[s.s] = {
+            proposed: s.proposed, taken: s.taken, weightedProposed: round(s.wp), weightedTaken: round(s.wt),
+            rate: round(s.taken / s.proposed), smoothed: round(smooth(s.wt, s.wp, baseRate, m)), base: round(baseRate),
+          };
         }
         return { orgId, snapshotDate: day, reporter: r, n, features };
       });

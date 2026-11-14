@@ -116,6 +116,8 @@ export class NightlyFeatures {
 
   constructor(
     private readonly db: Db, private readonly pool: Pool, private readonly orgId: string, private readonly log: Logger, private readonly m = 20,
+    /** The directory's institution handles (R2): the only prior candidates a snapshot lists; none: it lists none */
+    private readonly institutions: () => ReadonlySet<string> | null = () => null,
   ) {}
 
   /** Loop tick: always false (nothing more to do straight away) */
@@ -138,7 +140,7 @@ export class NightlyFeatures {
 
     let snap: Awaited<ReturnType<typeof snapshotReporterFeatures>>;
     try {
-      snap = await snapshotReporterFeatures(this.pool, this.orgId, now, this.m);
+      snap = await snapshotReporterFeatures(this.pool, this.orgId, now, this.m, { institutions: this.institutions() });
     } catch (err) {
       return this.failed(now, err, "reporter features snapshot failed");
     }

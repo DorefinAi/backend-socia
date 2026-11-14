@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "_handle_type_note": "Every entry carries \"handle_type\" (reporter directory changes v2, R2), apart from `kind`: person entries are \"person\"; departments, institutions, companies, parties and statewide or national forces are \"institution\"; an account tied to one district (the Jaipur and Jodhpur police commissionerates, Nagar Nigam Jaipur) is \"district\". An entry without a valid one is skipped and reported. The reporter prior offers institutions only; a person the copy names is shown above it.",
   "_note": "The people and organisations a breaking story is about, and their X handles. Edited without a code change; the worker reads it again within a minute. Only entries with \"verified\": true are tagged, never kind \"party\". kind: person | department | party | company | institution | police. names_* / keywords_* are matched as whole words (Hindi and English) in the headline (first) or the points. District police and collectors stay in district-handles.json.",
   "offices": {
     "_note": "An office named WITHOUT its holder ('CM ने भी स्वयं दी आहुतियां'): its handles are OFFERED, never tagged (reporter-prior brief 2026-11-13 §6). Resolved through the office, not the person, so it survives a change of officeholder. In 2,476 published posts an unnamed CM mention occurred 66 times, the desk tagged the CM on 0, and 26 were another state's CM or a former one. An alias is a whole word ('CM' never inside CMO, CMHO, ACM; 'मुख्यमंत्री' never inside 'उपमुख्यमंत्री'). exclude_same_sentence: any of these in the same sentence makes it another office. 'डिप्टी' / 'Deputy' / 'उप' were added to the brief's list so 'डिप्टी सीएम दिया कुमारी' is not the CM. Exclusions match without case ('former CM', 'FORMER CM'), anywhere in the sentence; an abbreviation's dot ('डॉ.', 'Dr.') does not end a sentence. exclude_next_to_alias: see its note. Handles must be entries of this file.",
@@ -48,6 +49,7 @@
   "entries": [
     {
       "handle": "@BhajanlalBjp",
+      "handle_type": "person",
       "kind": "person",
       "title": "Chief Minister of Rajasthan (Home, Excise, GAD, Personnel, Planning, DIPR, ACB + all unallocated departments)",
       "names_hi": [
@@ -75,6 +77,7 @@
     },
     {
       "handle": "@RajCMO",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Chief Minister's Office, Rajasthan",
       "names_hi": [],
@@ -95,6 +98,7 @@
     },
     {
       "handle": "@KumariDiya",
+      "handle_type": "person",
       "kind": "person",
       "title": "Deputy CM - Finance, Tourism, Art & Culture, PWD, Women & Child Development",
       "names_hi": [
@@ -118,6 +122,7 @@
     },
     {
       "handle": "@DrPremBairwa",
+      "handle_type": "person",
       "kind": "person",
       "title": "Deputy CM - Higher & Technical Education, AYUSH, Transport & Road Safety",
       "names_hi": [
@@ -144,6 +149,7 @@
     },
     {
       "handle": "@DrKirodilalBJP",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Agriculture & Horticulture, Rural Development, Disaster Management, Public Grievances",
       "names_hi": [
@@ -169,6 +175,7 @@
     },
     {
       "handle": "@GajendraKhimsar",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Medical & Health",
       "names_hi": [
@@ -190,6 +197,7 @@
     },
     {
       "handle": "@Ra_THORe",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Industries & Commerce, IT, Youth Affairs & Sports, Skills, Sainik Kalyan",
       "names_hi": [
@@ -212,6 +220,7 @@
     },
     {
       "handle": "@madandilawar",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - School Education, Sanskrit Education, Panchayati Raj",
       "names_hi": [
@@ -231,6 +240,7 @@
     },
     {
       "handle": "@OnlineKanhaiya",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Public Health Engineering (PHED), Ground Water",
       "names_hi": [
@@ -252,6 +262,7 @@
     },
     {
       "handle": "@JogarampatelMLA",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Parliamentary Affairs, Law & Legal Affairs",
       "names_hi": [
@@ -271,6 +282,7 @@
     },
     {
       "handle": "@SureshRawatIN",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Water Resources",
       "names_hi": [
@@ -289,6 +301,7 @@
     },
     {
       "handle": "@AvinashGehlot_",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Social Justice & Empowerment",
       "names_hi": [
@@ -307,6 +320,7 @@
     },
     {
       "handle": "@Sumit_Godara11",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Food & Civil Supplies, Consumer Affairs",
       "names_hi": [
@@ -325,6 +339,7 @@
     },
     {
       "handle": "@JoraramKumawat",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Animal Husbandry & Dairy, Gopalan, Devasthan",
       "names_hi": [
@@ -343,6 +358,7 @@
     },
     {
       "handle": "@babulalkharadi3",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Tribal Area Development, Home Guards",
       "names_hi": [
@@ -364,6 +380,7 @@
     },
     {
       "handle": "@HemantMeenaBJP",
+      "handle_type": "person",
       "kind": "person",
       "title": "Cabinet Minister - Revenue, Colonisation",
       "names_hi": [
@@ -379,6 +396,7 @@
     },
     {
       "handle": "@Sanjay4India1",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS (Independent Charge) - Forest, Environment & Climate Change, Science & Technology",
       "names_hi": [
@@ -395,6 +413,7 @@
     },
     {
       "handle": "@DakMla",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS (Independent Charge) - Cooperation, Civil Aviation",
       "names_hi": [
@@ -415,6 +434,7 @@
     },
     {
       "handle": "@officialkharra",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS (Independent Charge) - Urban Development & Housing (UDH), Local Self Government (LSG)",
       "names_hi": [
@@ -435,6 +455,7 @@
     },
     {
       "handle": "@hlnagar",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS (Independent Charge) - Energy",
       "names_hi": [
@@ -455,6 +476,7 @@
     },
     {
       "handle": "@otaramjidewasi",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS - Panchayati Raj, Rural Development, Disaster Management",
       "names_hi": [
@@ -474,6 +496,7 @@
     },
     {
       "handle": "@manjubaghmar",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS - Public Works, Women & Child Development, Child Empowerment",
       "names_hi": [
@@ -494,6 +517,7 @@
     },
     {
       "handle": "@kkvishnoibjp",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS - Industries & Commerce, Youth Affairs & Sports, Skills, Policy Making",
       "names_hi": [
@@ -515,6 +539,7 @@
     },
     {
       "handle": "@jawaharbedam",
+      "handle_type": "person",
       "kind": "person",
       "title": "MoS - Home, Gopalan, Animal Husbandry & Dairy, Fisheries",
       "names_hi": [
@@ -536,6 +561,7 @@
     },
     {
       "handle": "@svoruganti1466",
+      "handle_type": "person",
       "kind": "person",
       "title": "Chief Secretary, Government of Rajasthan",
       "names_hi": [
@@ -556,6 +582,7 @@
     },
     {
       "handle": "@Rajeev_ips",
+      "handle_type": "person",
       "kind": "person",
       "title": "Director General of Police, Rajasthan",
       "names_hi": [
@@ -574,6 +601,7 @@
     },
     {
       "handle": "@BagadeHaribhau",
+      "handle_type": "person",
       "kind": "person",
       "title": "Governor of Rajasthan",
       "names_hi": [
@@ -596,6 +624,7 @@
     },
     {
       "handle": "@LokBhavanJaipur",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Lok Bhavan Rajasthan (Governor's secretariat, formerly Raj Bhavan)",
       "names_hi": [],
@@ -617,6 +646,7 @@
     },
     {
       "handle": "@VasudevDevnani",
+      "handle_type": "person",
       "kind": "person",
       "title": "Speaker, Rajasthan Legislative Assembly",
       "names_hi": [
@@ -638,6 +668,7 @@
     },
     {
       "handle": "@RajAssembly",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "Rajasthan Vidhan Sabha Secretariat",
       "names_hi": [],
@@ -657,6 +688,7 @@
     },
     {
       "handle": "@TikaRamJullyINC",
+      "handle_type": "person",
       "kind": "person",
       "title": "Leader of Opposition, Rajasthan Legislative Assembly",
       "names_hi": [
@@ -678,6 +710,7 @@
     },
     {
       "handle": "@madanrrathore",
+      "handle_type": "person",
       "kind": "person",
       "title": "State President, BJP Rajasthan; Rajya Sabha MP",
       "names_hi": [
@@ -694,6 +727,7 @@
     },
     {
       "handle": "@GovindDotasra",
+      "handle_type": "person",
       "kind": "person",
       "title": "President, Rajasthan Pradesh Congress Committee",
       "names_hi": [
@@ -713,6 +747,7 @@
     },
     {
       "handle": "@ashokgehlot51",
+      "handle_type": "person",
       "kind": "person",
       "title": "Former Chief Minister of Rajasthan (Congress), MLA Sardarpura",
       "names_hi": [
@@ -733,6 +768,7 @@
     },
     {
       "handle": "@SachinPilot",
+      "handle_type": "person",
       "kind": "person",
       "title": "Congress MLA Tonk, AICC General Secretary; former Deputy CM",
       "names_hi": [
@@ -750,6 +786,7 @@
     },
     {
       "handle": "@VasundharaBJP",
+      "handle_type": "person",
       "kind": "person",
       "title": "Former Chief Minister of Rajasthan, BJP National Vice-President",
       "names_hi": [
@@ -769,6 +806,7 @@
     },
     {
       "handle": "@hanumanbeniwal",
+      "handle_type": "person",
       "kind": "person",
       "title": "RLP President, Lok Sabha MP Nagaur",
       "names_hi": [
@@ -787,6 +825,7 @@
     },
     {
       "handle": "@roat_mla",
+      "handle_type": "person",
       "kind": "person",
       "title": "Lok Sabha MP Banswara (BAP)",
       "names_hi": [
@@ -805,6 +844,7 @@
     },
     {
       "handle": "@DrSatishPoonia",
+      "handle_type": "person",
       "kind": "person",
       "title": "BJP National General Secretary, Rajya Sabha MP",
       "names_hi": [
@@ -823,6 +863,7 @@
     },
     {
       "handle": "@BJP4Rajasthan",
+      "handle_type": "institution",
       "kind": "party",
       "title": "BJP Rajasthan (state unit)",
       "names_hi": [],
@@ -843,6 +884,7 @@
     },
     {
       "handle": "@INCRajasthan",
+      "handle_type": "institution",
       "kind": "party",
       "title": "Rajasthan Pradesh Congress Committee (state unit)",
       "names_hi": [],
@@ -864,6 +906,7 @@
     },
     {
       "handle": "@narendramodi",
+      "handle_type": "person",
       "kind": "person",
       "title": "Prime Minister of India",
       "names_hi": [
@@ -886,6 +929,7 @@
     },
     {
       "handle": "@PMOIndia",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Prime Minister's Office",
       "names_hi": [],
@@ -904,6 +948,7 @@
     },
     {
       "handle": "@AshwiniVaishnaw",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Minister of Railways, I&B, Electronics & IT",
       "names_hi": [
@@ -924,6 +969,7 @@
     },
     {
       "handle": "@VSOMANNA_BJP",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union MoS Railways, Jal Shakti",
       "names_hi": [
@@ -943,6 +989,7 @@
     },
     {
       "handle": "@RailMinIndia",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Ministry of Railways, Government of India",
       "names_hi": [],
@@ -962,6 +1009,7 @@
     },
     {
       "handle": "@AmitShah",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Home Minister, Minister of Cooperation",
       "names_hi": [
@@ -981,6 +1029,7 @@
     },
     {
       "handle": "@HMOIndia",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Office of the Union Home Minister",
       "names_hi": [],
@@ -1000,6 +1049,7 @@
     },
     {
       "handle": "@nitin_gadkari",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Minister of Road Transport & Highways",
       "names_hi": [
@@ -1019,6 +1069,7 @@
     },
     {
       "handle": "@MORTHIndia",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Ministry of Road Transport & Highways",
       "names_hi": [],
@@ -1038,6 +1089,7 @@
     },
     {
       "handle": "@NHAI_Official",
+      "handle_type": "institution",
       "kind": "department",
       "title": "National Highways Authority of India",
       "names_hi": [],
@@ -1057,6 +1109,7 @@
     },
     {
       "handle": "@JPNadda",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Minister of Health & Family Welfare, Chemicals & Fertilizers",
       "names_hi": [
@@ -1079,6 +1132,7 @@
     },
     {
       "handle": "@MoHFW_INDIA",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Ministry of Health & Family Welfare",
       "names_hi": [],
@@ -1098,6 +1152,7 @@
     },
     {
       "handle": "@JoshiPralhad",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Minister of Education (additional charge since 25-26 Jul 2026), Consumer Affairs, Food & Public Distribution, New & Renewable Energy",
       "names_hi": [
@@ -1119,6 +1174,7 @@
     },
     {
       "handle": "@EduMinOfIndia",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Ministry of Education, Government of India",
       "names_hi": [],
@@ -1137,6 +1193,7 @@
     },
     {
       "handle": "@ChouhanShivraj",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Minister of Agriculture & Farmers Welfare, Rural Development",
       "names_hi": [
@@ -1155,6 +1212,7 @@
     },
     {
       "handle": "@AgriGoI",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Department of Agriculture & Farmers Welfare, GoI",
       "names_hi": [],
@@ -1173,6 +1231,7 @@
     },
     {
       "handle": "@gssjodhpur",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Minister of Culture & Tourism; Lok Sabha MP Jodhpur",
       "names_hi": [
@@ -1192,6 +1251,7 @@
     },
     {
       "handle": "@byadavbjp",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union Minister of Environment, Forest & Climate Change; Lok Sabha MP Alwar",
       "names_hi": [
@@ -1207,6 +1267,7 @@
     },
     {
       "handle": "@arjunrammeghwal",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union MoS (I/C) Law & Justice, MoS Parliamentary Affairs; Lok Sabha MP Bikaner",
       "names_hi": [
@@ -1226,6 +1287,7 @@
     },
     {
       "handle": "@mpbhagirathbjp",
+      "handle_type": "person",
       "kind": "person",
       "title": "Union MoS Agriculture & Farmers Welfare; Lok Sabha MP Ajmer",
       "names_hi": [
@@ -1241,6 +1303,7 @@
     },
     {
       "handle": "@ombirlakota",
+      "handle_type": "person",
       "kind": "person",
       "title": "Speaker, Lok Sabha; MP Kota-Bundi",
       "names_hi": [
@@ -1262,6 +1325,7 @@
     },
     {
       "handle": "@RajGovOfficial",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Government of Rajasthan",
       "names_hi": [],
@@ -1280,6 +1344,7 @@
     },
     {
       "handle": "@DIPRRajasthan",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Department of Information & Public Relations (DIPR), Rajasthan",
       "names_hi": [],
@@ -1299,6 +1364,7 @@
     },
     {
       "handle": "@PoliceRajasthan",
+      "handle_type": "institution",
       "kind": "police",
       "title": "Rajasthan Police Headquarters",
       "names_hi": [],
@@ -1316,6 +1382,7 @@
     },
     {
       "handle": "@RajPoliceHelp",
+      "handle_type": "institution",
       "kind": "police",
       "title": "Rajasthan Police Helpdesk",
       "names_hi": [],
@@ -1333,6 +1400,7 @@
     },
     {
       "handle": "@jaipur_police",
+      "handle_type": "district",
       "kind": "police",
       "title": "Police Commissionerate Jaipur",
       "names_hi": [],
@@ -1354,6 +1422,7 @@
     },
     {
       "handle": "@CP_Jodhpur",
+      "handle_type": "district",
       "kind": "police",
       "title": "Police Commissionerate Jodhpur",
       "names_hi": [],
@@ -1375,6 +1444,7 @@
     },
     {
       "handle": "@AcbRajasthan",
+      "handle_type": "institution",
       "kind": "police",
       "title": "Anti Corruption Bureau, Rajasthan",
       "names_hi": [],
@@ -1395,6 +1465,7 @@
     },
     {
       "handle": "@RPSC1",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Rajasthan Public Service Commission (Ajmer)",
       "names_hi": [],
@@ -1414,6 +1485,7 @@
     },
     {
       "handle": "@RSSB_Official",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Rajasthan Staff Selection Board (RSSB, formerly RSMSSB)",
       "names_hi": [],
@@ -1436,6 +1508,7 @@
     },
     {
       "handle": "@rajeduofficial",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Department of Education (School), Government of Rajasthan",
       "names_hi": [],
@@ -1454,6 +1527,7 @@
     },
     {
       "handle": "@nhm_rajasthan",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Medical & Health Department, Rajasthan (NHM)",
       "names_hi": [],
@@ -1475,6 +1549,7 @@
     },
     {
       "handle": "@jdajaipur",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Jaipur Development Authority",
       "names_hi": [],
@@ -1494,6 +1569,7 @@
     },
     {
       "handle": "@RSRTC_OFFICIAL",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Rajasthan State Road Transport Corporation (Rajasthan Roadways)",
       "names_hi": [],
@@ -1515,6 +1591,7 @@
     },
     {
       "handle": "@JVVNLCCare",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Jaipur Vidyut Vitran Nigam Ltd (JVVNL, Jaipur discom)",
       "names_hi": [],
@@ -1536,6 +1613,7 @@
     },
     {
       "handle": "@RajasthanPhed",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Public Health Engineering Department (PHED / जलदाय विभाग)",
       "names_hi": [],
@@ -1555,6 +1633,7 @@
     },
     {
       "handle": "@wrdrajasthan",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Water Resources Department, Rajasthan",
       "names_hi": [],
@@ -1573,6 +1652,7 @@
     },
     {
       "handle": "@Road_Safety_Raj",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Transport & Road Safety Department, Rajasthan (State Road Safety Cell)",
       "names_hi": [],
@@ -1591,6 +1671,7 @@
     },
     {
       "handle": "@my_rajasthan",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Department of Tourism, Rajasthan",
       "names_hi": [],
@@ -1609,6 +1690,7 @@
     },
     {
       "handle": "@CeoRajasthan",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "Chief Electoral Officer, Rajasthan",
       "names_hi": [],
@@ -1653,6 +1735,7 @@
     },
     {
       "handle": "@riicolimited",
+      "handle_type": "institution",
       "kind": "company",
       "title": "RIICO (state industrial development corporation)",
       "names_hi": [],
@@ -1671,6 +1754,7 @@
     },
     {
       "handle": "@RHBGovOfficial",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Rajasthan Housing Board",
       "names_hi": [],
@@ -1691,6 +1775,7 @@
     },
     {
       "handle": "@NWRailways",
+      "handle_type": "institution",
       "kind": "department",
       "title": "North Western Railway (HQ Jaipur)",
       "names_hi": [],
@@ -1711,6 +1796,7 @@
     },
     {
       "handle": "@DRMJaipur_",
+      "handle_type": "institution",
       "kind": "department",
       "title": "DRM Jaipur Division, NWR",
       "names_hi": [],
@@ -1731,6 +1817,7 @@
     },
     {
       "handle": "@DRMJodhpurNWR",
+      "handle_type": "institution",
       "kind": "department",
       "title": "DRM Jodhpur Division, NWR",
       "names_hi": [],
@@ -1750,6 +1837,7 @@
     },
     {
       "handle": "@DrmAjmer",
+      "handle_type": "institution",
       "kind": "department",
       "title": "DRM Ajmer Division, NWR",
       "names_hi": [],
@@ -1769,6 +1857,7 @@
     },
     {
       "handle": "@drmbikaner",
+      "handle_type": "institution",
       "kind": "department",
       "title": "DRM Bikaner Division, NWR",
       "names_hi": [],
@@ -1788,6 +1877,7 @@
     },
     {
       "handle": "@Jaipur_Airport",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "Jaipur International Airport (Adani-operated)",
       "names_hi": [],
@@ -1808,6 +1898,7 @@
     },
     {
       "handle": "@aiims_jodhpur",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "AIIMS Jodhpur",
       "names_hi": [],
@@ -1825,6 +1916,7 @@
     },
     {
       "handle": "@iitjodhpur",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "IIT Jodhpur",
       "names_hi": [],
@@ -1842,6 +1934,7 @@
     },
     {
       "handle": "@UniRajOfficial",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "University of Rajasthan, Jaipur",
       "names_hi": [],
@@ -1862,6 +1955,7 @@
     },
     {
       "handle": "@mlsuudaipur",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "Mohanlal Sukhadia University, Udaipur",
       "names_hi": [],
@@ -1882,6 +1976,7 @@
     },
     {
       "handle": "@uniofkota",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "University of Kota",
       "names_hi": [],
@@ -1900,6 +1995,7 @@
     },
     {
       "handle": "@RuhsJaipur",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "Rajasthan University of Health Sciences, Jaipur",
       "names_hi": [],
@@ -1918,6 +2014,7 @@
     },
     {
       "handle": "@Hindustan_Zinc_",
+      "handle_type": "institution",
       "kind": "company",
       "title": "Hindustan Zinc Ltd (Vedanta group, Udaipur)",
       "names_hi": [],
@@ -1937,6 +2034,7 @@
     },
     {
       "handle": "@Vedanta_Group",
+      "handle_type": "institution",
       "kind": "company",
       "title": "Vedanta Group",
       "names_hi": [],
@@ -1957,6 +2055,7 @@
     },
     {
       "handle": "@AnilAgarwal_Ved",
+      "handle_type": "person",
       "kind": "person",
       "title": "Chairman, Vedanta Group",
       "names_hi": [
@@ -1972,6 +2071,7 @@
     },
     {
       "handle": "@JKLCofficial",
+      "handle_type": "institution",
       "kind": "company",
       "title": "JK Lakshmi Cement Ltd (Sirohi plant)",
       "names_hi": [],
@@ -1990,6 +2090,7 @@
     },
     {
       "handle": "@shreecementltd",
+      "handle_type": "institution",
       "kind": "company",
       "title": "Shree Cement Ltd (Beawar)",
       "names_hi": [],
@@ -2007,6 +2108,7 @@
     },
     {
       "handle": "@AdaniGreen",
+      "handle_type": "institution",
       "kind": "company",
       "title": "Adani Green Energy Ltd (large solar parks in Rajasthan)",
       "names_hi": [],
@@ -2027,6 +2129,7 @@
     },
     {
       "handle": "@AdaniOnline",
+      "handle_type": "institution",
       "kind": "company",
       "title": "Adani Group",
       "names_hi": [],
@@ -2046,6 +2149,7 @@
     },
     {
       "handle": "@UltraTechCement",
+      "handle_type": "institution",
       "kind": "company",
       "title": "UltraTech Cement Ltd",
       "names_hi": [],
@@ -2063,6 +2167,7 @@
     },
     {
       "handle": "@OmMathur_Raj",
+      "handle_type": "person",
       "kind": "person",
       "title": "राज्यपाल ओम माथुर",
       "names_hi": [
@@ -2081,6 +2186,7 @@
     },
     {
       "handle": "@SoniaGandhi",
+      "handle_type": "person",
       "kind": "person",
       "title": "सोनिया गांधी",
       "names_hi": [
@@ -2098,6 +2204,7 @@
     },
     {
       "handle": "@RahulGandhi",
+      "handle_type": "person",
       "kind": "person",
       "title": "राहुल गांधी",
       "names_hi": [
@@ -2115,6 +2222,7 @@
     },
     {
       "handle": "@kharge",
+      "handle_type": "person",
       "kind": "person",
       "title": "कांग्रेस अध्यक्ष मल्लिकार्जुन खड़गे",
       "names_hi": [
@@ -2133,6 +2241,7 @@
     },
     {
       "handle": "@KuldipIndoraINC",
+      "handle_type": "person",
       "kind": "person",
       "title": "कुलदीप इंदौरा",
       "names_hi": [
@@ -2151,6 +2260,7 @@
     },
     {
       "handle": "@KatariaLalchand",
+      "handle_type": "person",
       "kind": "person",
       "title": "लालचंद कटारिया",
       "names_hi": [
@@ -2169,6 +2279,7 @@
     },
     {
       "handle": "@MPSumedhanand",
+      "handle_type": "person",
       "kind": "person",
       "title": "सांसद सुमेधानंद सरस्वती",
       "names_hi": [
@@ -2187,6 +2298,7 @@
     },
     {
       "handle": "@priyankagandhi",
+      "handle_type": "person",
       "kind": "person",
       "title": "प्रियंका गांधी",
       "names_hi": [
@@ -2204,6 +2316,7 @@
     },
     {
       "handle": "@JM_Scindia",
+      "handle_type": "person",
       "kind": "person",
       "title": "केंद्रीय मंत्री ज्योतिरादित्य सिंधिया",
       "names_hi": [
@@ -2222,6 +2335,7 @@
     },
     {
       "handle": "@alka_gurjar",
+      "handle_type": "person",
       "kind": "person",
       "title": "सांसद अलका गुर्जर",
       "names_hi": [
@@ -2239,6 +2353,7 @@
     },
     {
       "handle": "@ramlalsharmabjp",
+      "handle_type": "person",
       "kind": "person",
       "title": "रामलाल शर्मा",
       "names_hi": [
@@ -2256,6 +2371,7 @@
     },
     {
       "handle": "@ForestRajasthan",
+      "handle_type": "institution",
       "kind": "department",
       "title": "राजस्थान वन विभाग",
       "names_hi": [
@@ -2280,6 +2396,7 @@
     },
     {
       "handle": "@RSPCB_official",
+      "handle_type": "institution",
       "kind": "department",
       "title": "राजस्थान राज्य प्रदूषण नियंत्रण बोर्ड",
       "names_hi": [
@@ -2301,6 +2418,7 @@
     },
     {
       "handle": "@IMDJaipur",
+      "handle_type": "institution",
       "kind": "department",
       "title": "मौसम विभाग जयपुर",
       "names_hi": [
@@ -2319,6 +2437,7 @@
     },
     {
       "handle": "@ECISVEEP",
+      "handle_type": "institution",
       "kind": "department",
       "title": "भारत निर्वाचन आयोग",
       "names_hi": [
@@ -2339,6 +2458,7 @@
     },
     {
       "handle": "@Swachh_Jaipur",
+      "handle_type": "district",
       "kind": "department",
       "title": "नगर निगम जयपुर, स्वच्छता",
       "names_hi": [
@@ -2359,6 +2479,7 @@
     },
     {
       "handle": "@BSF_India",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "सीमा सुरक्षा बल",
       "names_hi": [
@@ -2378,6 +2499,7 @@
     },
     {
       "handle": "@AmitShahOffice",
+      "handle_type": "institution",
       "kind": "department",
       "title": "Office of Amit Shah (Union Home Minister)",
       "names_hi": [],
@@ -2397,6 +2519,7 @@
     },
     {
       "handle": "@DelhiPolice",
+      "handle_type": "institution",
       "kind": "police",
       "title": "Delhi Police",
       "names_hi": [],
@@ -2414,6 +2537,7 @@
     },
     {
       "handle": "@crpfindia",
+      "handle_type": "institution",
       "kind": "police",
       "title": "Central Reserve Police Force",
       "names_hi": [],
@@ -2432,6 +2556,7 @@
     },
     {
       "handle": "@AAI_Official",
+      "handle_type": "institution",
       "kind": "company",
       "title": "Airports Authority of India",
       "names_hi": [],
@@ -2453,6 +2578,7 @@
     },
     {
       "handle": "@RSSorg",
+      "handle_type": "institution",
       "kind": "institution",
       "title": "Rashtriya Swayamsevak Sangh",
       "names_hi": [],

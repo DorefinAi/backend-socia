@@ -117,7 +117,7 @@ describe("party handles", () => {
   it("refuses a malformed file and skips a bad entry", () => {
     expect(() => parsePartyHandles({ version: 1 })).toThrow(/entries/);
     const problems: string[] = [];
-    const r = parsePartyHandles({ version: 1, entries: [{ handle: "not a handle!", party: "x", verified: true }, { handle: "@Ok", party: "y", verified: true }] }, (m) => problems.push(m));
+    const r = parsePartyHandles({ version: 1, entries: [{ handle: "not a handle!", handle_type: "institution", party: "x", verified: true }, { handle: "@Ok", handle_type: "institution", party: "y", verified: true }] }, (m) => problems.push(m));
     expect(r.count).toBe(0); // @Ok has no keywords to match on
     expect(problems).toHaveLength(2);
   });

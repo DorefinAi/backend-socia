@@ -39,11 +39,12 @@
 
 import { fold } from "../fold";
 import { HANDLE } from "./syntax";
+import { addHandleType, handleTypeProblem, type HandleType } from "./handle-types";
 import type { PlainRuleId, PriorRuleId } from "./proposals";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleRules } from "./desk-handles";
 import { EMPTY_PARTY_RULES, namesAnyParty, pickMlaHandles, pickPartyHandles, type PartyRules } from "./parties";
 import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
-import { classify, type StoryClass } from "./storyclass";
+import { classify, isCourtStory, type StoryClass } from "./storyclass";
 import type { GazetteerMatch } from "../gazetteer";
 import { EMPTY_SUBJECT_RULES, subjectEmits, subjectExcluded, type SubjectData, type SubjectRules } from "./subjects";
 
@@ -52,6 +53,8 @@ export interface DistrictHandleEntry {
   /** "@CP_Jodhpur" (the @ is optional) */
   handle: string;
   role: "police" | "collector" | "govt" | "cm";
+  /** institution / person / district (handle-types.ts): every district police and collector is "district" */
+  handle_type: HandleType;
   verified: boolean;
   source?: string;
   /** How many published posts corroborated this handle for this district */
@@ -81,6 +84,8 @@ export interface HandleRules {
    * A reporter's suggestions (the measured prior and declared beats) never offer one of these (brief §3.5).
    */
   bound?: ReadonlySet<string>;
+  /** Each entry's handle_type (handle-types.ts), lower-cased handle without the @; a rejected entry has none */
+  types?: ReadonlyMap<string, HandleType>;
 }
 
 export const EMPTY_HANDLE_RULES: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {} };
@@ -91,9 +96,11 @@ export const districtKey = (name: string) => name.replace(/[^A-Za-z0-9]+/g, "").
 
 /**
  * Checks a parsed district-handles.json and keeps only verified entries. A malformed file throws with the
- * first problem (the worker then keeps its last good copy); an unverified entry is simply left out.
+ * first problem (the worker then keeps its last good copy); an unverified entry is simply left out. An entry
+ * whose handle_type is missing or wrong is REJECTED alone and reported through `problem` (R2): it tags nothing,
+ * though its handle stays in `all` and `bound`, so the guards that keep it off a reporter's suggestions still hold.
  */
-export function parseHandleRules(json: unknown): HandleRules {
+export function parseHandleRules(json: unknown, problem: (message: string) => void = () => undefined): HandleRules {
   const fail = (msg: string): never => {
     throw new Error(`district handles: ${msg}`);
   };
@@ -112,10 +119,22 @@ export function parseHandleRules(json: unknown): HandleRules {
   const bare = (e: DistrictHandleEntry) => e.handle.replace(/^@/, "");
   const all = new Set<string>();
   const bound = new Set<string>();
-  const rules: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {}, all, bound };
-  for (const e of entries(root!.state, "state")) {
+  const types = new Map<string, HandleType>();
+  const rules: HandleRules = { state: { government: [], cm: [], police: [] }, districts: {}, all, bound, types };
+  /** Whether the entry's handle_type is valid; a bad one is reported and the entry rejected */
+  const typed = (e: DistrictHandleEntry, where: string): boolean => {
+    const bad = handleTypeProblem(e.handle_type);
+    if (bad) {
+      problem(`${where} (${e.handle}): ${bad}, entry rejected`);
+      return false;
+    }
+    addHandleType(types, bare(e), e.handle_type);
+    return true;
+  };
+  for (const [i, e] of entries(root!.state, "state").entries()) {
     all.add(bare(e).toLowerCase());
     if (e.role === "police" || e.role === "collector") bound.add(bare(e).toLowerCase());
+    if (!typed(e, `state[${i}]`)) continue;
     if (!e.verified) continue;
     if (e.role === "govt") rules.state.government.push(bare(e));
     else if (e.role === "cm") rules.state.cm.push(bare(e));
@@ -132,9 +151,10 @@ export function parseHandleRules(json: unknown): HandleRules {
     // "Sawai Madhopur" and "SawaiMadhopur" are one district: merge, never let the later spelling
     // silently replace the earlier one's verified handles
     const d = rules.districts[key] ?? { police: [] as string[], collector: [] as string[] };
-    for (const e of entries(list, `districts.${name}`)) {
+    for (const [i, e] of entries(list, `districts.${name}`).entries()) {
       all.add(bare(e).toLowerCase());
       if (e.role === "police" || e.role === "collector") bound.add(bare(e).toLowerCase());
+      if (!typed(e, `districts.${name}[${i}]`)) continue;
       if (e.verified && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) d[e.role].push(bare(e));
     }
     rules.districts[key] = d;
@@ -748,9 +768,14 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     ...deskPicks,
   ]);
 
-  // The reporter takes the last slot, on the classes the desk puts it on
-  if (WANTS_REPORTER.has(cls)) noteByline();
-  const wants = WANTS_REPORTER.has(cls) && rep.match && !ranked.some((o) => o.handle.toLowerCase() === rep.match!.handle.toLowerCase());
+  // The reporter takes the last slot, on the classes the desk puts it on — and on any court story (Logic Update v4
+  // B2: a court word in the headline or the first two lines). A court story carries a roster reporter 56% of the
+  // time, like political copy, not 17% like crime; @vyaskamalkant is the only handle on 29 of his 43 posts. Only
+  // WHEN the reporter is allowed changes: who it is still comes from the file name alone, and the class (so the
+  // police or the collector on an incident or administration story) is untouched.
+  const bylineAllowed = WANTS_REPORTER.has(cls) || isCourtStory(head, story.points);
+  if (bylineAllowed) noteByline();
+  const wants = bylineAllowed && rep.match && !ranked.some((o) => o.handle.toLowerCase() === rep.match!.handle.toLowerCase());
   const mine = wants ? rep.match! : null;
   const out = ranked.slice(0, mine ? Math.max(0, max - 1) : max);
   if (mine && max > 0) out.push({ handle: mine.handle, reason: "reporter", title: mine.name });

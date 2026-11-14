@@ -8,6 +8,7 @@ import { HANDLE } from "./syntax";
 import { Gazetteer, type GazetteerEntry, type GazetteerMatch } from "../gazetteer";
 import { DataFileRejected } from "./post-tags";
 import { parseOffices, type Office } from "./offices";
+import { addHandleType, handleTypeProblem, type HandleType } from "./handle-types";
 import { subjectKeywordCandidates, type KeywordCandidate } from "./desk-handles";
 
 export const SUBJECT_KINDS = ["person", "department", "party", "company", "institution", "police"] as const;
@@ -18,6 +19,11 @@ export interface SubjectHandleEntry {
   /** "@ashokgehlot51" (the @ is optional) */
   handle: string;
   kind: SubjectKind;
+  /**
+   * institution / person / district (handle-types.ts). Not the same as `kind`: a police commissionerate (kind
+   * "police") is "district", the state police HQ is "institution".
+   */
+  handle_type: HandleType;
   title?: string;
   names_hi?: string[];
   names_en?: string[];
@@ -102,6 +108,8 @@ export interface SubjectRules {
   handles?: ReadonlySet<string>;
   /** `offices`: an office named without its holder, offered only (offices.ts) */
   offices?: readonly Office[];
+  /** Each entry's handle_type, lower-cased handle without the @ (verified or not); a rejected entry has none */
+  types?: ReadonlyMap<string, HandleType>;
   /** The verified, non-party English names and keywords as handle keyword candidates (desk-handles.ts subjectKeywordCandidates) */
   keywordCandidates?: readonly KeywordCandidate[];
 }
@@ -112,7 +120,7 @@ const KINDS = new Set<string>(SUBJECT_KINDS);
 
 /** Every key an entry may carry: a misspelt one ("suggestonly") must not be ignored, it rejects the file */
 const ENTRY_KEYS: ReadonlySet<string> = new Set([
-  "handle", "kind", "title", "names_hi", "names_en", "keywords_hi", "keywords_en", "exclude_hi", "exclude_en", "suggest_only", "emit_window",
+  "handle", "kind", "handle_type", "title", "names_hi", "names_en", "keywords_hi", "keywords_en", "exclude_hi", "exclude_en", "suggest_only", "emit_window",
   "verified", "source", "checkedAt", "evidence", "note",
 ]);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -140,6 +148,7 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
   if (!root || typeof root !== "object" || !Array.isArray(root.entries)) throw new Error("subject handles: expected { version, entries: [...] }");
   const entries: { id: string; name: string; aliases: string[]; priority: number; data: SubjectData }[] = [];
   const handles = new Set<string>();
+  const types = new Map<string, HandleType>();
   const rejects: string[] = [];
   const reject = (m: string) => {
     rejects.push(m);
@@ -165,6 +174,10 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
     if (!e || typeof e !== "object") return problem(`${where}: not an object`);
     if (typeof e.handle !== "string" || !HANDLE.test(e.handle.trim())) return problem(`${where}: "${String(e.handle)}" is not an X handle`);
     if (!KINDS.has(String(e.kind))) return problem(`${where} (${e.handle}): kind must be one of ${SUBJECT_KINDS.join(", ")}`);
+    // R2: like the checks around it, a bad handle_type skips THIS entry only (it can only make a handle not tagged)
+    const badType = handleTypeProblem(e.handle_type);
+    if (badType) return problem(`${where} (${e.handle}): ${badType}, entry rejected`);
+    addHandleType(types, e.handle, e.handle_type!);
     if (typeof e.verified !== "boolean") return problem(`${where} (${e.handle}): "verified" must be true or false`);
     if (!e.verified || e.kind === "party") return;
     const names = [...strings(e.names_hi), ...strings(e.names_en)];
@@ -190,5 +203,5 @@ export function parseSubjectHandles(json: unknown, problem: (message: string) =>
   const office = parseOffices((root as { offices?: unknown }).offices, handles, (root as { office_exclusion_lists?: unknown }).office_exclusion_lists);
   for (const m of office.problems) reject(m);
   if (rejects.length) throw new DataFileRejected("subject-handles", rejects);
-  return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles, offices: office.offices, keywordCandidates: subjectKeywordCandidates(json) };
+  return { gazetteer: new SubjectGazetteer(entries), count: entries.length, handles, offices: office.offices, types, keywordCandidates: subjectKeywordCandidates(json) };
 }

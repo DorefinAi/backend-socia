@@ -1,10 +1,12 @@
 {
   "version": 1,
+  "_handle_type_note": "Every entry carries \"handle_type\" (reporter directory changes v2, R2): a party, wing or media cell is \"institution\", an MLA (scope mla) \"person\". An entry without a valid one is rejected alone.",
   "_note": "State and national party handles, read by packages/core/src/breaking/parties.ts. The desk DOES tag parties on campaign and party-activity copy — @BJP4Rajasthan 42 posts, @INCRajasthan 39, @INCIndia 11, @BJP4India 7 across 1,002 published posts (30 Oct and 9-10 Nov 2026): 99 party tags that the old blanket 'election news tags nobody' guard dropped. A party handle is tagged beside the leader the copy names, NEVER beside a district police handle or a collector (handles.ts keeps those on separate classes). Keywords are matched as whole words, so short Latin keys like INC cannot fire on 'since' or 'incident'.",
   "_clash_rule": "Copy that names two parties ('कांग्रेस ने भाजपा पर साधा निशाना') tags NEITHER: the desk does not pick a side on an attack story, and tagging both burns the slot the leader should have.",
   "entries": [
     {
       "handle": "@BJP4Rajasthan",
+      "handle_type": "institution",
       "name": "BJP Rajasthan",
       "party": "bjp",
       "scope": "state",
@@ -22,6 +24,7 @@
     },
     {
       "handle": "@INCRajasthan",
+      "handle_type": "institution",
       "name": "Congress Rajasthan",
       "party": "congress",
       "scope": "state",
@@ -40,6 +43,7 @@
     },
     {
       "handle": "@BJP4India",
+      "handle_type": "institution",
       "name": "BJP",
       "party": "bjp",
       "scope": "national",
@@ -56,6 +60,7 @@
     },
     {
       "handle": "@INCIndia",
+      "handle_type": "institution",
       "name": "Congress",
       "party": "congress",
       "scope": "national",
@@ -72,6 +77,7 @@
     },
     {
       "handle": "@Rajasthan_PYC",
+      "handle_type": "institution",
       "name": "Youth Congress",
       "party": "congress",
       "scope": "youth",
@@ -89,6 +95,7 @@
     },
     {
       "handle": "@NSUIRajasthan",
+      "handle_type": "institution",
       "name": "NSUI Rajasthan",
       "party": "congress",
       "scope": "wing",
@@ -105,6 +112,7 @@
     },
     {
       "handle": "@AICCMedia",
+      "handle_type": "institution",
       "name": "AICC Communications",
       "party": "congress",
       "scope": "media",
@@ -120,6 +128,7 @@
     },
     {
       "handle": "@officialkharra",
+      "handle_type": "person",
       "name": "Jhabar Singh Kharra (BJP MLA, Shri Madhopur)",
       "party": "bjp",
       "scope": "mla",
@@ -139,6 +148,7 @@
     },
     {
       "handle": "@BMacharyaBJP",
+      "handle_type": "person",
       "name": "Balmukund Acharya (BJP MLA, Hawa Mahal)",
       "party": "bjp",
       "scope": "mla",

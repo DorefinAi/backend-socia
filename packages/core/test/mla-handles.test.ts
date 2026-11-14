@@ -140,7 +140,7 @@ const offered = (d: Draft) => [
 ];
 /** One party-handles entry, as the file writes it */
 const mlaEntry = (over: Record<string, unknown> = {}) => ({
-  handle: "@SomeMlaHandle", name: "Some MLA", party: "bjp", scope: "mla", keywords_hi: ["रामप्रसाद मीणा"], keywords_en: ["Ramprasad Meena"], verified: true, ...over,
+  handle: "@SomeMlaHandle", handle_type: "person", name: "Some MLA", party: "bjp", scope: "mla", keywords_hi: ["रामप्रसाद मीणा"], keywords_en: ["Ramprasad Meena"], verified: true, ...over,
 });
 
 describe("N1. @BMacharyaBJP: the spellings the desk writes", () => {

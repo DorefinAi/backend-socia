@@ -29,6 +29,7 @@ import type { StoryClass } from "./storyclass";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
 import { EMPTY_SUBJECT_RULES, type SubjectRules } from "./subjects";
 import { PROPOSAL_SOURCES, districtSource, handleProposal, tagProposal, type Proposal, type TagSuggestion } from "./proposals";
+import { mergeHandleTypes, type HandleType } from "./handle-types";
 
 /** A headline that starts with the desk's own hashtags and a colon ("#BJP:", "#Congress #Kota:") */
 const DESK_TAG_RUN = /^(?:#\S+\s*){1,3}[:：]/u;
@@ -458,6 +459,37 @@ export const bookLeadTagDistrict = (book: PlaceBook) => (tag: string): string | 
   return p && p.kind !== "national" ? (p.districts[0]?.tag ?? null) : null;
 };
 
+/** R4 display tiers of the handle suggestions, top first (rankHandleSuggestions) */
+export const SUGGESTION_TIERS = ["text_person_office", "text_other", "video_headline_district", "declared_beat", "reporter_prior"] as const;
+export type SuggestionTier = (typeof SUGGESTION_TIERS)[number];
+
+/** Which R4 tier a suggestion belongs to */
+export function suggestionTier(h: HandlePick, types: ReadonlyMap<string, HandleType>): SuggestionTier {
+  if (h.reason === "prior") return "reporter_prior";
+  if (h.reason === "beat") return "declared_beat";
+  if (h.reason === "office" || types.get(h.handle.toLowerCase()) === "person") return "text_person_office";
+  return "text_other";
+}
+
+/**
+ * The desk's order for the handle suggestions (directory changes v2 R4, as decided by the owner on 14 Nov: a declared
+ * beat ranks ABOVE the measured prior). The emitted handles are not here: they stay on the post, first and
+ * unchanged. Below them:
+ *   1. a person or an office the copy names: a name match, an MLA, "CM ने", "मुख्य सचिव ने" (the Chief Secretary
+ *      the text names ranks above the @RajGovOfficial rituraj's prior offers beside it);
+ *   2. the other rules' text suggestions, in their own order: a party named only in the points, the police at a
+ *      venue, an institution named in passing, a seasonal institution;
+ *   3. the headline-suffix district of a video post — EMPTY: no such rule exists in the code (the "| <Place> News"
+ *      channel label decides the brand only: videoLabelBrand), so nothing is ever in this slot;
+ *   4. declared-beat handles (the beat's keywords matched the copy; may be a person: Nirmal's tourism → @KumariDiya);
+ *   5. the reporter prior's measured institution handles (who filed it, nothing in the copy).
+ * Stable within a tier, so each rule keeps its own order.
+ */
+export function rankHandleSuggestions(list: readonly HandlePick[], types: ReadonlyMap<string, HandleType>): HandlePick[] {
+  const rank = (h: HandlePick) => SUGGESTION_TIERS.indexOf(suggestionTier(h, types));
+  return list.map((h, i) => ({ h, i, r: rank(h) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.h);
+}
+
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
@@ -573,14 +605,17 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   const tags = [lineOne ? `#${lineOne.tag}` : "", townTag].filter((t) => t && !tagKeys(book, t).some((k) => headlineTagKeys.has(k)));
 
   // ── added after every rule above has finished, as suggestions only: nothing above moves (brief §3.5, L7) ──
-  const handleSuggestions = [...picked.suggestions];
-  const taken = new Set([...handles, ...handleSuggestions].map((h) => h.handle.toLowerCase()));
+  const offeredHandles = [...picked.suggestions];
+  // What kind of account each directory handle is (R2): the prior offers institutions only, and the order below
+  // puts a person or office the copy names first (R4)
+  const types = mergeHandleTypes(rules.types, subjects.types, parties.types, reporters.types);
+  const taken = new Set([...handles, ...offeredHandles].map((h) => h.handle.toLowerCase()));
   const text = [story.rawHeadline ?? story.headline, ...story.points].join("\n");
   // An office named without its holder: "CM ने ..." offers the CM's handles (§6), on Rajasthan copy only
   if (rajasthan && picked.cls !== "leader_post" && subjects.offices?.length) {
     const holders = subjects.gazetteer.find(text).filter((m) => m.entry.data.kind === "person").map((m) => m.entry.data.handle.toLowerCase());
     for (const h of officeSuggestions(subjects.offices, text, taken, (o) => o.handles.some((x) => holders.includes(x.toLowerCase())))) {
-      handleSuggestions.push(h);
+      offeredHandles.push(h);
       taken.add(h.handle.toLowerCase());
     }
   }
@@ -591,11 +626,13 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     const districtBound = new Set([...(rules.bound ?? []), ...rules.state.police, ...Object.values(rules.districts).flatMap((d) => [...d.police, ...d.collector])].map((h) => h.toLowerCase()));
     const takenTags = new Set([...tags, footer, ...offered.map((o) => o.tag)].map((t) => t.toLowerCase()));
     const directory = new Set([...(rules.all ?? []), ...(subjects.handles ?? []), ...(parties.handles ?? []), ...(reporters.handles ?? [])].map((h) => h.replace(/^@/, "").toLowerCase()));
-    const prior = reporterPrior({ profile, text, taken, takenTags, districtBound, directory }, reporters, beats);
-    handleSuggestions.push(...prior.handles);
+    const prior = reporterPrior({ profile, text, taken, takenTags, districtBound, directory, types }, reporters, beats);
+    offeredHandles.push(...prior.handles);
     offered.push(...prior.hashtags);
     priorWarnings.push(...prior.warnings);
   }
+  // The desk's order (R4, 14 Nov): a person or office the copy names, the other text rules, declared beats, the prior
+  const handleSuggestions = rankHandleSuggestions(offeredHandles, types);
   // First occurrence of each tag wins; never the footer, never a tag already in line 1's prefix or anywhere in the
   // headline or points (the same tag, any case, or the same place as "#<Place>News")
   const onPost = copyTagKeys(book, [headline, ...story.points]);

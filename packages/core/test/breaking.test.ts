@@ -573,14 +573,14 @@ describe("handle rules", () => {
   it("skips unverified handles and refuses a malformed file", () => {
     const r = parseHandleRules({
       version: 1,
-      state: [{ handle: "@RajGovOfficial", role: "govt", verified: false }],
-      districts: { "Sawai Madhopur": [{ handle: "@SwmPolice", role: "police", verified: true }, { handle: "@SwmDm", role: "collector", verified: false }] },
+      state: [{ handle: "@RajGovOfficial", handle_type: "institution", role: "govt", verified: false }],
+      districts: { "Sawai Madhopur": [{ handle: "@SwmPolice", handle_type: "district", role: "police", verified: true }, { handle: "@SwmDm", handle_type: "district", role: "collector", verified: false }] },
     });
     expect(r.state.government).toEqual([]);
     expect(pickHandles(story("हत्या का आरोपी पुलिस ने किया गिरफ्तार", "Sawai Madhopur"), r).map((h) => h.handle)).toEqual(["SwmPolice"]);
     expect(pickHandles(story("कलेक्टर ने किया दौरा", "Sawai Madhopur"), r)).toEqual([]);
-    expect(() => parseHandleRules({ state: [{ handle: "not a handle!", role: "govt", verified: true }] })).toThrow(/not an X handle/);
-    expect(() => parseHandleRules({ state: [{ handle: "@x", role: "mayor", verified: true }] })).toThrow(/role/);
+    expect(() => parseHandleRules({ state: [{ handle: "not a handle!", handle_type: "institution", role: "govt", verified: true }] })).toThrow(/not an X handle/);
+    expect(() => parseHandleRules({ state: [{ handle: "@x", handle_type: "institution", role: "mayor", verified: true }] })).toThrow(/role/);
     expect(() => parsePlacesData({ nope: true })).toThrow(/districts/);
     expect(pickHandles(story("पुलिस ने चोरी पकड़ी"), EMPTY_HANDLE_RULES)).toEqual([]);
   });
@@ -592,13 +592,13 @@ describe("subject handles", () => {
     {
       version: 1,
       entries: [
-        { handle: "@NWRailways", kind: "department", title: "North Western Railway", names_hi: ["उत्तर पश्चिम रेलवे"], keywords_hi: ["रेलवे"], verified: true },
-        { handle: "@INCRajasthan", kind: "party", names_hi: ["राजस्थान कांग्रेस"], verified: true },
-        { handle: "@SomeoneX", kind: "person", names_hi: ["फलां सिंह"], verified: false },
-        { handle: "not a handle!", kind: "person", names_hi: ["कोई"], verified: true },
-        { handle: "@NoKind", kind: "mayor", names_hi: ["महापौर"], verified: true },
-        { handle: "@NoNames", kind: "company", verified: true },
-        { handle: "ashokgehlot51", kind: "person", names_hi: ["अशोक गहलोत"], names_en: ["Ashok Gehlot"], verified: true, source: "x", checkedAt: "2026-10-31" },
+        { handle: "@NWRailways", handle_type: "institution", kind: "department", title: "North Western Railway", names_hi: ["उत्तर पश्चिम रेलवे"], keywords_hi: ["रेलवे"], verified: true },
+        { handle: "@INCRajasthan", handle_type: "institution", kind: "party", names_hi: ["राजस्थान कांग्रेस"], verified: true },
+        { handle: "@SomeoneX", handle_type: "person", kind: "person", names_hi: ["फलां सिंह"], verified: false },
+        { handle: "not a handle!", handle_type: "person", kind: "person", names_hi: ["कोई"], verified: true },
+        { handle: "@NoKind", handle_type: "institution", kind: "mayor", names_hi: ["महापौर"], verified: true },
+        { handle: "@NoNames", handle_type: "institution", kind: "company", verified: true },
+        { handle: "ashokgehlot51", handle_type: "person", kind: "person", names_hi: ["अशोक गहलोत"], names_en: ["Ashok Gehlot"], verified: true, source: "x", checkedAt: "2026-10-31" },
       ],
     },
     (m) => problems.push(m),

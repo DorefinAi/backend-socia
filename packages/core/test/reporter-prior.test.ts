@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   BRAND_NATIONAL, BRAND_RAJASTHAN, DataFileRejected, PlaceBook, REPORTER_STATUSES, composeBreaking, composePostTags, districtKey, fileTags,
-  inferHeadlineDistrict, isVideoHeadline, namesOffice, normaliseTag, parseBeatHandles, parseBreaking, parseDistricts, parseHandleRules,
+  inferHeadlineDistrict, isVideoHeadline, mergeHandleTypes, namesOffice, normaliseTag, parseBeatHandles, parseBreaking, parseDistricts, parseHandleRules,
   parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules, pickReporter,
   reporterPrior, reporterProfile, resolveReporterStatus, segmentPost, slotFromTags, smoothedRate, type BreakingDraft, type HandlePick,
 } from "../src";
@@ -27,6 +27,8 @@ const reporters = parseReporterHandles(cfg("reporter-handles.json"));
 const parties = parsePartyHandles(cfg("party-handles.json"));
 const directory = new Set([...(rules.all ?? []), ...(subjects.handles ?? []), ...(parties.handles ?? []), ...(reporters.handles ?? [])]);
 const beats = parseBeatHandles(cfg("beat-handles.json"), directory);
+/** Every directory handle's handle_type (R2), as the composer merges them */
+const types = mergeHandleTypes(rules.types, subjects.types, parties.types, reporters.types);
 const ctx = { places, normaliser };
 const AT = new Date("2026-11-13T08:00:00Z");
 
@@ -159,7 +161,7 @@ describe("Step 5.1: DINESH names two reporters and tags nobody", () => {
   });
   it("an entry listing an ambiguous token does not claim it", () => {
     const problems: string[] = [];
-    const r = parseReporterHandles({ version: 1, ambiguous_tokens: ["DINESH"], entries: [{ handle: "@a", names_en: ["dinesh", "a_one"], verified: true }] }, (m) => problems.push(m));
+    const r = parseReporterHandles({ version: 1, ambiguous_tokens: ["DINESH"], entries: [{ handle: "@a", handle_type: "person", names_en: ["dinesh", "a_one"], verified: true }] }, (m) => problems.push(m));
     expect(pickReporter("DINESH", r).collision).toBe("DINESH");
     expect(problems.join(" ")).toMatch(/ambiguous_tokens/);
   });
@@ -172,58 +174,66 @@ const profileOf = (handle: string) => {
   return p;
 };
 const priorOf = (handle: string, text = "", taken: string[] = []) =>
-  reporterPrior({ profile: profileOf(handle), text, taken: new Set(taken.map((t) => t.toLowerCase())), takenTags: new Set(), districtBound, directory }, reporters, beats);
+  reporterPrior({ profile: profileOf(handle), text, taken: new Set(taken.map((t) => t.toLowerCase())), takenTags: new Set(), districtBound, directory, types }, reporters, beats);
 
-describe("Step 3.4: exactly the firing table, on the seed data", () => {
-  const TABLE: [string, [string, number, "trunc"?][]][] = [
-    ["rituraj9999", [["RajGovOfficial", 0.53]]],
-    ["ml_vikas", [["RajGovOfficial", 0.48]]],
-    ["DineshKasana15", [["RajGovOfficial", 0.43]]],
-    ["Nirmaltiwaribki", [["RajGovOfficial", 0.43]]],
-    // The one row the brief truncates rather than rounds (0.2751 printed 0.27)
-    ["parmarshivendra", [["RajGovOfficial", 0.27, "trunc"]]],
-    ["aishwaryam99", [["BhajanlalBjp", 0.54], ["BJP4Rajasthan", 0.35]]],
-    ["yogesh2727sh1", [["BJP4Rajasthan", 0.39]]],
+describe("R3 / test 5: exactly the firing table, on the seed data (institution handles only)", () => {
+  // Reporter directory changes v2, R3: recomputed on 2,669 posts, m = 20, threshold 0.25, minimum 20 posts
+  const TABLE: [string, number, [string, number][]][] = [
+    ["rituraj9999", 121, [["RajGovOfficial", 0.46]]],
+    ["ml_vikas", 41, [["RajGovOfficial", 0.49]]],
+    ["Nirmaltiwaribki", 54, [["RajGovOfficial", 0.42]]],
+    ["DineshKasana15", 40, [["RajGovOfficial", 0.42]]],
+    ["parmarshivendra", 34, [["RajGovOfficial", 0.31]]],
+    // New in R3: the Congress-beat reporters (the earlier brief wrongly had them silent)
+    ["dineshdangi84", 62, [["INCRajasthan", 0.59]]],
+    ["naresh_jsharma", 77, [["INCRajasthan", 0.53]]],
+    ["yogesh2727sh1", 59, [["BJP4Rajasthan", 0.4]]],
+    ["aishwaryam99", 69, [["BJP4Rajasthan", 0.34], ["RajGovOfficial", 0.27]]],
   ];
-  for (const [who, fires] of TABLE) {
-    it(`${who} → ${fires.map(([h, s]) => `@${h} ${s}`).join(", ")}`, () => {
+  for (const [who, n, fires] of TABLE) {
+    it(`${who} (${n} posts) → ${fires.map(([h, s]) => `@${h} ${s}`).join(", ")}`, () => {
       const out = priorOf(who).handles;
       expect(out.map((h) => h.handle)).toEqual(fires.map(([h]) => h));
       const p = profileOf(who)!.prior!;
+      expect(p.n).toBe(n);
       const s = reporters.prior!;
       out.forEach((h, i) => {
-        // The unrounded smoothed rate, printed to 2 places as the brief's table prints it
         const raw = smoothedRate(p.handles[h.handle]!, p.n, s.base.get(h.handle.toLowerCase()) ?? 0, s.m);
-        const shown = (fires[i]![2] === "trunc" ? Math.trunc(raw * 100) : Math.round(raw * 100)) / 100;
-        expect(Math.abs(shown - fires[i]![1])).toBeLessThan(0.005);
+        expect(Math.round(raw * 100) / 100).toBe(fires[i]![1]);
         expect(h.score).toBe(Math.round(raw * 100) / 100);
-        expect(h).toMatchObject({ reason: "prior", source: "reporter_prior" });
-        expect(h.n).toBe(p.n);
+        expect(h).toMatchObject({ reason: "prior", source: "reporter_prior", n });
         expect(h.detail).toMatch(/upper bound/);
       });
     });
   }
-  // svoruganti1466 left the table on 13 Nov: it is the Chief Secretary's account, not a reporter
-  for (const who of ["naresh_jsharma", "satyatv99_news", "dineshdangi84", "ashvinigokul", "kunwarraghav", "bhanwar_83", "vyaskamalkant"]) {
+  // Satya and Bhanwar: their only signals were district police, blocked by R2. The rest: nothing measured fires
+  for (const who of ["satyatv99_news", "bhanwar_83", "vyaskamalkant", "ashvinigokul", "kunwarraghav", "gssjodhpur"]) {
     it(`${who} is silent`, () => expect(priorOf(who).handles).toEqual([]));
   }
-  it("what does NOT fire although the raw rate looks high", () => {
+  // Under 20 posts: no measured prior
+  for (const who of ["BharatD1988", "patrakarsandeep", "jawaharbedam", "omsharma8888", "navinsharmabki", "i_dimplesharma", "viren_choudhary"]) {
+    it(`${who} (under 20 posts) gets no measured prior`, () => {
+      expect(priorOf(who).handles.filter((h) => h.reason === "prior")).toEqual([]);
+      const p = profileOf(who)?.prior;
+      if (p) expect(p.n).toBeLessThan(reporters.prior!.minN);
+    });
+  }
+  it("the settings and base rates are R3's: m 20, threshold 0.25, minimum 20; RajGov 0.096, BJP4Rajasthan 0.061, INCRajasthan 0.055", () => {
     const s = reporters.prior!;
-    expect(smoothedRate(0.26, 58, s.base.get("rajgovofficial")!, s.m)).toBeCloseTo(0.22, 2); // Aishwarya → RajGov
-    expect(smoothedRate(0.18, 102, s.base.get("rajcmo")!, s.m)).toBeCloseTo(0.15, 2); // rituraj → RajCMO
-    expect(smoothedRate(0.12, 52, s.base.get("kumaridiya")!, s.m)).toBeCloseTo(0.09, 2); // Nirmal → KumariDiya
-    expect(smoothedRate(0.17, 36, s.base.get("jdajaipur")!, s.m)).toBeCloseTo(0.11, 2); // Kasana → jdajaipur
-    expect(priorOf("aishwaryam99").handles.map((h) => h.handle)).not.toContain("RajGovOfficial");
-    expect(priorOf("rituraj9999").handles.map((h) => h.handle)).not.toContain("RajCMO");
-    expect(priorOf("Nirmaltiwaribki").handles.map((h) => h.handle)).not.toContain("KumariDiya");
-    expect(priorOf("DineshKasana15").handles.map((h) => h.handle)).not.toContain("jdajaipur");
+    expect({ m: s.m, minScore: s.minScore, minN: s.minN }).toEqual({ m: 20, minScore: 0.25, minN: 20 });
+    expect(Object.fromEntries(s.base)).toEqual({ rajgovofficial: 0.096, bjp4rajasthan: 0.061, incrajasthan: 0.055 });
   });
-  it("the worked examples: rituraj 0.53, Dimple 0.08", () => {
-    expect(smoothedRate(63 / 102, 102, 0.097, 20)).toBeCloseTo(0.53, 2);
-    expect(smoothedRate(2 / 5, 5, 0.001, 20)).toBeCloseTo(0.08, 2);
+  it("no person or district handle from the prior: not in any seed, and never offered for any reporter", () => {
+    for (const p of reporters.profiles!.values()) {
+      for (const h of Object.keys(p.prior?.handles ?? {})) expect(types.get(h.toLowerCase()), `${p.handle} → ${h}`).toBe("institution");
+      for (const h of priorOf(p.handle, "RPSC पर्यटन JDA शिक्षा").handles.filter((x) => x.reason === "prior")) expect(types.get(h.handle.toLowerCase()), `${p.handle} → ${h.handle}`).toBe("institution");
+    }
+    // The old firing table's person handle is gone: Aishwarya's CM comes from the copy, not from her byline
+    expect(priorOf("aishwaryam99").handles.map((h) => h.handle)).not.toContain("BhajanlalBjp");
   });
   it("a handle already emitted or offered is not offered again", () => {
     expect(priorOf("rituraj9999", "", ["RajGovOfficial"]).handles).toEqual([]);
+    expect(priorOf("aishwaryam99", "", ["BJP4Rajasthan"]).handles.map((h) => h.handle)).toEqual(["RajGovOfficial"]);
   });
 });
 
@@ -258,7 +268,7 @@ describe("Step 3.3: declared beats need the copy to match", () => {
   });
   it("the prior never offers a police, collector or administration handle", () => {
     const fake = { ...profileOf("rituraj9999")!, prior: { n: 100, handles: { [jaipur.police[0]!]: 0.9 }, hashtags: {}, source: null } };
-    expect(reporterPrior({ profile: fake, text: "", taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles).toEqual([]);
+    expect(reporterPrior({ profile: fake, text: "", taken: new Set(), takenTags: new Set(), districtBound, directory, types }, reporters, beats).handles).toEqual([]);
   });
 });
 
@@ -271,7 +281,7 @@ describe("Step 3.5: the prior in the composer", () => {
     expect(d.handleSuggestions[i]).toMatchObject({ handle: "RajGovOfficial", source: "reporter_prior" });
     // Below every suggestion from the other rules
     expect(d.handleSuggestions.slice(i).every((h) => h.reason === "prior" || h.reason === "beat")).toBe(true);
-    expect(d.proposals).toEqual(expect.arrayContaining([expect.objectContaining({ item: "@RajGovOfficial", layer: "suggest", source: "reporter_prior", n: 102 })]));
+    expect(d.proposals).toEqual(expect.arrayContaining([expect.objectContaining({ item: "@RajGovOfficial", layer: "suggest", source: "reporter_prior", n: 121 })]));
   });
   it("8 (L1). the copy's handles never select the reporter: stripping them changes nothing", () => {
     const withHandles = draft(fileFor("RITURAJ", "JPR3"), [GOVT[0]!, `${GOVT[1]} @aishwaryam99 @RajGovOfficial @BhajanlalBjp`]).d;
@@ -440,7 +450,7 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.hashtags).toEqual(draft(fileFor("NARESH"), lines).d.hashtags);
   });
   it("a policy district the places file does not know is not applied, and the draft says why", () => {
-    const r = parseReporterHandles({ version: 1, entries: [{ handle: "@rituraj9999", names_en: ["RITURAJ"], verified: true, policy: { district_when_missing: "Jaipurr" } }] });
+    const r = parseReporterHandles({ version: 1, entries: [{ handle: "@rituraj9999", handle_type: "person", names_en: ["RITURAJ"], verified: true, policy: { district_when_missing: "Jaipurr" } }] });
     const d = composeBreaking({ headline: "सरकार ने जारी किए नए दिशा-निर्देश", points: ["सभी विभागों को भेजे गए आदेश"], district: null, town: null, rajasthan: true, leaderPost: false, reporterToken: "RITURAJ" }, rules, book, { reporters: r });
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.warnings.join(" ")).toMatch(/Jaipurr.*not a district/);
@@ -542,10 +552,10 @@ describe("C1–C6: what a reporter's suggestions may carry", () => {
   const nirmal = profileOf("Nirmaltiwaribki")!;
   it("C1: declared beats only when beats_source is 'desk' ('observed' or missing: no beat suggestion)", () => {
     const text = "पर्यटन विभाग की नई योजना";
-    expect(reporterPrior({ profile: nirmal, text, taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles.map((h) => h.handle)).toContain("KumariDiya");
+    expect(reporterPrior({ profile: nirmal, text, taken: new Set(), takenTags: new Set(), districtBound, directory, types }, reporters, beats).handles.map((h) => h.handle)).toContain("KumariDiya");
     for (const beatsSource of ["observed", null] as const) {
       const p = { ...nirmal, beatsSource };
-      expect(reporterPrior({ profile: p, text, taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles.filter((h) => h.reason === "beat"), String(beatsSource)).toEqual([]);
+      expect(reporterPrior({ profile: p, text, taken: new Set(), takenTags: new Set(), districtBound, directory, types }, reporters, beats).handles.filter((h) => h.reason === "beat"), String(beatsSource)).toEqual([]);
     }
   });
   it("C2: a forbidden beat under another spelling, or any beat listing a CM or state-government handle, fails the file", () => {
@@ -562,13 +572,13 @@ describe("C1–C6: what a reporter's suggestions may carry", () => {
     expect(() => parseBeatHandles({ Education: { keywords: "स्कूल", handles: ["@rajeduofficial"] }, education: { keywords: "स्कूल", handles: ["@rajeduofficial"] } }, directory)).toThrow(/listed twice/);
   });
   it("C3: a police or collector handle, verified or not, fails a beat file and never comes from the measured prior", () => {
-    const unverified = parseHandleRules({ version: 1, districts: { Salumbar: [{ handle: "@DMSalumbar", role: "collector", verified: false }] } });
+    const unverified = parseHandleRules({ version: 1, districts: { Salumbar: [{ handle: "@DMSalumbar", handle_type: "district", role: "collector", verified: false }] } });
     expect(unverified.bound!.has("dmsalumbar")).toBe(true);
     const dir = new Set([...directory, "dmsalumbar"]);
     expect(() => parseBeatHandles({ admin: { keywords: "प्रशासन", handles: ["@DMSalumbar"] } }, dir, { bound: unverified.bound! })).toThrow(/police, collector/);
     // At load: a prior naming one rejects that reporter's entry (O2), named by handle; the rest of the file loads
-    const entry = { handle: "@a_rep", names_en: ["A_REP"], verified: true, prior: { n: 50, handles: { DMSalumbar: 0.9 } } };
-    const other = { handle: "@b_rep", names_en: ["B_REP"], verified: true };
+    const entry = { handle: "@a_rep", handle_type: "person", names_en: ["A_REP"], verified: true, prior: { n: 50, handles: { DMSalumbar: 0.9 } } };
+    const other = { handle: "@b_rep", handle_type: "person", names_en: ["B_REP"], verified: true };
     const problems: string[] = [];
     const r = parseReporterHandles({ version: 1, entries: [entry, other] }, (m) => problems.push(m), { bound: unverified.bound! });
     expect(r.byToken.has("A_REP")).toBe(false);
@@ -576,13 +586,13 @@ describe("C1–C6: what a reporter's suggestions may carry", () => {
     expect(problems.join(" ")).toMatch(/@a_rep\): entry REJECTED.*DMSalumbar is a district police/);
     // At compose: filtered even when the file was never checked
     const fake = { ...profileOf("rituraj9999")!, prior: { n: 100, handles: { DMSalumbar: 0.9 }, hashtags: {}, source: null } };
-    expect(reporterPrior({ profile: fake, text: "", taken: new Set(), takenTags: new Set(), districtBound: unverified.bound!, directory: dir }, reporters, beats).handles).toEqual([]);
+    expect(reporterPrior({ profile: fake, text: "", taken: new Set(), takenTags: new Set(), districtBound: unverified.bound!, directory: dir, types: new Map([...types, ["dmsalumbar", "institution" as const]]) }, reporters, beats).handles).toEqual([]);
   });
   it("C4: a keyword pattern that matches empty text fails the file", () => {
     expect(() => parseBeatHandles({ education: { keywords: "स्कूल|", handles: ["@rajeduofficial"] } }, directory)).toThrow(/matches empty text/);
   });
   it("C5 (O2): a bad prior rejects that entry loudly, bad prior settings switch the prior off, a bad ambiguous_tokens fails the file", () => {
-    const base = { handle: "@a_rep", names_en: ["A_REP"], verified: true };
+    const base = { handle: "@a_rep", handle_type: "person", names_en: ["A_REP"], verified: true };
     for (const prior of [{ n: 50, handles: { RajGovOfficial: 1.5 } }, { n: Number.NaN }, { n: "50" }, { n: 50, handles: { NotAHandleAnywhere: 0.5 } }]) {
       const problems: string[] = [];
       const r = parseReporterHandles({ version: 1, entries: [{ ...base, prior }] }, (m) => problems.push(m), { directory });
@@ -611,16 +621,16 @@ describe("C1–C6: what a reporter's suggestions may carry", () => {
   });
   it("C6: an empty or missing directory allows NOTHING, and says so", () => {
     for (const dir of [new Set<string>(), undefined, null]) {
-      const out = reporterPrior({ profile: profileOf("DineshKasana15"), text: "JDA ने हटाए अतिक्रमण", taken: new Set(), takenTags: new Set(), districtBound, directory: dir }, reporters, beats);
+      const out = reporterPrior({ profile: profileOf("DineshKasana15"), text: "JDA ने हटाए अतिक्रमण", taken: new Set(), takenTags: new Set(), districtBound, directory: dir, types }, reporters, beats);
       expect(out.handles).toEqual([]);
       expect(out.warnings.join(" ")).toMatch(/fail closed/);
     }
   });
   it("equal scores are ordered by handle name, whatever the file's key order", () => {
     const p = (handles: Record<string, number>) => ({ ...profileOf("rituraj9999")!, prior: { n: 100, handles, hashtags: {}, source: null } });
-    const run = (handles: Record<string, number>) => reporterPrior({ profile: p(handles), text: "", taken: new Set(), takenTags: new Set(), districtBound, directory }, reporters, beats).handles.map((h) => h.handle);
-    expect(run({ BJP4Rajasthan: 0.6, BhajanlalBjp: 0.6 })).toEqual(run({ BhajanlalBjp: 0.6, BJP4Rajasthan: 0.6 }));
-    expect(run({ BJP4Rajasthan: 0.6, BhajanlalBjp: 0.6 })).toHaveLength(2);
+    const run = (handles: Record<string, number>) => reporterPrior({ profile: p(handles), text: "", taken: new Set(), takenTags: new Set(), districtBound, directory, types }, reporters, beats).handles.map((h) => h.handle);
+    expect(run({ BJP4Rajasthan: 0.6, INCRajasthan: 0.6 })).toEqual(run({ INCRajasthan: 0.6, BJP4Rajasthan: 0.6 }));
+    expect(run({ BJP4Rajasthan: 0.6, INCRajasthan: 0.6 })).toHaveLength(2);
   });
   it("tags are offered once, compared without case", () => {
     const { d } = draft(fileFor("RITURAJ"), ["सरकार ने जारी किए नए दिशा-निर्देश", "सभी विभागों को भेजे गए आदेश"]);

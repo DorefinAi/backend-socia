@@ -22,7 +22,7 @@ import { loadConfig, makeFootage, makeSource, makeStorage, makeXClient, need, sa
 import { SamvadiaIngest } from "./stages/samvadia";
 import { Loops } from "./loop";
 import { Dictionaries, composeNext } from "./stages/compose";
-import { phaseOneData } from "./data-files";
+import { institutionHandles, phaseOneData } from "./data-files";
 import { convertNext } from "./stages/convert";
 import { NightlyFeatures, SEARCH_SWEEP_IDLE_MS, StorySearchSweep, housekeeping, syncHandles } from "./stages/crons";
 import { Ingest, STABLE_MS } from "./stages/ingest";
@@ -248,7 +248,8 @@ async function main(): Promise<void> {
     const searchSweep = new StorySearchSweep(db, log);
     loops.start({ name: "story-search", idleMs: SEARCH_SWEEP_IDLE_MS, log, tick: () => searchSweep.tick() });
     // Its own loop: a slow snapshot never holds up the housekeeping above
-    const features = new NightlyFeatures(db, pool, cfg.orgId, log, cfg.reporterPrior.smoothingM);
+    // The prior candidates it lists are the directory's institution handles (R2), read from the files at each run
+    const features = new NightlyFeatures(db, pool, cfg.orgId, log, cfg.reporterPrior.smoothingM, () => institutionHandles(log));
     loops.start({ name: "reporter-features", idleMs: 60_000, log, tick: () => features.tick() });
   }
 

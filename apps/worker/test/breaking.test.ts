@@ -12,7 +12,7 @@ import { eq, sql } from "drizzle-orm";
 import pino from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { BreakingShareSource, ShareUnreachable, type ShareFs } from "../src/breaking-source";
-import { DataUnavailable, phaseOneData } from "../src/data-files";
+import { DataUnavailable, institutionHandles, phaseOneData } from "../src/data-files";
 import { Dictionaries, composeNext } from "../src/stages/compose";
 import { convertNext } from "../src/stages/convert";
 import { Ingest } from "../src/stages/ingest";
@@ -90,6 +90,46 @@ describe("data files fail loudly (b6 fix brief P5, no database)", () => {
     expect((await data.beats.get()).value.beats.size).toBe(0);
     expect(statuses.at(-1)).toMatchObject({ file: "beats", ok: false });
     expect(statuses.at(-1)!.message).toMatch(/in no directory file/);
+  });
+
+  it("R2: the shipped directory loads with every handle_type; the nightly prior candidates are its institutions only", async () => {
+    const statuses: { file: string; ok: boolean; message?: string }[] = [];
+    const shipped = phaseOneData(log, (s) => void statuses.push(s));
+    await Promise.all([shipped.handles.get(), shipped.subjects.get(), shipped.parties.get(), shipped.reporters.get()]);
+    expect(statuses.filter((s) => /handle_type|not an institution/.test(s.message ?? ""))).toEqual([]);
+    const inst = institutionHandles(log);
+    for (const h of ["rajgovofficial", "incrajasthan", "bjp4rajasthan", "rajcmo"]) expect(inst.has(h), h).toBe(true);
+    for (const h of ["bhajanlalbjp", "svoruganti1466", "jaipur_police", "kotapolice", "dcdmjaipur", "rituraj9999"]) expect(inst.has(h), h).toBe(false);
+  });
+
+  it("R2: a district-handles entry with a bad handle_type is rejected alone and reported; a reporter's person handle is dropped from its prior", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "socia-cfg-"));
+    const districts = join(dir, "district-handles.json");
+    await writeFile(districts, JSON.stringify({
+      version: 2,
+      state: [{ handle: "@RajGovOfficial", handle_type: "institution", role: "govt", verified: true }, { handle: "@BhajanlalBjp", handle_type: "person", role: "cm", verified: true }],
+      districts: { Kota: [{ handle: "@KotaPolice", role: "police", verified: true }, { handle: "@DMKota", handle_type: "district", role: "collector", verified: true }] },
+    }));
+    const reporters = join(dir, "reporter-handles.json");
+    await writeFile(reporters, JSON.stringify({
+      version: 1,
+      entries: [{ handle: "@rituraj9999", handle_type: "person", names_en: ["rituraj"], verified: true, prior: { n: 121, handles: { RajGovOfficial: 0.52, BhajanlalBjp: 0.4 } } }],
+    }));
+    const statuses: { file: string; ok: boolean; skipped?: number }[] = [];
+    // The skipped entries go to the log at warn, named; the status counts them
+    const warned: { file?: string; problems?: string[] }[] = [];
+    const capture = pino({ level: "warn" }, { write: (line: string) => void warned.push(JSON.parse(line)) });
+    const data = phaseOneData(capture, (s) => void statuses.push(s), { DISTRICT_HANDLES_FILE: districts, REPORTER_HANDLES_FILE: reporters });
+    const problemsOf = (file: string) => warned.filter((w) => w.file === file).flatMap((w) => w.problems ?? []).join(" ");
+    const rules = (await data.handles.get()).value;
+    expect(rules.districts.kota).toEqual({ police: [], collector: ["DMKota"] });
+    expect(rules.bound!.has("kotapolice")).toBe(true);
+    expect(statuses.find((s) => s.file === "handles")).toMatchObject({ ok: true, skipped: 1 });
+    expect(problemsOf("handles")).toMatch(/districts\.Kota\[0\] \(@KotaPolice\): "handle_type" is missing.*entry rejected/);
+    const roster = (await data.reporters.get()).value;
+    expect(roster.byToken.get("RITURAJ")?.handle).toBe("rituraj9999");
+    expect(Object.keys(roster.profiles!.get("rituraj9999")!.prior!.handles)).toEqual(["RajGovOfficial"]);
+    expect(problemsOf("reporters")).toMatch(/@BhajanlalBjp is a person handle, not an institution — dropped/);
   });
 
   it("takes the places file's district tags as known-good normalisation targets", async () => {

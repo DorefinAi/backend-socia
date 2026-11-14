@@ -1009,16 +1009,24 @@ export const reporterFeatures = pgTable(
 
 /** One item's rate for one reporter: raw count over n, and smoothed toward the desk's overall rate with m */
 export interface ReporterItemFeature {
+  /** Posts carrying the item, unweighted */
   count: number;
+  /** The same posts, each counted by its recency weight (R5: 0.5^(age_in_days / halfLifeDays)) */
+  weighted: number;
+  /** count / n, unweighted */
   rate: number;
-  /** (count + m · base) / (n + m) */
+  /** (weighted + m · base) / (nWeighted + m): k and n recency-weighted (R5) */
   smoothed: number;
-  /** The desk's overall rate for the item across every reporter in the window */
+  /** The desk's overall rate for the item across every reporter in the window (unweighted) */
   base: number;
 }
 
 export interface ReporterFeatureSet {
   m: number;
+  /** The recency half-life in days (R5): a post this many days before the cutoff counts half */
+  halfLifeDays: number;
+  /** The reporter's posts, each counted by its recency weight (the row's `n` is the unweighted count) */
+  nWeighted: number;
   /** Decisions before this instant only (L5) */
   cutoff: string;
   /** ...and from this instant on (the rolling window, FEATURE_WINDOW_DAYS before the cutoff) */
@@ -1027,8 +1035,14 @@ export interface ReporterFeatureSet {
   itemsDropped: number;
   /** "#jaipur", "@rajgovofficial" (lower-cased): on the final post */
   items: Record<string, ReporterItemFeature & { kind: "hashtag" | "handle" }>;
-  /** Per rule id: how often the desk kept or accepted what the rule proposed for this reporter */
-  sources: Record<string, { proposed: number; taken: number; rate: number; smoothed: number; base: number }>;
+  /** Per rule id: how often the desk kept or accepted what the rule proposed for this reporter (smoothed: weighted, R5) */
+  sources: Record<string, { proposed: number; taken: number; weightedProposed: number; weightedTaken: number; rate: number; smoothed: number; base: number }>;
   /** Mean rework ratio of this reporter's posts */
   reworkMean: number | null;
+  /**
+   * What the reporter prior could take from this snapshot (nothing reads it yet): the INSTITUTION handles only (R2),
+   * lower-cased without the @, each with its weighted smoothed rate; `eligible` when the reporter has at least
+   * `minPosts` decided posts, UNWEIGHTED (R5). `typed` false: no institution list was given, so no handle is listed.
+   */
+  prior: { eligible: boolean; minPosts: number; typed: boolean; handles: Record<string, number> };
 }

@@ -16,7 +16,7 @@ const rules = parseHandleRules(json("../../../apps/worker/config/district-handle
 const slot = (name: string) => fileSlot(name, book.codes);
 
 const roster = (entries: unknown[], problem?: (m: string) => void) => parseReporterHandles({ version: 1, entries }, problem);
-const one = roster([{ handle: "@omsharma8888", name: "Om Sharma", names_en: ["om_sharma", "OM SHARMA"], districts: ["Jaipur"], verified: true }]);
+const one = roster([{ handle: "@omsharma8888", handle_type: "person", name: "Om Sharma", names_en: ["om_sharma", "OM SHARMA"], districts: ["Jaipur"], verified: true }]);
 
 describe("the reporter slot in a file name", () => {
   it("reads the reporter the desk typed, in any case and spacing", () => {
@@ -73,8 +73,8 @@ describe("which reporter a token names", () => {
     const problems: string[] = [];
     const two = roster(
       [
-        { handle: "@rajeev_one", names_en: ["rajeev"], verified: true },
-        { handle: "@rajeev_two", names_en: ["rajeev", "rajeev_kumar"], verified: true },
+        { handle: "@rajeev_one", handle_type: "person", names_en: ["rajeev"], verified: true },
+        { handle: "@rajeev_two", handle_type: "person", names_en: ["rajeev", "rajeev_kumar"], verified: true },
       ],
       (m) => problems.push(m),
     );
@@ -89,8 +89,8 @@ describe("which reporter a token names", () => {
     const problems: string[] = [];
     const r = roster(
       [
-        { handle: "@unverified", names_en: ["someone"], verified: false },
-        { handle: "@notokens", names_en: [], verified: true },
+        { handle: "@unverified", handle_type: "person", names_en: ["someone"], verified: false },
+        { handle: "@notokens", handle_type: "person", names_en: [], verified: true },
       ],
       (m) => problems.push(m),
     );

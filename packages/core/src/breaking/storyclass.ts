@@ -123,8 +123,9 @@ const ELECTION_PROCESS = folded([
 // tagged nobody, 2 tagged an institution. So a court story does NOT tag the police even when the copy is
 // full of आरोपी and जमानत — which is exactly how "राजस्थान हाईकोर्ट में फर्जी जमानत आदेश अपलोड करने के
 // मामले में बड़ी कार्रवाई" was mis-tagged as an incident before this class existed.
+// "जस्टिस" added with Logic Update v4 B2 (14 Nov), so the class carries every word of B2's court-story list.
 const JUDICIAL = folded([
-  "हाईकोर्ट", "हाई कोर्ट", "सुप्रीम कोर्ट", "अदालत", "कोर्ट", "न्यायालय", "जमानत", "याचिका", "सुनवाई",
+  "हाईकोर्ट", "हाई कोर्ट", "सुप्रीम कोर्ट", "अदालत", "कोर्ट", "न्यायालय", "जमानत", "याचिका", "सुनवाई", "जस्टिस",
   "अधिकरण", "ट्रिब्यूनल", "उपभोक्ता आयोग", "हर्जाना", "सीजेएम", "एडीजे", "लोक अदालत",
 ]);
 
@@ -330,6 +331,24 @@ function decide(text: string, namedPolitical: boolean): Classification | null {
   if (hits(f, words, ADMIN_BODY)) return { cls: "administration", why: "an administrative body, nobody named" };
   if (hits(f, words, GOVERNMENT)) return { cls: "government", why: "state administration, a department or a scheme" };
   return null;
+}
+
+/**
+ * Logic Update v4 B2's court-story words. A court story carries a roster reporter 56% of the time (51 of 91), like
+ * political and government copy (54–67%), not like crime (17%).
+ */
+export const COURT_STORY_WORDS: readonly string[] = ["हाईकोर्ट", "हाई कोर्ट", "न्यायालय", "अदालत", "कोर्ट", "जस्टिस", "याचिका", "सुनवाई", "जमानत"];
+const COURT_STORY = folded(COURT_STORY_WORDS);
+
+/**
+ * A court story (v4 B2): a court word in the headline or the first two lines after it. Decides only whether the
+ * reporter's byline is allowed (handles.ts); the story's class, and with it every other handle, is unchanged.
+ */
+export function isCourtStory(headline: string, points: readonly string[]): boolean {
+  return [headline, ...points.slice(0, 2)].some((line) => {
+    const f = fold(line.normalize("NFC"));
+    return hits(f, tokens(f), COURT_STORY);
+  });
 }
 
 /**

@@ -7,7 +7,9 @@
 //             towards the share across all posts, so 3 posts are not evidence: (k + m·base) / (n + m), m = 20.
 //             Offered when the smoothed rate is ≥ 0.25 and the reporter has ≥ 20 posts. The seed values were
 //             measured on posts where the desk tagged the reporter, mostly political and government copy: an
-//             UPPER BOUND (L2) until the decision log replaces them.
+//             UPPER BOUND (L2) until the decision log replaces them. INSTITUTION HANDLES ONLY (directory changes v2,
+//             R2): a person (the CM, the Chief Secretary) comes from the copy's names and offices, a district account
+//             (@jaipur_police) from the story's own district — never from who filed it.
 //   declared  beat-handles.json: a beat the X team told us a reporter covers ("education") adds its handles ONLY
 //             when the reporter's beats_source is "desk" AND the beat's keywords are in the copy. Reporter identity
 //             alone never offers a declared beat; an "observed" beat label offers nothing.
@@ -19,6 +21,7 @@ import type { PriorHandlePick, RuleHandlePick } from "./handles";
 import { PROPOSAL_SOURCES, beatSource, type TagSuggestion } from "./proposals";
 import { DEFAULT_PRIOR_SETTINGS, type ReporterProfile, type ReporterRules } from "./reporters";
 import { HANDLE, plainText, wholeWord } from "./syntax";
+import type { HandleType } from "./handle-types";
 
 // ─── beat-handles.json ───────────────────────────────────────────────────────
 
@@ -67,6 +70,12 @@ export interface BeatCheckOptions {
   stateHandles?: ReadonlySet<string>;
   /** The reporter roster, to warn about a desk-declared beat label this file has no key for */
   reporters?: ReporterRules;
+  /**
+   * Every directory handle's handle_type (mergeHandleTypes). A beat may carry an institution or a person (offered
+   * only when its keywords match the copy: Nirmal's tourism → @KumariDiya); a DISTRICT account fails the file — a
+   * district handle (@Swachh_Jaipur, a police or a collector) comes only from the copy or the story's own district.
+   */
+  types?: ReadonlyMap<string, HandleType>;
   /** Warnings that do not reject the file */
   problem?: (message: string) => void;
 }
@@ -123,6 +132,7 @@ export function parseBeatHandles(json: unknown, directory: ReadonlySet<string>, 
       const lc = bare.toLowerCase();
       if (state.has(lc)) problems.push(`"${rawKey}": @${bare} is a CM or state-government handle — those come from the office alias and the measured prior only`);
       else if (opts.bound?.has(lc)) problems.push(`"${rawKey}": @${bare} is a district police, collector or state police handle — a reporter never brings one (brief §3.5)`);
+      else if (opts.types?.get(lc) === "district") problems.push(`"${rawKey}": @${bare} is a district handle — it comes only from the copy or the story's own district, never from a reporter's beat`);
       else if (!directory.has(lc)) problems.push(`"${rawKey}": @${bare} is in no directory file — add it to one (verified) first; a handle is never invented`);
       else handles.push(bare);
     }
@@ -161,6 +171,14 @@ export interface PriorInput {
    * closed) and `warnings` says why.
    */
   directory: ReadonlySet<string> | null | undefined;
+  /**
+   * Every directory handle's handle_type (mergeHandleTypes over the directory files), lower-cased without the @. The
+   * MEASURED prior offers a handle only when it is an "institution" here (R2). Empty or absent: no measured handle
+   * is offered (fail closed) and `warnings` says why. A declared beat may offer a person (it needs the copy to match
+   * its keywords, so the reporter alone never brings it: owner decision 2, 14 Nov) but never a handle typed
+   * "district" here (@Swachh_Jaipur: decision 1).
+   */
+  types?: ReadonlyMap<string, HandleType> | null;
 }
 
 export interface PriorResult {
@@ -177,8 +195,8 @@ const byScore = (a: { score: number; key: string }, b: { score: number; key: str
   b.score - a.score || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 
 /**
- * The prior's suggestions: measured handles above the threshold, then declared beats whose keywords match, each
- * once, none already taken, none district-bound, none outside the directory. Highest smoothed rate first.
+ * The prior's suggestions: measured INSTITUTION handles above the threshold, then declared beats whose keywords
+ * match, each once, none already taken, none district-bound, none outside the directory. Highest smoothed rate first.
  */
 export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: BeatRules = EMPTY_BEAT_RULES): PriorResult {
   const out: PriorResult = { handles: [], hashtags: [], warnings: [] };
@@ -188,6 +206,7 @@ export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: Be
   const seen = new Set(input.taken);
   const directory = input.directory && input.directory.size > 0 ? input.directory : null;
   if (!directory) out.warnings.push("the handle directory is empty or missing, so the reporter prior offers no handles (fail closed)");
+  const types = input.types && input.types.size > 0 ? input.types : null;
   const ok = (h: string): boolean => {
     const lc = h.toLowerCase();
     return !!directory && directory.has(lc) && !seen.has(lc) && !input.districtBound.has(lc);
@@ -195,7 +214,10 @@ export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: Be
 
   if (p.prior && p.prior.n >= s.minN) {
     const n = p.prior.n;
+    if (!types && Object.keys(p.prior.handles).length) out.warnings.push("the directory's handle types are missing, so the reporter prior offers no measured handles (fail closed)");
     const scored = Object.entries(p.prior.handles)
+      // Institutions only (R2): a person or district handle never comes from who filed the story
+      .filter(([h]) => types?.get(h.toLowerCase()) === "institution")
       .map(([h, r]) => ({ key: h, r, score: smoothedRate(r, n, s.base.get(h.toLowerCase()) ?? 0, s.m) }))
       .filter((x) => x.score >= s.minScore)
       .sort(byScore);
@@ -230,7 +252,7 @@ export function reporterPrior(input: PriorInput, rules: ReporterRules, beats: Be
     const beat = beats.beats.get(key);
     if (!beat || !beat.pattern.test(text)) continue;
     for (const h of beat.handles) {
-      if (!ok(h)) continue;
+      if (!ok(h) || types?.get(h.toLowerCase()) === "district") continue;
       seen.add(h.toLowerCase());
       out.handles.push({ handle: h, reason: "beat", source: beatSource(key), detail: `declared beat: ${key} (${first(p.name)}, told to us by the desk), and the copy matches it` });
     }

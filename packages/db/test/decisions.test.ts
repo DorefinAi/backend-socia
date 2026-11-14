@@ -5,8 +5,8 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DbHandle } from "../src/client";
 import {
-  LOG_LOCK_TIMEOUT, LOGIC_VERSION, editDistance, istDate, itemKey, itemOutcomes, minusDays, postItems, recordOutcome, recordProposal, reporterStatusReport, reworkBase, reworkRatio,
-  setDecisionLogger, snapshotReporterFeatures, voidOutcome, type ProposalRecord,
+  FEATURE_HALF_LIFE_DAYS, FEATURE_MIN_POSTS, LOG_LOCK_TIMEOUT, LOGIC_VERSION, editDistance, istDate, itemKey, itemOutcomes, minusDays, postItems, recencyWeight, recordOutcome,
+  recordProposal, reporterStatusReport, reworkBase, reworkRatio, setDecisionLogger, snapshotReporterFeatures, voidOutcome, type ProposalRecord,
 } from "../src/decisions";
 import { claimDraft, copyPosted, rejectDraft, restoreDraft, undoCopyPosted } from "../src/desk";
 import { postDecisions, postDrafts, reporterFeatures, type LoggedProposal } from "../src/schema";
@@ -469,17 +469,22 @@ describe("istDate", () => {
     // An API post that never went out (no published_posts row) did not reach X
     await decided("rituraj", yesterday, ["@NeverSent"], "approved");
 
-    const snap = await snapshotReporterFeatures(h.pool, s.org.id, NOW);
+    const snap = await snapshotReporterFeatures(h.pool, s.org.id, NOW, 20, { institutions: new Set(["rajgovofficial"]) });
     expect(snap).toEqual({ day: "2026-11-13", written: 2, reporters: 2, pruned: 0 });
     const [rit] = await h.db.select().from(reporterFeatures).where(eq(reporterFeatures.reporter, "rituraj"));
     expect(rit).toMatchObject({ snapshotDate: "2026-11-13", n: 4 });
     const f = rit!.features;
-    expect(f).toMatchObject({ m: 20, cutoff: TODAY_START.toISOString(), since: new Date(TODAY_START.getTime() - 90 * 86_400_000).toISOString(), itemsDropped: 0, reworkMean: 0.1 });
-    // base 3/10; smoothed (3 + 20·0.3) / (4 + 20) = 0.375
-    expect(f.items["@rajgovofficial"]).toEqual({ kind: "handle", count: 3, rate: 0.75, base: 0.3, smoothed: 0.375 });
+    // Every counted post was decided 8.5 hours before the day began: each counts w (R5)
+    const w = recencyWeight(yesterday, TODAY_START);
+    expect(w).toBeCloseTo(0.5 ** (8.5 / 24 / 14), 12);
+    expect(f).toMatchObject({ m: 20, halfLifeDays: 14, nWeighted: round4(4 * w), cutoff: TODAY_START.toISOString(), since: new Date(TODAY_START.getTime() - 90 * 86_400_000).toISOString(), itemsDropped: 0, reworkMean: 0.1 });
+    // base 3/10 (unweighted); smoothed (3w + 20·0.3) / (4w + 20)
+    expect(f.items["@rajgovofficial"]).toEqual({ kind: "handle", count: 3, weighted: round4(3 * w), rate: 0.75, base: 0.3, smoothed: round4((3 * w + 6) / (4 * w + 20)) });
     for (const k of ["@leak", "@ancient", "@rejected", "@neversent"]) expect(f.items[k]).toBeUndefined();
-    // reporter_prior: 3 of 4 taken, desk-wide also 3/4 → smoothed stays 0.75
-    expect(f.sources.reporter_prior).toEqual({ proposed: 4, taken: 3, rate: 0.75, base: 0.75, smoothed: 0.75 });
+    // reporter_prior: 3 of 4 taken, desk-wide also 3/4 → smoothed stays 0.75 whatever the weight
+    expect(f.sources.reporter_prior).toEqual({ proposed: 4, taken: 3, weightedProposed: round4(4 * w), weightedTaken: round4(3 * w), rate: 0.75, base: 0.75, smoothed: 0.75 });
+    // R2: an institution is a prior candidate; 4 posts is under the minimum, so not eligible yet
+    expect(f.prior).toEqual({ eligible: false, minPosts: 20, typed: true, handles: { rajgovofficial: round4((3 * w + 6) / (4 * w + 20)) } });
     expect((await h.db.select().from(reporterFeatures)).map((r) => r.reporter).sort()).toEqual(["amit", "rituraj"]);
   });
 
@@ -570,11 +575,13 @@ describe("istDate", () => {
     expect(a.n).toBe(4);
     const f = a.features;
     // iso_a's own counts are those of its 4 rows; nothing from the 5 committed between the reads
-    expect(f.items["#isoonly"]).toEqual({ kind: "hashtag", count: 3, rate: 0.75, base: round4(3 / total), smoothed: round4((3 + 20 * (3 / total)) / (4 + 20)) });
+    // iso_a's rows were all decided 10.5 hours before the day began: each counts w (R5)
+    const w = recencyWeight(before, new Date("2026-11-17T18:30:00Z"));
+    expect(f.items["#isoonly"]).toEqual({ kind: "hashtag", count: 3, weighted: round4(3 * w), rate: 0.75, base: round4(3 / total), smoothed: round4((3 * w + 20 * (3 / total)) / (4 * w + 20)) });
     expect(f.items["@isohandle"]).toMatchObject({ count: 3 });
     expect(f.items["#isoother"]).toMatchObject({ count: 1, base: round4(2 / total) });
     expect(f.items["#isolate"]).toBeUndefined();
-    expect(f.sources.iso_rule).toEqual({ proposed: 4, taken: 3, rate: 0.75, base: 0.75, smoothed: 0.75 });
+    expect(f.sources.iso_rule).toMatchObject({ proposed: 4, taken: 3, rate: 0.75, base: 0.75, smoothed: 0.75 });
     // Every reporter's numbers agree with the reporters read: no item counted more often than its reporter posted
     for (const r of rows) for (const it of Object.values(r.features.items)) expect(it.count).toBeLessThanOrEqual(r.n);
 
@@ -585,5 +592,68 @@ describe("istDate", () => {
     expect(next!.features.items["#isolate"]).toMatchObject({ count: 4 });
     expect(next!.features.sources.iso_rule).toMatchObject({ proposed: 8, taken: 3 });
     expect((await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "iso_new"), eq(reporterFeatures.snapshotDate, "2026-11-19")))).length).toBe(1);
+  });
+
+  it("R5: each post counts 0.5^(age_in_days / 14) in k and n; the minimum posts is read on the UNWEIGHTED count", async () => {
+    // Snapshot day 2026-12-20 (IST): it begins 2026-12-19T18:30Z
+    const cutoff = new Date("2026-12-19T18:30:00Z");
+    const day = new Date("2026-12-20T04:30:00Z");
+    const ago = (days: number) => new Date(cutoff.getTime() - days * 86_400_000);
+    // "Just before the day": a minute before it began (a post decided AT the cutoff belongs to the next snapshot, L5)
+    const MINUTE = 1 / 1440;
+    const fresh = recencyWeight(ago(MINUTE), cutoff);
+    // An old beat (28 days back: weight 0.25) and a new one (just before the day: weight ~1). 20 posts in all.
+    for (let i = 0; i < 10; i++) await decided("drifter", ago(28), ["@RajGovOfficial", "#Jaipur"]);
+    for (let i = 0; i < 10; i++) await decided("drifter", ago(MINUTE), ["@INCRajasthan", "@BhajanlalBjp"]);
+    // A quiet reporter: 20 posts, all four weeks old — weighted n is 5, but the unweighted 20 still meets the minimum
+    for (let i = 0; i < 20; i++) await decided("quiet", ago(28), ["@BJP4Rajasthan"]);
+    // One post short of the minimum, however recent
+    for (let i = 0; i < 19; i++) await decided("short", ago(MINUTE), ["@BJP4Rajasthan"]);
+    await snapshotReporterFeatures(h.pool, s.org.id, day, 20, { institutions: new Set(["rajgovofficial", "incrajasthan", "bjp4rajasthan"]) });
+    const row = async (r: string) => (await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, r), eq(reporterFeatures.snapshotDate, "2026-12-20"))))[0]!;
+
+    expect(FEATURE_HALF_LIFE_DAYS).toBe(14);
+    expect(FEATURE_MIN_POSTS).toBe(20);
+    expect(recencyWeight(ago(0), cutoff)).toBe(1);
+    expect(recencyWeight(ago(14), cutoff)).toBeCloseTo(0.5, 12);
+    expect(recencyWeight(ago(28), cutoff)).toBeCloseTo(0.25, 12);
+    // A post after the cutoff never counts more than 1
+    expect(recencyWeight(new Date(cutoff.getTime() + 3_600_000), cutoff)).toBe(1);
+
+    const d = await row("drifter");
+    expect(d.n).toBe(20);
+    expect(d.features.nWeighted).toBeCloseTo(10 * 0.25 + 10 * fresh, 3);
+    const rg = d.features.items["@rajgovofficial"]!;
+    const inc = d.features.items["@incrajasthan"]!;
+    // Unweighted, the two beats look the same; weighted, the recent one leads
+    expect([rg.count, inc.count, rg.rate, inc.rate]).toEqual([10, 10, 0.5, 0.5]);
+    expect(rg.weighted).toBeCloseTo(2.5, 3);
+    expect(inc.weighted).toBeCloseTo(10 * fresh, 3);
+    expect(rg.smoothed).toBeCloseTo((2.5 + 20 * rg.base) / (2.5 + 10 * fresh + 20), 3);
+    expect(inc.smoothed).toBeCloseTo((10 * fresh + 20 * inc.base) / (2.5 + 10 * fresh + 20), 3);
+    expect(inc.smoothed).toBeGreaterThan(rg.smoothed);
+    // R2: the prior candidates are institutions only (the CM is a person: not listed, though counted as an item)
+    expect(d.features.items["@bhajanlalbjp"]).toBeDefined();
+    expect(Object.keys(d.features.prior.handles).sort()).toEqual(["incrajasthan", "rajgovofficial"]);
+    expect(d.features.prior.eligible).toBe(true);
+
+    const q = await row("quiet");
+    expect(q.n).toBe(20);
+    expect(q.features.nWeighted).toBeCloseTo(5, 3);
+    expect(q.features.prior).toMatchObject({ eligible: true, handles: { bjp4rajasthan: q.features.items["@bjp4rajasthan"]!.smoothed } });
+
+    const sh = await row("short");
+    expect(sh.n).toBe(19);
+    expect(sh.features.nWeighted).toBeCloseTo(19 * fresh, 3);
+    expect(sh.features.prior.eligible).toBe(false);
+  });
+
+  it("R2: with no institution list the snapshot lists no prior candidates (fail closed)", async () => {
+    const day = new Date("2026-12-22T04:30:00Z");
+    await decided("untyped", new Date("2026-12-21T10:00:00Z"), ["@RajGovOfficial"]);
+    await snapshotReporterFeatures(h.pool, s.org.id, day);
+    const [u] = await h.db.select().from(reporterFeatures).where(and(eq(reporterFeatures.reporter, "untyped"), eq(reporterFeatures.snapshotDate, "2026-12-22")));
+    expect(u!.features.items["@rajgovofficial"]).toBeDefined();
+    expect(u!.features.prior).toEqual({ eligible: false, minPosts: 20, typed: false, handles: {} });
   });
 });

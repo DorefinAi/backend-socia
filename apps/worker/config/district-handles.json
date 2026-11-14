@@ -1,10 +1,12 @@
 {
   "version": 2,
+  "_handle_type_note": "Every entry carries \"handle_type\" (reporter directory changes v2, R2): every district police and collector is \"district\"; in `state`, @RajGovOfficial, @RajCMO (the CM's office) and @PoliceRajasthan are \"institution\", @BhajanlalBjp \"person\". An entry without a valid one is rejected alone. The reporter prior offers institutions only.",
   "generated": "2026-10-30",
   "district_list_note": "41 districts: 33 pre-2023 + 8 of the 2023 districts kept (Balotra, Beawar, Deeg, Didwana-Kuchaman, Khairthal-Tijara, Kotputli-Behror, Phalodi, Salumber) after the 28 Dec 2024 cabinet decision abolished Dudu, Kekri, Shahpura, Neem Ka Thana, Gangapur City, Jaipur Rural, Jodhpur Rural, Anupgarh, Sanchore.",
   "state": [
     {
       "handle": "@RajGovOfficial",
+      "handle_type": "institution",
       "role": "govt",
       "verified": true,
       "source": "https://cdn.syndication.twimg.com/tweet-result?id=2089947971765059722&token=52drjoww8srysm&lang=en",
@@ -12,6 +14,7 @@
     },
     {
       "handle": "@BhajanlalBjp",
+      "handle_type": "person",
       "role": "cm",
       "verified": true,
       "source": "https://cdn.syndication.twimg.com/tweet-result?id=1908006863817343478&token=4mi6hq8n72aira2&lang=en",
@@ -19,6 +22,7 @@
     },
     {
       "handle": "@RajCMO",
+      "handle_type": "institution",
       "role": "cm",
       "verified": true,
       "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
@@ -26,6 +30,7 @@
     },
     {
       "handle": "@PoliceRajasthan",
+      "handle_type": "institution",
       "role": "police",
       "verified": true,
       "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=967&isOtherDept=false",
@@ -36,6 +41,7 @@
     "Ajmer": [
       {
         "handle": "@AjmerpoliceR",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/AjmerpoliceR",
@@ -43,6 +49,7 @@
       },
       {
         "handle": "@Dmajmer",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=22&isOtherDept=false",
@@ -52,6 +59,7 @@
     "Alwar": [
       {
         "handle": "@AlwarPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/AlwarPolice",
@@ -59,6 +67,7 @@
       },
       {
         "handle": "@DMDCAlwar",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=23&isOtherDept=false",
@@ -68,6 +77,7 @@
     "Balotra": [
       {
         "handle": "@BalotraPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/BalotraPolice",
@@ -75,6 +85,7 @@
       },
       {
         "handle": "@DCDMBALOTRA",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/DCDMBALOTRA",
@@ -84,6 +95,7 @@
     "Banswara": [
       {
         "handle": "@BanswaraPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/BanswaraPolice",
@@ -91,6 +103,7 @@
       },
       {
         "handle": "@Dmbanswara",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=24&isOtherDept=false",
@@ -100,6 +113,7 @@
     "Baran": [
       {
         "handle": "@BaranPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/BaranPolice",
@@ -107,6 +121,7 @@
       },
       {
         "handle": "@DcDmBaran_",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/DcDmBaran_",
@@ -114,6 +129,7 @@
       },
       {
         "handle": "@DcDmBaran",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/DcDmBaran",
@@ -123,6 +139,7 @@
     "Barmer": [
       {
         "handle": "@Barmer_Police",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=415&isOtherDept=false",
@@ -130,6 +147,7 @@
       },
       {
         "handle": "@BarmerDm",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=26&isOtherDept=false",
@@ -139,6 +157,7 @@
     "Beawar": [
       {
         "handle": "@BeawarPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/BeawarPolice",
@@ -146,6 +165,7 @@
       },
       {
         "handle": "@BeawarDCDM",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/BeawarDCDM",
@@ -155,6 +175,7 @@
     "Bharatpur": [
       {
         "handle": "@BharatpurPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=1895381491649257598&token=4leilh33f37nr1t&lang=en",
@@ -162,6 +183,7 @@
       },
       {
         "handle": "@DmBharatpur",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=27&isOtherDept=false",
@@ -171,6 +193,7 @@
     "Bhilwara": [
       {
         "handle": "@Bhilwara_Police",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/Bhilwara_Police",
@@ -178,6 +201,7 @@
       },
       {
         "handle": "@DmBhilwara",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=28&isOtherDept=false",
@@ -187,6 +211,7 @@
     "Bikaner": [
       {
         "handle": "@Bikaner_Police",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/Bikaner_Police",
@@ -194,6 +219,7 @@
       },
       {
         "handle": "@BikanerDm",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=29&isOtherDept=false",
@@ -203,6 +229,7 @@
     "Bundi": [
       {
         "handle": "@BundiPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/BundiPolice",
@@ -210,6 +237,7 @@
       },
       {
         "handle": "@DmBundii",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=30&isOtherDept=false",
@@ -219,6 +247,7 @@
     "Chittorgarh": [
       {
         "handle": "@ChghPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/ChghPolice",
@@ -226,6 +255,7 @@
       },
       {
         "handle": "@DmChittorgarh",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=31&isOtherDept=false",
@@ -235,6 +265,7 @@
     "Churu": [
       {
         "handle": "@ChuruPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/ChuruPolice",
@@ -242,6 +273,7 @@
       },
       {
         "handle": "@DmChuru",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=32&isOtherDept=false",
@@ -251,6 +283,7 @@
     "Dausa": [
       {
         "handle": "@DausaPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/DausaPolice",
@@ -258,6 +291,7 @@
       },
       {
         "handle": "@DmDausa",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=33&isOtherDept=false",
@@ -267,6 +301,7 @@
     "Deeg": [
       {
         "handle": "@DeegPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/DeegPolice",
@@ -274,6 +309,7 @@
       },
       {
         "handle": "@DeegDm24013",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/DeegDm24013",
@@ -283,6 +319,7 @@
     "Dholpur": [
       {
         "handle": "@DholpurPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/DholpurPolice",
@@ -290,6 +327,7 @@
       },
       {
         "handle": "@DmDholpur",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=34&isOtherDept=false",
@@ -299,6 +337,7 @@
     "DidwanaKuchaman": [
       {
         "handle": "@Didwanapolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/DidwanaPolice",
@@ -306,6 +345,7 @@
       },
       {
         "handle": "@DMDeedwanaKucha",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/DMDeedwanaKucha",
@@ -315,6 +355,7 @@
     "Dungarpur": [
       {
         "handle": "@DungarpurP",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=2056443893881934131&token=4zgibpa5p5jguhi&lang=en",
@@ -322,6 +363,7 @@
       },
       {
         "handle": "@DmDungarpur",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=35&isOtherDept=false",
@@ -331,6 +373,7 @@
     "Hanumangarh": [
       {
         "handle": "@HmghPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/HmghPolice",
@@ -338,6 +381,7 @@
       },
       {
         "handle": "@DmHanumangarh",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=36&isOtherDept=false",
@@ -347,6 +391,7 @@
     "Jaipur": [
       {
         "handle": "@jaipur_police",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=2043381156339724649&token=4ybgypo67cpnxm2&lang=en",
@@ -354,6 +399,7 @@
       },
       {
         "handle": "@JprRuralPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JprRuralPolice",
@@ -361,6 +407,7 @@
       },
       {
         "handle": "@DcDmJaipur",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=37&isOtherDept=false",
@@ -370,6 +417,7 @@
     "Jaisalmer": [
       {
         "handle": "@JaisalmerPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JaisalmerPolice",
@@ -377,6 +425,7 @@
       },
       {
         "handle": "@DmJaisalmer",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=38&isOtherDept=false",
@@ -386,6 +435,7 @@
     "Jalore": [
       {
         "handle": "@JalorePolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JalorePolice",
@@ -393,6 +443,7 @@
       },
       {
         "handle": "@DmJalore",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=39&isOtherDept=false",
@@ -402,6 +453,7 @@
     "Jhalawar": [
       {
         "handle": "@JhalawarPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JhalawarPolice",
@@ -409,6 +461,7 @@
       },
       {
         "handle": "@DmJhalawar",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=40&isOtherDept=false",
@@ -418,6 +471,7 @@
     "Jhunjhunu": [
       {
         "handle": "@JhunjhunuPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JhunjhunuPolice",
@@ -425,6 +479,7 @@
       },
       {
         "handle": "@DMJhunjhunu",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=1921992146736882146&token=4nq46v5hkpxk8kb&lang=en",
@@ -434,6 +489,7 @@
     "Jodhpur": [
       {
         "handle": "@CP_Jodhpur",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=1935584688858390881&token=4owtgyfx5bakrx&lang=en",
@@ -441,6 +497,7 @@
       },
       {
         "handle": "@JdprRuralPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JdprRuralPolice",
@@ -448,6 +505,7 @@
       },
       {
         "handle": "@JodhpurDm",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=42&isOtherDept=false",
@@ -457,6 +515,7 @@
     "Karauli": [
       {
         "handle": "@KarauliPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/KarauliPolice",
@@ -464,6 +523,7 @@
       },
       {
         "handle": "@DmKarauli",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=43&isOtherDept=false",
@@ -473,6 +533,7 @@
     "KhairthalTijara": [
       {
         "handle": "@KhairthalPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/KhairthalPolice",
@@ -480,6 +541,7 @@
       },
       {
         "handle": "@Bhiwadipolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/BhiwadiPolice",
@@ -487,6 +549,7 @@
       },
       {
         "handle": "@DistrictCo95708",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/DistrictCo95708",
@@ -496,6 +559,7 @@
     "Kota": [
       {
         "handle": "@KotaPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=2024405564386922698&token=4wnuvigx7vonnif&lang=en",
@@ -503,6 +567,7 @@
       },
       {
         "handle": "@spkotarural",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/SPKotaRural",
@@ -510,6 +575,7 @@
       },
       {
         "handle": "@Dcdmkota",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=44&isOtherDept=false",
@@ -519,6 +585,7 @@
     "KotputliBehror": [
       {
         "handle": "@SpktpBehror",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/SpktpBehror",
@@ -526,6 +593,7 @@
       },
       {
         "handle": "@DmKotputli_B",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/DmKotputli_B",
@@ -535,6 +603,7 @@
     "Nagaur": [
       {
         "handle": "@NagaurPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=1249996120400396289&token=312z8awp873q17o&lang=en",
@@ -542,6 +611,7 @@
       },
       {
         "handle": "@DmNagaur",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=45&isOtherDept=false",
@@ -551,6 +621,7 @@
     "Pali": [
       {
         "handle": "@PaliPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/PaliPolice",
@@ -558,6 +629,7 @@
       },
       {
         "handle": "@DcDmPali",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=46&isOtherDept=false",
@@ -567,6 +639,7 @@
     "Phalodi": [
       {
         "handle": "@Phalodi_Police",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/Phalodi_Police",
@@ -574,6 +647,7 @@
       },
       {
         "handle": "@Phalodidmdc",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/Phalodidmdc",
@@ -583,6 +657,7 @@
     "Pratapgarh": [
       {
         "handle": "@PratapgrhPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/PratapgrhPolice",
@@ -590,6 +665,7 @@
       },
       {
         "handle": "@PratapgarhDm",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=47&isOtherDept=false",
@@ -599,6 +675,7 @@
     "Rajsamand": [
       {
         "handle": "@RajsamandPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=1241290098106200065&token=3bmlp494y73oi7&lang=en",
@@ -606,6 +683,7 @@
       },
       {
         "handle": "@DmRajsamand",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=48&isOtherDept=false",
@@ -615,6 +693,7 @@
     "Salumber": [
       {
         "handle": "@salumberpolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/SalumberPolice",
@@ -622,6 +701,7 @@
       },
       {
         "handle": "@DMSalumbar",
+        "handle_type": "district",
         "role": "collector",
         "verified": false,
         "source": "https://api.fxtwitter.com/DmSalumbar",
@@ -631,6 +711,7 @@
     "SawaiMadhopur": [
       {
         "handle": "@SPsawaimadhopur",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/SPSawaiMadhopur",
@@ -638,6 +719,7 @@
       },
       {
         "handle": "@dmsawaimadhopur",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=52&isOtherDept=false",
@@ -647,6 +729,7 @@
     "Sikar": [
       {
         "handle": "@SikarPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/SikarPolice",
@@ -654,6 +737,7 @@
       },
       {
         "handle": "@DcDmSikar",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=49&isOtherDept=false",
@@ -663,6 +747,7 @@
     "Sirohi": [
       {
         "handle": "@SirohiPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/SirohiPolice",
@@ -670,6 +755,7 @@
       },
       {
         "handle": "@Dmsirohi",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=50&isOtherDept=false",
@@ -679,6 +765,7 @@
     "SriGanganagar": [
       {
         "handle": "@sgnrpolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=444&isOtherDept=false",
@@ -686,6 +773,7 @@
       },
       {
         "handle": "@SriGanganagarDM",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=51&isOtherDept=false",
@@ -695,6 +783,7 @@
     "Tonk": [
       {
         "handle": "@TonkPolice_",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/TonkPolice_",
@@ -702,6 +791,7 @@
       },
       {
         "handle": "@DCDMTonk",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=194&isOtherDept=false",
@@ -711,6 +801,7 @@
     "Udaipur": [
       {
         "handle": "@UdaipurPolice",
+        "handle_type": "district",
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/UdaipurPolice",
@@ -718,6 +809,7 @@
       },
       {
         "handle": "@UdaipurDm",
+        "handle_type": "district",
         "role": "collector",
         "verified": true,
         "source": "https://api.fxtwitter.com/UdaipurDm",

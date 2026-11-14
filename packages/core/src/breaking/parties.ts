@@ -19,6 +19,7 @@
 
 import { fold } from "../fold";
 import { HANDLE } from "./syntax";
+import { addHandleType, handleTypeProblem, type HandleType } from "./handle-types";
 
 /** One entry of party-handles.json */
 export interface PartyHandleEntry {
@@ -33,6 +34,8 @@ export interface PartyHandleEntry {
    * An "mla" (a member's own handle) is only ever OFFERED, verified or not, and is not the party (pickMlaHandles).
    */
   scope?: string;
+  /** institution / person / district (handle-types.ts): a party or wing is "institution", an MLA "person" */
+  handle_type: HandleType;
   keywords_hi?: string[];
   keywords_en?: string[];
   verified: boolean;
@@ -76,6 +79,8 @@ export interface PartyRules {
   mla?: PartyRule[];
   /** Every handle in the file, verified or not, lower-cased without the @ (the desk-handles guard) */
   handles?: ReadonlySet<string>;
+  /** Each entry's handle_type, lower-cased handle without the @; a rejected entry has none */
+  types?: ReadonlyMap<string, HandleType>;
 }
 
 export const EMPTY_PARTY_RULES: PartyRules = { rules: [], count: 0 };
@@ -108,6 +113,7 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
   const rules: PartyRule[] = [];
   const mla: PartyRule[] = [];
   const handles = new Set<string>();
+  const types = new Map<string, HandleType>();
   root.entries.forEach((raw, i) => {
     const e = raw as Partial<PartyHandleEntry> | null;
     const where = `entries[${i}]`;
@@ -122,6 +128,9 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
     const scope = e.scope.trim().toLowerCase();
     if (!SCOPES.has(scope)) return problem(`${who}: unknown scope "${e.scope}", entry rejected (one of ${PARTY_SCOPES.join(", ")})`);
     if (typeof e.party !== "string" || !e.party.trim()) return problem(`${who}: "party" is missing, entry rejected`);
+    const badType = handleTypeProblem(e.handle_type);
+    if (badType) return problem(`${who}: ${badType}, entry rejected`);
+    addHandleType(types, e.handle, e.handle_type!);
     if (typeof e.verified !== "boolean") return problem(`${who}: "verified" must be true or false, entry rejected`);
     if (badKeywords(e.keywords_hi)) return problem(`${who}: "keywords_hi" must be a list of strings, entry rejected`);
     if (badKeywords(e.keywords_en)) return problem(`${who}: "keywords_en" must be a list of strings, entry rejected`);
@@ -141,7 +150,7 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
       phrases: keys.filter((k) => k.includes(" ")),
     });
   });
-  return { rules, count: rules.length, mla, handles };
+  return { rules, count: rules.length, mla, handles, types };
 }
 
 /** The rules of a list the text names: tokens as whole words, phrases as substrings of the folded text */

@@ -5,8 +5,8 @@
 
 import {
   DataFileRejected, EMPTY_BEAT_RULES, EMPTY_HANDLE_RULES, EMPTY_NORMALISER, EMPTY_PARTY_RULES, EMPTY_REPORTER_RULES, EMPTY_SUBJECT_RULES, EMPTY_SUGGEST_RULES, PlaceBook,
-  parseBeatHandles, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules,
-  type BeatRules, type HandleRules, type PartyRules, type ReporterRules, type SubjectRules, type SuggestRules, type TagNormaliser,
+  mergeHandleTypes, parseBeatHandles, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules,
+  type BeatRules, type HandleRules, type HandleType, type PartyRules, type ReporterRules, type SubjectRules, type SuggestRules, type TagNormaliser,
 } from "@socia/core";
 import type { DataFileStatus } from "@socia/db";
 import { readFileSync } from "node:fs";
@@ -170,6 +170,8 @@ interface DirectoryInfo {
   bound: Set<string>;
   /** The CM's office-alias handles and the state government's: no beat may carry them */
   stateHandles: Set<string>;
+  /** Each directory handle's handle_type (R2): a reporter's prior keeps institution handles only */
+  types: Map<string, HandleType>;
   /** Every source was read from its file: false when one could not be (it then adds nothing) */
   complete: boolean;
 }
@@ -202,15 +204,41 @@ function directoryInfo(files: DirectorySources, env: NodeJS.ProcessEnv, log: Log
     directory: new Set([...lc(handles?.all), ...lc(subjects?.handles), ...lc(parties?.handles), ...lc(reporters?.handles)]),
     bound: new Set(lc(handles?.bound)),
     stateHandles: new Set([...lc(handles?.state.government), ...lc(handles?.state.cm), ...(subjects?.offices ?? []).flatMap((o) => lc(o.handles))]),
+    types: mergeHandleTypes(handles?.types, subjects?.types, parties?.types, reporters?.types),
     complete,
   };
+}
+
+/**
+ * The directory's INSTITUTION handles (R2), lower-cased without the @, read from the four directory files now: the
+ * only handles the nightly reporter features list as prior candidates. Read on each call (once a day), so it needs no
+ * pipeline role. A file that cannot be read adds nothing and is logged; a handle two files disagree about takes the
+ * more restrictive type (mergeHandleTypes), so a broken or disputed entry can only leave a handle OUT.
+ */
+export function institutionHandles(log: Logger, env = process.env): Set<string> {
+  const read = <T>(name: string, path: string, parse: (j: unknown) => T): T | null => {
+    try {
+      return parse(JSON.parse(readFileSync(path, "utf8")));
+    } catch (err) {
+      log.warn({ err, file: name, path }, "directory file could not be read for the nightly prior candidates; its institutions are left out");
+      return null;
+    }
+  };
+  const types = mergeHandleTypes(
+    read("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j))?.types,
+    read("subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j) => parseSubjectHandles(j))?.types,
+    read("parties", env.PARTY_HANDLES_FILE ?? PARTY_HANDLES_FILE, (j) => parsePartyHandles(j))?.types,
+    read("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j) => parseReporterHandles(j))?.types,
+  );
+  return new Set([...types].filter(([, t]) => t === "institution").map(([h]) => h));
 }
 
 export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process.env): PhaseOneData {
   const placesPath = env.PLACES_FILE ?? PLACES_FILE;
   const places = new JsonDataFile("places", placesPath, (j, problem) => new PlaceBook(parsePlacesData(j, problem)), log, undefined, onStatus);
   // No handles file: posts go out without handles rather than wait
-  const handles = new JsonDataFile("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j) => parseHandleRules(j), log, EMPTY_HANDLE_RULES, onStatus);
+  // An entry without a valid handle_type is rejected alone and reported (R2); the rest of the file loads
+  const handles = new JsonDataFile("handles", env.DISTRICT_HANDLES_FILE ?? DISTRICT_HANDLES_FILE, (j, problem) => parseHandleRules(j, problem), log, EMPTY_HANDLE_RULES, onStatus);
   // No subjects file (or a broken one at start): no subject handles
   const subjects = new JsonDataFile("subjects", env.SUBJECT_HANDLES_FILE ?? SUBJECT_HANDLES_FILE, (j, problem) => parseSubjectHandles(j, problem), log, EMPTY_SUBJECT_RULES, onStatus);
   // No reporters file: posts go out without a byline rather than wait
@@ -222,7 +250,8 @@ export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process
   const reporters = new JsonDataFile("reporters", env.REPORTER_HANDLES_FILE ?? REPORTER_HANDLES_FILE, (j, problem) => {
     const d = directoryInfo({ handles, subjects, parties }, env, log);
     if (!d.complete) problem("a directory file could not be read, so the prior's handles were checked against police and collectors only");
-    return parseReporterHandles(j, problem, d.complete ? { directory: d.directory, bound: d.bound } : { bound: d.bound });
+    // A prior handle that is not an institution is dropped from the prior and reported (R2); the entry still loads
+    return parseReporterHandles(j, problem, d.complete ? { directory: d.directory, bound: d.bound, types: d.types } : { bound: d.bound });
   }, log, EMPTY_REPORTER_RULES, onStatus);
   return {
     places,
@@ -233,7 +262,7 @@ export function phaseOneData(log: Logger, onStatus?: OnDataStatus, env = process
     // No beats file (or one naming a handle in no directory file): no declared-beat suggestions
     beats: new JsonDataFile("beats", env.BEAT_HANDLES_FILE ?? BEAT_HANDLES_FILE, (j, problem) => {
       const d = directoryInfo({ handles, subjects, parties, reporters }, env, log);
-      return parseBeatHandles(j, d.directory, { bound: d.bound, stateHandles: d.stateHandles, reporters: reporters.loaded() ?? undefined, problem });
+      return parseBeatHandles(j, d.directory, { bound: d.bound, stateHandles: d.stateHandles, types: d.types, reporters: reporters.loaded() ?? undefined, problem });
     }, log, EMPTY_BEAT_RULES, onStatus),
     // No normalise file: typos stay as the desk typed them (still flagged near the brand tags)
     normalise: new JsonDataFile("normalise", env.HASHTAG_NORMALISE_FILE ?? HASHTAG_NORMALISE_FILE, (j, problem) => parseHashtagNormalise(j, problem, placeTags(places, placesPath)), log, EMPTY_NORMALISER, onStatus),

@@ -15,3 +15,4 @@ export * from "./post-tags";
 export * from "./proposals";
 export * from "./prior";
 export * from "./offices";
+export * from "./handle-types";

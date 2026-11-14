@@ -61,13 +61,16 @@ export const DAY_FLOORS = {
   nov10: { date: "2026-11-10", posts: 602, exact: 514 as number | null },
   nov11: { date: "2026-11-11", posts: 307, exact: 208 as number | null },
   nov12: { date: "2026-11-12", posts: 193, exact: 161 as number | null },
-  // TODO(FL4): the 13 Nov export is not available yet. When it arrives, add it to REPLAY_DAYS (or the exports
-  // dir), run the CLI, and set `posts` and `exact` from the measured numbers.
-  nov13: { date: "2026-11-13", posts: null as number | null, exact: null as number | null },
+  // The eighth day (Changes #2, 14 Nov): measured on the final code with the export the owner attached
+  // (1stIndiaNews_tweets_2026-11-13_1.json, passed as REPLAY_DAYS nov13=<path>): 35 posts, 32 exact, precision 97.44%
+  nov13: { date: "2026-11-13", posts: 35, exact: 32 as number | null },
 } as const;
 /** A day fails only below (exact − EXACT_TOLERANCE) exact-set posts */
 export const EXACT_TOLERANCE = 2;
-/** Pooled precision measured on the seven floored days after the fixes: 95.88% (3164/3300 tags), minus PRECISION_MARGIN (0.5 pp ≈ 16 tags). Blocks. */
+/**
+ * Pooled precision measured on the seven floored days after the fixes: 95.88% (3164/3300 tags), minus PRECISION_MARGIN
+ * (0.5 pp ≈ 16 tags). Blocks. Kept as it was when nov13 joined (14 Nov): the eight days pool at 95.90% (3202/3339).
+ */
 export const POOLED_PRECISION_FLOOR = 0.9538;
 export const PRECISION_MARGIN = 0.005;
 /** Per-day precision below this only warns */

@@ -1,6 +1,6 @@
 // The replay gate (fix prompt FL2–FL4). One test per capture day plus one pooled-precision test. A day whose
 // export is not on this machine is SKIPPED with its path in the test name — it never passes silently — and
-// REPLAY_STRICT=1 makes a missing FLOORED day fail. A day with no floor yet (nov13) is skipped with a "missing
+// REPLAY_STRICT=1 makes a missing FLOORED day fail. A day with no floor yet (none since nov13 got one on 14 Nov) is skipped with a "missing
 // export" note. Exact-set floors are post counts with a tolerance and always fail; per-day precision only warns;
 // pooled precision blocks. Floors and where the exports are: see day-replay.ts.
 
@@ -98,9 +98,11 @@ describe("replay harness mechanics", () => {
     expect(r.warnings.join()).toMatch(/precision 90\.00% < 94\.00%/);
   });
 
-  it("nov13 has no floor and is never gated", () => {
-    expect(isFloored("nov13")).toBe(false);
-    expect(floorCheck(fake("nov13", 0)).failures).toEqual([]);
+  it("nov13 is the eighth floored day: 35 posts, at least 32 exact, failing below 30", () => {
+    expect(isFloored("nov13")).toBe(true);
+    expect(DAY_FLOORS.nov13).toMatchObject({ posts: 35, exact: 32 });
+    expect(floorCheck(fake("nov13", 30)).failures).toEqual([]);
+    expect(floorCheck(fake("nov13", 29)).failures).toHaveLength(1);
   });
 
   it("pooled precision blocks on the full floored set, warns on a subset", () => {
@@ -110,7 +112,7 @@ describe("replay harness mechanics", () => {
     expect(sub.failures).toEqual([]);
     expect(sub.warnings).toHaveLength(1);
     expect(pooledCheck(poolPrecision(all.slice(0, 2)), { REPLAY_STRICT: "1" }).failures).toHaveLength(1);
-    // A day with no floor never enters the pool
-    expect(poolPrecision([fake("nov13", 0, 0, 100)]).got).toBe(0);
+    // Every day is floored now, nov13 included, so every day enters the pool
+    expect(poolPrecision([fake("nov13", 0, 0, 100)]).got).toBe(100);
   });
 });

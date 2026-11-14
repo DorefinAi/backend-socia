@@ -90,11 +90,11 @@ const handleFields = (b: HandleFields) => ({
 
 /**
  * Refuses a Settings handle that could only be matched by guessing (handle fixes F1): an organisation, person or party
- * needs at least one keyword or name of its own to match on, in `aliases` (3 letters or more).
+ * needs at least one keyword in `aliases` (3 letters or more), besides its name: a bare name like "Jaipur" alone would match every Jaipur story.
  */
 function requireKeywords(type: SettingsHandleType, aliases: readonly string[]): void {
   if (DISTRICT_MATCHED_TYPES.has(type) || aliases.some(usableHandleName)) return;
-  throw new HttpError(400, "keywords_required", `A ${type} handle needs at least one keyword or name (3 letters or more) to be matched on, e.g. मेट्रो, Metro, जयपुर मेट्रो.`);
+  throw new HttpError(400, "keywords_required", `A ${type} handle needs at least one keyword (3 letters or more) in its keywords list, besides its name, e.g. मेट्रो, Metro, जयपुर मेट्रो.`);
 }
 
 

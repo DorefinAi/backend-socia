@@ -73,6 +73,7 @@ export async function handlePostedUses(db: Db, orgId: string, handles: readonly 
     FROM unnest(ARRAY[${sql.join(plain.map((k) => sql`${k}`), sql`, `)}]::text[]) AS h(handle)
     LEFT JOIN ${publishedPosts} p
       ON p.org_id = ${orgId} AND p.recalled_at IS NULL
+     AND strpos(lower(p.text), '@' || h.handle) > 0
      AND p.text ~* ('(^|[^A-Za-z0-9_])@' || h.handle || '([^A-Za-z0-9_]|$)')
     GROUP BY h.handle`);
   for (const r of res.rows) out.set(r.handle, Number(r.n));

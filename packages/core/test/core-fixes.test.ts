@@ -160,17 +160,18 @@ describe("O3: composePostTags applies rituraj's rule as composeBreaking does", (
     expect(withRule.trail).toEqual([BRAND_NATIONAL]);
     expect(withRule.trail).toEqual(composePostTags(text, without).trail);
   });
-  it("what the desk wrote blocks it: a place tag (#JodhpurNews), its own tag run (#BJP:), a place before the colon", () => {
+  it("what the desk wrote blocks it: a place tag (#JodhpurNews), its own tag run with a place (#BJP #Kota:), a place before the colon", () => {
     for (const text of [
       "ग्राम पंचायत में पुनर्मतदान\n\nमतपत्र चोरी के चलते फैसला #JodhpurNews\n\n#RajasthanWithFirstIndia",
-      "#BJP: प्रदेश कार्यकारिणी की बैठक\n\nनेताओं ने भाग लिया\n\n#RajasthanWithFirstIndia",
+      "#BJP #Kota: प्रदेश कार्यकारिणी की बैठक\n\nनेताओं ने भाग लिया\n\n#RajasthanWithFirstIndia",
       "रामपुरा खुर्द: ग्रामीणों का प्रदर्शन\n\nपानी की समस्या\n\n#RajasthanWithFirstIndia",
     ]) {
       const t = composePostTags(text, ctx);
       expect(t.policy, text).toBeNull();
       expect(t.lead, text).not.toContain("Jaipur");
     }
-    // A label before the colon does not
+    // A label before the colon does not, nor a run of party tags only (handle fixes F10): #Jaipur goes in front of it
+    expect(composePostTags("#BJP: प्रदेश कार्यकारिणी की बैठक\n\nनेताओं ने भाग लिया\n\n#RajasthanWithFirstIndia", ctx).lead).toEqual(["Jaipur", "BJP"]);
     expect(composePostTags("पंचायत चुनाव: सुबह 10 बजे तक 20 प्रतिशत मतदान\n\nलंबी कतारें\n\n#RajasthanWithFirstIndia", ctx).lead).toEqual(["Jaipur"]);
   });
   it("parity: on the same copy the reference composer and composeBreaking fire (or not) together", () => {

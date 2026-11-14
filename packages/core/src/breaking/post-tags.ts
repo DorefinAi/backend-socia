@@ -612,14 +612,20 @@ export function composePostTags(text: string, ctx: PostTagContext): PostTags {
   // The reporter's desk rule, as composeBreaking applies it: only what the desk WROTE blocks it — a place in any slot,
   // its own leading tag run (format A), a place before the headline's colon. The gazetteer's inference does not (user
   // decision, 13 Nov). Video format has no leading run, so there it is offered in the trailing run instead.
-  const deskWrotePlace = format === "A" || !!slot || namesAPlace(s, ctx) || (ctx.deskPlacePrefix?.(s.headline) ?? false);
+  // A leading run of party, topic or label tags only ("#BJP:") is not a place (handle fixes F10): the rule still applies,
+  // in front of it. A Hindi lead tag counts as a place, known or not, as in composeBreaking.
+  const leadIsPlace = s.lead.some((t) => isDevanagari(t) || tagPlace(normaliseTag(t, ctx.normaliser).tag, ctx.places) !== null || !!ctx.leadTagDistrict?.(t));
+  // slotDistrict takes a Latin lead tag as the slot whatever it is: "#BJP" there is not a place either
+  const slotIsPlace = !!slot && (!s.lead[0] || isDevanagari(s.lead[0]) || leadIsPlace);
+  const deskWrotePlace = (format === "A" && leadIsPlace) || slotIsPlace || namesAPlace(s, ctx) || (ctx.deskPlacePrefix?.(s.headline) ?? false);
   const policyTag = ctx.reporterPolicy && !deskWrotePlace ? ctx.reporterPolicy : null;
   const policy: PostTags["policy"] = policyTag ? (video ? "suggest" : "emit") : null;
   const lead: string[] = [];
+  if (policy === "emit") lead.push(policyTag!);
   if (format === "A") {
     lead.push(leadNorm[0]!);
     if (leadNorm[1] && isDevanagari(leadNorm[1])) lead.push(leadNorm[1]);
-  } else if (policy === "emit") lead.push(policyTag!);
+  }
   // The desk rule's tag means "filed from that desk", not where the story is: it never decides the brand
   // A Hindi leading tag the town→district table knows ("#किशनगढ़:") decides as its district would (N3)
   const lead0 = format === "A" ? leadNorm[0]! : null;

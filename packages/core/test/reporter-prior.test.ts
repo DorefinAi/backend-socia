@@ -420,15 +420,19 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(withRule.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
     expect(withRule.hashtags).toEqual(without.hashtags);
   });
-  it("A2: the desk's own tag run ('#BJP: ...') is left as written: no #Jaipur, no reporter_policy, footer by the story", () => {
+  it("A2 (as handle fixes F10 changed it): a party tag run ('#BJP: ...') is kept and does not fill the district slot: #Jaipur goes in front", () => {
     const { d } = draft(fileFor("RITURAJ"), ["#BJP: प्रदेश कार्यकारिणी की बैठक", "नेताओं ने भाग लिया"]);
-    expect(d.bodyText.startsWith("#BJP: ")).toBe(true);
-    expect(d.bodyText).not.toContain("#Jaipur");
-    expect(d.districtSource).toBeNull();
-    expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
+    expect(d.bodyText.startsWith("#Jaipur: #BJP: ")).toBe(true);
+    expect(d.districtSource).toBe("reporter_policy");
+    expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(true);
+    // A run with a place in it is still the desk's line 1, as written
+    const placed = draft(fileFor("RITURAJ"), ["#BJP #Kota: प्रदेश कार्यकारिणी की बैठक", "नेताओं ने भाग लिया"]).d;
+    expect(placed.bodyText.startsWith("#BJP #Kota: ")).toBe(true);
+    expect(placed.districtSource).toBeNull();
+    // The rule is a line-1 hashtag only: it never changes the footer (a place the gazetteer finds in the text does not block it)
     const nws = composeBreaking({ headline: "#BJP: दिल्ली में बैठक", points: ["नेताओं ने भाग लिया"], district: null, town: null, rajasthan: false, leaderPost: false, reporterToken: "RITURAJ" }, rules, book, { subjects, reporters, parties, beats });
     expect(nws.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
-    expect(nws.districtSource).toBeNull();
+    expect(nws.bodyText.startsWith("#Jaipur: #BJP: ")).toBe(true);
   });
   it("A3: a video-format breaking headline takes no leading tag; #Jaipur is offered, marked reporter_policy", () => {
     const { d } = draft(fileFor("RITURAJ"), ["नए दिशा-निर्देश जारी | Rajasthan News", "सभी विभागों को आदेश"]);

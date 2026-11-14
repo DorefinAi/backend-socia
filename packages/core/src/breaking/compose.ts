@@ -22,7 +22,7 @@ import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
 import { deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, type DistrictFrom } from "./parse";
 import {
-  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand,
+  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, isDevanagari, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand,
   BRAND_RAJASTHAN, type PlaceKind, type PlaceKindLookup, type Sourced, type SuggestRules, type TagNormaliser,
 } from "./post-tags";
 import type { StoryClass } from "./storyclass";
@@ -539,8 +539,13 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // The headline's district tags (two districts: a conflict when none was taken as stated)
   const headlineTags = place ? [] : headlineDistrictTags(book, story.rawHeadline ?? story.headline);
   const headline = story.headline.normalize("NFC").replace(/\s+/g, " ").trim();
-  // The desk's own tag run kept in the headline ("#Congress #Kota: ...", "#BJP: ..."): line 1 as written, no tags added
-  const deskRun = DESK_TAG_RUN.test(headline);
+  // The desk's own tag run kept in the headline ("#Congress #Kota: ...", "#BJP: ..."). With a place in it, line 1 is
+  // as written and no tag is added. A run of party, topic or label tags only ("#BJP:", "#Congress #INC:") does not
+  // fill the district slot (handle fixes F10): the stated district or a reporter's desk rule still goes in front of it
+  // ("#Jaipur: #BJP: ..."), the text's district is still offered, and the desk's tags stay where it wrote them. A Hindi
+  // tag in the run counts as a place, known or not ("#आकोला:"): the desk writes its towns that way.
+  const deskRunMatch = DESK_TAG_RUN.exec(headline);
+  const deskRun = !!deskRunMatch && [...deskRunMatch[0].matchAll(HASHTAG)].some((m) => m[1] !== undefined && (isDevanagari(m[1]) || placeOfTag(book, m[1]) !== null));
   // A reporter's desk rule (reporter-prior brief §4): rituraj's post that names no district goes out as "#Jaipur:".
   // It means "filed from the Jaipur desk", not "happened in Jaipur" (his Jodhpur panchayat story went out as
   // #JaipurNews), so it is a line-1 hashtag and NOTHING ELSE: it was not in the picker's district above, never

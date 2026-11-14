@@ -27,6 +27,8 @@ const RELOAD_MS = 60_000;
  * stories composed up to this long after. The counts scan published_posts, so they are not read once per story.
  */
 export const POSTED_USES_MS = 5 * 60_000;
+/** After a failed posted-count read, how soon it is tried again */
+export const POSTED_USES_RETRY_MS = 30_000;
 
 /** The data files a Settings handle's keywords are checked against, and their versions as one string */
 export interface DeskRuleFiles {
@@ -44,7 +46,7 @@ export class Dictionaries {
   /** Published posts carrying each Settings handle (lower-cased, no @), and which rows they were counted for */
   private posted: { rows: string; at: number; value: Map<string, number> } | null = null;
 
-  constructor(private readonly db: Db, private readonly orgId: string) {}
+  constructor(private readonly db: Db, private readonly orgId: string, private readonly log?: Logger) {}
 
   private async load() {
     if (this.cached && Date.now() - this.cached.at < RELOAD_MS) return this.cached;
@@ -95,7 +97,8 @@ export class Dictionaries {
 
   /**
    * How many published posts carry each Settings handle (G4: the posted count that ends suggest-only), read again when
-   * the rows change or after POSTED_USES_MS. A failed read keeps the last counts, or none: every row stays suggest-only.
+   * the rows change or after POSTED_USES_MS. A failed read never stops a draft: it keeps the last counts for the same
+   * rows, or none (every Settings row stays suggest-only), and is tried again after POSTED_USES_RETRY_MS.
    */
   private async postedUses(rows: readonly DirectoryHandleRow[]): Promise<Map<string, number>> {
     if (!rows.length) return new Map();
@@ -106,8 +109,11 @@ export class Dictionaries {
       this.posted = { rows: key, at: Date.now(), value };
       return value;
     } catch (err) {
-      if (this.posted?.rows === key) return this.posted.value;
-      throw err;
+      this.log?.warn({ err }, "Settings handles: posted count not read; they stay suggest-only for now");
+      const value = this.posted?.rows === key ? this.posted.value : new Map<string, number>();
+      // Retry soon, not on every story: the entry looks POSTED_USES_RETRY_MS short of expiring
+      this.posted = { rows: key, at: Date.now() - POSTED_USES_MS + POSTED_USES_RETRY_MS, value };
+      return value;
     }
   }
 

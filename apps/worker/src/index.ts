@@ -197,7 +197,7 @@ async function main(): Promise<void> {
 
   if (cfg.roles.includes("pipeline")) {
     const log = stageLog("ingest");
-    const dictionaries = new Dictionaries(db, cfg.orgId);
+    const dictionaries = new Dictionaries(db, cfg.orgId, log);
     const data = phaseOneData(log, (status) => recordDataFileStatus(db, status));
     const composeOpts = { cardOnDemand: cfg.phase === 1, data, exploreRate: cfg.reporterPrior.exploreRate };
     loops.start({ name: "convert", idleMs: 1000, log, tick: () => convertNext(db, storage!, log, data) });

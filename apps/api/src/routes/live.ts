@@ -18,8 +18,10 @@
 //                               under a correction hold: 409 { ok: false, error: "correcting" }.
 //
 // A stream lives only as long as its session: access.changed closes it at once, and every recheckMs the open
-// streams' sessions are checked again (gone, expired, user deactivated, or the user's platforms changed since the
-// stream opened → closed). At most MAX_STREAMS_PER_USER streams per user; a new one closes the oldest.
+// streams' sessions are checked again (gone, expired, user deactivated, or the user's platforms or permissions
+// changed since the stream opened → closed; the browser reconnects under the new ones). At most MAX_STREAMS_PER_USER
+// streams per user; a new one closes the oldest. At most STREAM_OPENS_PER_MIN opens per user in a sliding minute
+// (429 rate_limited beyond; the probe does not count).
 
 import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
@@ -27,7 +29,7 @@ import { Type } from "@fastify/type-provider-typebox";
 import { postDrafts } from "@socia/db";
 import { and, eq } from "drizzle-orm";
 import type { FastifyReply } from "fastify";
-import { HttpError, guard, liveSessionIds, type SessionUser } from "../auth";
+import { HttpError, guard, livePermissionHashes, liveSessionIds, permissionHash, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
 import { createEventFeed, type FeedEvent } from "../events";
 import { PresenceHub, type LiveClient, type PresenceResult } from "../presence";
@@ -50,6 +52,8 @@ export interface LiveOptions {
   takeoverCooldownMs?: number;
   recheckMs?: number;
   maxStreamsPerUser?: number;
+  /** presence.ts: stream opens per person per minute */
+  streamOpensPerMin?: number;
 }
 
 const STATUS: Record<string, number> = {
@@ -90,6 +94,8 @@ const STREAM_HEADERS = {
 interface Stream {
   client: LiveClient;
   ping(): void;
+  /** permissionHash of the user's permissions when the stream opened */
+  permHash: string;
 }
 
 const samePlatforms = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join("\n") === [...b].sort().join("\n");
@@ -116,6 +122,7 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
     refreshMs: opts.refreshMs,
     throttleMs: opts.throttleMs,
     takeoverCooldownMs: opts.takeoverCooldownMs,
+    streamOpensPerMin: opts.streamOpensPerMin,
     mayTakeOver,
   });
   const streams = new Map<string, Stream>();
@@ -158,13 +165,15 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
   const recheck = setInterval(() => {
     if (checking || !streams.size) return;
     checking = true;
-    const open = [...streams.values()].map((s) => s.client);
-    void liveSessionIds(db, [...new Set(open.map((c) => c.sessionId))])
-      .then((live) => {
-        for (const c of open) {
+    const open = [...streams.values()];
+    const ids = [...new Set(open.map((s) => s.client.sessionId))];
+    void Promise.all([liveSessionIds(db, ids), livePermissionHashes(db, ids)])
+      .then(([live, perms]) => {
+        for (const { client: c, permHash } of open) {
           const now = live.get(c.sessionId);
-          // Gone, or the user's platform scope changed since the stream opened: it reconnects under the new one
-          if (!now || now.platformScoped !== c.user.platformScoped || !samePlatforms(now.platforms, c.user.platforms)) c.close();
+          // Gone, or the user's platform scope or permissions changed since the stream opened: it reconnects under
+          // the new ones
+          if (!now || now.platformScoped !== c.user.platformScoped || !samePlatforms(now.platforms, c.user.platforms) || perms.get(c.sessionId) !== permHash) c.close();
         }
       })
       .catch((err) => app.log.warn({ err }, "could not re-check live stream sessions"))
@@ -200,6 +209,7 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
       return;
     }
 
+    if (!hub.allowOpen(user)) throw new HttpError(429, "rate_limited", "Too many live connections opened. Wait a minute.");
     unsubscribe ??= feed.subscribe(onFeed);
 
     // The ninth stream of a user closes the oldest, which is told so it does not reconnect (and close this one)
@@ -242,7 +252,7 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
       lagging: () => raw.writableLength > LAGGING_BUFFERED,
       close: finish,
     };
-    streams.set(id, { client, ping: () => write(": ping\n\n") });
+    streams.set(id, { client, ping: () => write(": ping\n\n"), permHash: permissionHash(user.permissions) });
     req.raw.on("close", finish);
     raw.on("error", finish);
 

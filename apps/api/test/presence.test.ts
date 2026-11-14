@@ -187,7 +187,8 @@ describe("presence colour and initials", () => {
     await h.db.insert(userPermissionOverrides).values({ userId: uid.noundo!, permission: "post.undo", allowed: false });
 
     const store = new LocalStorage(await mkdtemp(join(tmpdir(), "socia-presence-")), "http://localhost/dev-files");
-    app = await buildApp({ db: h.db, storage: store, config, live: { pingMs: 100, throttleMs: 20, takeoverCooldownMs: 2500, recheckMs: 200 } }, false);
+    app = await buildApp({ db: h.db, storage: store, config, live: { pingMs: 100, throttleMs: 20, takeoverCooldownMs: 2500, recheckMs: 200, streamOpensPerMin: 10_000 } }, false);
+    // (This suite opens far more streams per person than a browser would: the open limit has its own app in N9)
     await app.listen({ port: 0, host: "127.0.0.1" });
     base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
     for (const k of Object.keys(who) as (keyof typeof who)[]) await signIn(who[k], `${k}@test`);
@@ -399,6 +400,8 @@ describe("presence colour and initials", () => {
     const joins = await Promise.all(Array.from({ length: 13 }, () => post(joiner, "join", { draftId: id, mode: "watch" })));
     expect(joins.filter((a) => a.body.ok)).toHaveLength(10);
     expect(joins.filter((a) => a.status === 429)).toHaveLength(3);
+    // The windows outlive the stream (N9): let this second pass before the next test joins as the same people
+    await sleep(1100);
   });
 
   it("passes a take-over request to the holder and the answer back; only the holder may answer", async () => {
@@ -714,6 +717,92 @@ describe("presence colour and initials", () => {
     const id = await draft("n5");
     expect(await send(eight[7]!, "join", { draftId: id, mode: "watch" })).toEqual({ ok: true, mode: "watch" });
     await listSettles(eight[7]!, id, (p) => p.length === 1);
+  });
+
+  it("N9 limits stream opens to 10 per person per minute (429 beyond); probes do not count; closing resets nothing", async () => {
+    // An app with the real limit
+    const limited = await buildApp({ db: h.db, storage: new LocalStorage(await mkdtemp(join(tmpdir(), "socia-n9-")), "http://localhost/dev-files"), config }, false);
+    await limited.listen({ port: 0, host: "127.0.0.1" });
+    const at = `http://127.0.0.1:${(limited.server.address() as AddressInfo).port}`;
+    const acs: AbortController[] = [];
+    const open = async () => {
+      const ac = new AbortController();
+      acs.push(ac);
+      const res = await fetch(`${at}/live/stream`, { headers: { cookie: who.second.cookie }, signal: ac.signal });
+      if (res.status !== 200) await res.text();
+      return res.status;
+    };
+    const probe = async () => {
+      const res = await fetch(`${at}/live/stream?probe=1`, { headers: { cookie: who.second.cookie } });
+      await res.text();
+      return res.status;
+    };
+    try {
+      for (let i = 0; i < 3; i++) expect(await probe()).toBe(200);
+      for (let i = 0; i < 10; i++) expect(await open()).toBe(200);
+      expect(await open()).toBe(429);
+      // Probes still answer, and count for nothing
+      expect(await probe()).toBe(200);
+      // Every stream closed: the window is kept, so reopening is still refused
+      for (const ac of acs) ac.abort();
+      await sleep(150);
+      expect(await open()).toBe(429);
+      // Another person has a window of their own
+      const res = await fetch(`${at}/live/stream`, { headers: { cookie: who.watcher.cookie }, signal: (acs[acs.length] = new AbortController()).signal });
+      expect(res.status).toBe(200);
+    } finally {
+      for (const ac of acs) ac.abort();
+      await limited.close();
+    }
+  });
+
+  it("N9 keeps a person's rate windows after their last stream closes, and sweeps them once idle", async () => {
+    const hub = new PresenceHub({ db: h.db, log: { warn: () => undefined }, streamOpensPerMin: 2, rateIdleMs: 300, rateSweepMs: 50 });
+    const rates = (hub as unknown as { rates: Map<string, unknown> }).rates;
+    try {
+      const user = { id: uid.second!, orgId, name: "Second", platformScoped: true, platforms: ["x"] } as unknown as LiveClient["user"];
+      const mk = (): LiveClient => ({ id: crypto.randomUUID(), user, sessionId: "s", platform: "x", send: () => undefined, lagging: () => false, close: () => undefined });
+      expect(hub.allowOpen(user)).toBe(true);
+      const a = mk();
+      hub.connect(a);
+      expect(hub.allowOpen(user)).toBe(true);
+      const b = mk();
+      hub.connect(b);
+      expect(hub.allowOpen(user)).toBe(false);
+      hub.disconnect(a.id);
+      hub.disconnect(b.id);
+      // Not deleted on close: the open limit still holds
+      expect(rates.has(uid.second!)).toBe(true);
+      expect(hub.allowOpen(user)).toBe(false);
+      await sleep(150);
+      expect(rates.has(uid.second!)).toBe(true);
+      // Idle past rateIdleMs: the sweep drops them
+      await sleep(400);
+      expect(rates.has(uid.second!)).toBe(false);
+      // A person with an open stream is never swept
+      const c = mk();
+      hub.connect(c);
+      await sleep(450);
+      expect(rates.has(uid.second!)).toBe(true);
+      hub.disconnect(c.id);
+    } finally {
+      hub.close();
+    }
+  });
+
+  it("N11 the session re-check closes a stream whose user's permissions changed (no event), and only that one", async () => {
+    const changed = await stream(who.mover);
+    const bystander = await stream(who.watcher);
+    // A stream re-opened after the change carries the new permissions and stays open
+    await h.db.insert(userPermissionOverrides).values({ userId: uid.mover!, permission: "draft.card", allowed: false });
+    try {
+      expect(await closes(changed)).toBe(true);
+      const reopened = await stream(who.mover);
+      expect(await closes(reopened, 600)).toBe(false);
+      expect(await closes(bystander, 100)).toBe(false);
+    } finally {
+      await h.db.delete(userPermissionOverrides).where(eq(userPermissionOverrides.userId, uid.mover!));
+    }
   });
 
   it("N10 answers pending and cooldown from memory, before any database read", async () => {

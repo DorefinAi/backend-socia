@@ -80,6 +80,18 @@ export const LIST_THROTTLE_MS = 250;
 /** Per person, per second */
 export const RATE_LIMITS = { join: 10, leave: 10, state: 6, request: 3, answer: 5 } as const;
 type RateKind = keyof typeof RATE_LIMITS;
+/** Stream opens per person per minute (GET /live/stream; the probe does not count) */
+export const STREAM_OPENS_PER_MIN = 10;
+/** A person's rate windows are kept this long after their last stream closes, so closing and reopening resets nothing */
+export const RATE_IDLE_MS = 10 * 60_000;
+/** How often windows idle past RATE_IDLE_MS are swept */
+export const RATE_SWEEP_MS = 60_000;
+
+interface Rates {
+  hits: Record<RateKind | "open", number[]>;
+  /** When the person's last stream closed (or the windows were made with none open); null while one is open */
+  idleSince: number | null;
+}
 
 /** Events from the LISTEN fan-out after which a draft's holder is read again */
 const HOLDER_EVENTS = new Set(["draft.claimed", "draft.released", "draft.updated"]);
@@ -153,10 +165,10 @@ interface ClientState {
   mode: Mode;
 }
 
-/** Sliding one-second window: true when another hit is allowed (and records it) */
-function allow(hits: number[], perSec: number, now: number): boolean {
-  while (hits.length && hits[0]! <= now - 1000) hits.shift();
-  if (hits.length >= perSec) return false;
+/** Sliding window (one second unless given): true when another hit is allowed (and records it) */
+function allow(hits: number[], limit: number, now: number, windowMs = 1000): boolean {
+  while (hits.length && hits[0]! <= now - windowMs) hits.shift();
+  if (hits.length >= limit) return false;
   hits.push(now);
   return true;
 }
@@ -181,18 +193,25 @@ export interface PresenceOptions {
    * story is a posted story under a correction hold, which is never taken over. Absent: anyone.
    */
   mayTakeOver?: (user: SessionUser, draftId: string) => Promise<boolean | "correcting">;
+  /** Stream opens per person per minute (STREAM_OPENS_PER_MIN) */
+  streamOpensPerMin?: number;
+  /** How long a person's rate windows outlive their last stream (RATE_IDLE_MS) */
+  rateIdleMs?: number;
+  /** How often idle rate windows are swept (RATE_SWEEP_MS) */
+  rateSweepMs?: number;
 }
 
 export class PresenceHub {
   private readonly clients = new Map<string, ClientState>();
   private readonly drafts = new Map<string, DraftState>();
-  /** userId → rate windows, shared by all of that user's streams; dropped with their last stream */
-  private readonly rates = new Map<string, Record<RateKind, number[]>>();
+  /** userId → rate windows, shared by all of that user's streams; swept RATE_IDLE_MS after their last stream closes */
+  private readonly rates = new Map<string, Rates>();
   /** `${draftId}:${userId}` → when that person may ask for that story again; kept across leave and re-join */
   private readonly cooldowns = new Map<string, number>();
   private readonly listTimers = new Map<string, NodeJS.Timeout>();
   private readonly lastList = new Map<string, number>();
   private readonly refreshTimer: NodeJS.Timeout;
+  private readonly sweepTimer: NodeJS.Timeout;
   private readonly throttleMs: number;
 
   constructor(private readonly opts: PresenceOptions) {
@@ -209,6 +228,8 @@ export class PresenceHub {
       }
     }, opts.refreshMs ?? HOLDER_REFRESH_MS);
     this.refreshTimer.unref();
+    this.sweepTimer = setInterval(() => this.sweepRates(), opts.rateSweepMs ?? RATE_SWEEP_MS);
+    this.sweepTimer.unref();
   }
 
   // ─── Clients ───────────────────────────────────────────────────────────────
@@ -220,6 +241,7 @@ export class PresenceHub {
   /** A new stream: registered, then given the current list */
   connect(client: LiveClient): void {
     this.clients.set(client.id, { client, draftId: null, mode: "watch" });
+    this.ratesOf(client.user.id).idleSince = null;
     client.send("presence.list", { stories: this.storiesFor(client.user.orgId, client.platform) });
   }
 
@@ -230,13 +252,38 @@ export class PresenceHub {
     this.leaveCurrent(c);
     this.clients.delete(clientId);
     const userId = c.client.user.id;
-    if (![...this.clients.values()].some((o) => o.client.user.id === userId)) this.rates.delete(userId);
+    // The windows stay (closing and reopening resets nothing); the sweep drops them once idle long enough
+    if (!this.hasStream(userId)) this.ratesOf(userId).idleSince = Date.now();
+  }
+
+  private hasStream(userId: string): boolean {
+    return [...this.clients.values()].some((o) => o.client.user.id === userId);
+  }
+
+  private ratesOf(userId: string): Rates {
+    let r = this.rates.get(userId);
+    if (!r) {
+      r = { hits: { join: [], leave: [], state: [], request: [], answer: [], open: [] }, idleSince: this.hasStream(userId) ? null : Date.now() };
+      this.rates.set(userId, r);
+    }
+    return r;
   }
 
   private allowed(user: SessionUser, kind: RateKind): boolean {
-    let r = this.rates.get(user.id);
-    if (!r) this.rates.set(user.id, (r = { join: [], leave: [], state: [], request: [], answer: [] }));
-    return allow(r[kind], RATE_LIMITS[kind], Date.now());
+    return allow(this.ratesOf(user.id).hits[kind], RATE_LIMITS[kind], Date.now());
+  }
+
+  /** A stream may be opened (and the open is counted): at most streamOpensPerMin per person in a sliding minute */
+  allowOpen(user: SessionUser): boolean {
+    return allow(this.ratesOf(user.id).hits.open, this.opts.streamOpensPerMin ?? STREAM_OPENS_PER_MIN, Date.now(), 60_000);
+  }
+
+  /** Drops the windows of people with no stream whose last one closed at least rateIdleMs ago */
+  sweepRates(now = Date.now()): void {
+    const idleMs = this.opts.rateIdleMs ?? RATE_IDLE_MS;
+    for (const [userId, r] of this.rates) {
+      if (r.idleSince !== null && now - r.idleSince >= idleMs && !this.hasStream(userId)) this.rates.delete(userId);
+    }
   }
 
   // ─── presence.list ─────────────────────────────────────────────────────────
@@ -569,6 +616,7 @@ export class PresenceHub {
 
   close(): void {
     clearInterval(this.refreshTimer);
+    clearInterval(this.sweepTimer);
     for (const t of this.listTimers.values()) clearTimeout(t);
     this.listTimers.clear();
   }

@@ -174,3 +174,35 @@ export function legacyAccess(user: SessionUser) {
     canManageUsers: can(user, "users.manage"),
   };
 }
+
+/** A short fingerprint of a permission set (sorted keys, sha256): equal sets give equal hashes */
+export function permissionHash(permissions: ReadonlySet<PermissionKey>): string {
+  return createHash("sha256").update([...permissions].sort().join("\n")).digest("hex").slice(0, 16);
+}
+
+/**
+ * The permission hash each of these sessions' users has now (role, its stored settings and the user's exceptions,
+ * resolved as loadSession does). A session missing from the map is gone; liveSessionIds says which may stay.
+ */
+export async function livePermissionHashes(db: Db, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const rows = await db
+      .select({
+        id: sessions.id,
+        role: users.role,
+        builtIn: roles.builtIn,
+        roleRows: sql<PermissionSetting[]>`coalesce((SELECT json_agg(json_build_object('permission', ${rolePermissions.permission}, 'allowed', ${rolePermissions.allowed})) FROM ${rolePermissions} WHERE ${rolePermissions.orgId} = ${users.orgId} AND ${rolePermissions.roleKey} = ${users.role}), '[]'::json)`,
+        overrideRows: sql<PermissionSetting[]>`coalesce((SELECT json_agg(json_build_object('permission', ${userPermissionOverrides.permission}, 'allowed', ${userPermissionOverrides.allowed})) FROM ${userPermissionOverrides} WHERE ${userPermissionOverrides.userId} = ${users.id}), '[]'::json)`,
+      })
+      .from(sessions)
+      .innerJoin(users, eq(users.id, sessions.userId))
+      .innerJoin(roles, and(eq(roles.orgId, users.orgId), eq(roles.key, users.role)))
+      .where(inArray(sessions.id, ids.slice(i, i + 500)));
+    for (const r of rows) {
+      const overrides = r.overrideRows.filter((o): o is { permission: PermissionKey; allowed: boolean } => isPermissionKey(o.permission));
+      out.set(r.id, permissionHash(effectivePermissionSet(rolePermissionSet(r.role, r.builtIn, r.roleRows), overrides)));
+    }
+  }
+  return out;
+}

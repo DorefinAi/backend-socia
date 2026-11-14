@@ -3,6 +3,7 @@
 
 import { istDayStart } from "@socia/core";
 import { and, count, eq, sql } from "drizzle-orm";
+import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbHandle } from "../src/client";
 import { recordProposal } from "../src/decisions";
@@ -10,6 +11,7 @@ import {
   DeskError, claimDraft, clearCustomCard, clearExpiredCorrectionHolds, copyPosted, correctionInfo, endCorrection, extendClaim, markPosted, nextIstMidnight,
   postedTodayIst, releaseDraft, releaseExpiredClaims, requestRecall, setCustomCard, startCorrection, undoCopyPosted, updateDraft, type CorrectionRights,
 } from "../src/desk";
+import { EVENTS_CHANNEL } from "../src/events";
 import { completeDelete } from "../src/queue";
 import { auditLog, hashtagStaging, postDecisions, postDrafts, publishJobs, publishedPosts } from "../src/schema";
 import { TEST_URL, freshDb, seed } from "./helpers";
@@ -257,5 +259,40 @@ run("correcting a posted story", () => {
     await claimDraft(h.db, s.amit, d.id);
     await releaseDraft(h.db, s.amit, d.id);
     expect((await draftRow(d.id)).status).toBe("ready");
+  });
+
+  it("every end of a hold sends draft.released, the same as a claim's: release, Done, expiry (also at 00:00 IST)", async () => {
+    const client = new pg.Client({ connectionString: TEST_URL });
+    await client.connect();
+    const got: { type: string; draftId?: string }[] = [];
+    client.on("notification", (n) => got.push(JSON.parse(n.payload!)));
+    await client.query(`LISTEN ${EVENTS_CHANNEL}`);
+    try {
+      const claimed = await s.draft();
+      const [released, done, expired] = [await posted("छोड़ा"), await posted("पूरा"), await posted("समय गया")];
+      const claimExpired = await s.draft();
+      await claimDraft(h.db, s.priya, claimed.id);
+      await claimDraft(h.db, s.priya, claimExpired.id);
+      for (const d of [released, done, expired]) await startCorrection(h.db, s.priya, d.id, OWN);
+      await new Promise((r) => setTimeout(r, 100));
+      const from = got.length;
+
+      await releaseDraft(h.db, s.priya, claimed.id);
+      await releaseDraft(h.db, s.priya, released.id);
+      await endCorrection(h.db, s.priya, done.id, OWN);
+      // The lease ran out (a correction lease is capped at 00:00 IST, so midnight is this same path)
+      await h.db.update(postDrafts).set({ claimExpiresAt: sql`now() - interval '1 second'` }).where(sql`${postDrafts.id} IN (${expired.id}, ${claimExpired.id})`);
+      await releaseExpiredClaims(h.db);
+      await new Promise((r) => setTimeout(r, 150));
+
+      const ends = got.slice(from).filter((e) => e.draftId !== undefined);
+      for (const id of [claimed.id, released.id, done.id, expired.id, claimExpired.id]) {
+        expect(ends.filter((e) => e.draftId === id)).toEqual([{ type: "draft.released", draftId: id, orgId: s.org.id, platform: "x" }]);
+      }
+      // The posted stories stay posted
+      for (const d of [released, done, expired]) expect((await draftRow(d.id)).status).toBe("published");
+    } finally {
+      await client.end();
+    }
   });
 });

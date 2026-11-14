@@ -7,9 +7,13 @@
 // cooldowns, rate-limit windows, the holder cache, e.g. in Redis), since a stream on one instance would not see the
 // people on another.
 //
-// The lock itself stays where it is (post_drafts.claimed_by / claim_expires_at, through the REST API). This module
-// only reads it, to decide who may stream edit.state, and never moves it: a take-over is the holder's browser
-// releasing and the requester's browser claiming, both over REST.
+// The lock itself stays where it is (post_drafts.claimed_by / claim_expires_at, through the REST API). It is one
+// record for both kinds of hold: a claim (status claimed) and a correction hold on a posted story (status published),
+// so a story has at most one holder. This module only reads it, to decide who may stream edit.state, and never moves
+// it: a take-over is the holder's browser releasing and the requester's browser claiming, both over REST. A story
+// under correction cannot be taken over (the correction rules decide who may fix a post, not a request).
+// Whichever way a hold ends (release, Done, expiry, midnight IST), the next read of the record finds no holder and
+// the story's clients get edit.ended.
 //
 // Actions (from POST /live/*), each answering { ok, error?, mode? }. Rate limits are per person (summed over all
 // of that user's streams), in a sliding one-second window:
@@ -18,10 +22,13 @@
 //   state            { draftId, text, selStart, selEnd, version }  holder only           6/s
 //                    text ≤ 2000 chars, no control characters but \n and \t, ≤ MAX_STATE_BYTES as JSON
 //   takeover.request { draftId }   only someone who could take the story; once per 10 s per story   3/s
+//                    never on a posted story under a correction hold: { ok: false, error: "correcting" } (409)
 //   takeover.answer  { draftId, requesterId, accept }               holder only           5/s
 // Events (to clients):
-//   presence.list       { stories: Record<draftId, { userId, name, initials, color, mode }[]> }
-//   edit.state          { draftId, text, selStart, selEnd, version, userId, name, color, at }  (story's clients but the sender)
+//   presence.list       { stories: Record<draftId, { userId, name, initials, color, mode, correcting }[]> }
+//                       correcting: this person holds the story and it is a posted story under a correction hold
+//   edit.state          { draftId, text, selStart, selEnd, version, userId, name, color, at, correcting }
+//                       (story's clients but the sender); correcting: the text is a correction of a posted story
 //   edit.snapshot       same shape, to a watcher that joins
 //   edit.ended          { draftId, userId }
 //   takeover.requested  { draftId, from: { userId, name, color } }
@@ -113,11 +120,15 @@ interface EditState {
   name: string;
   color: string;
   at: string;
+  /** A correction of a posted story (the hold is on a published draft) */
+  correcting: boolean;
 }
 
 interface Holder {
   holderId: string;
   expiresAt: number;
+  /** A correction hold on a posted story (status published), not a claim */
+  correcting: boolean;
 }
 
 interface DraftState {
@@ -165,8 +176,11 @@ export interface PresenceOptions {
   throttleMs?: number;
   takeoverCooldownMs?: number;
   maxStateBytes?: number;
-  /** Whether this user could take the story if the holder let go (routes/live.ts: claim, or correction, rights). Absent: anyone. */
-  mayTakeOver?: (user: SessionUser, draftId: string) => Promise<boolean>;
+  /**
+   * Whether this user could take the story if the holder let go (routes/live.ts: claim rights). "correcting": the
+   * story is a posted story under a correction hold, which is never taken over. Absent: anyone.
+   */
+  mayTakeOver?: (user: SessionUser, draftId: string) => Promise<boolean | "correcting">;
 }
 
 export class PresenceHub {
@@ -228,10 +242,12 @@ export class PresenceHub {
   // ─── presence.list ─────────────────────────────────────────────────────────
 
   private storiesFor(orgId: string, platform: string) {
-    const stories: Record<string, Array<{ userId: string; name: string; initials: string; color: string; mode: Mode }>> = {};
+    type Entry = { userId: string; name: string; initials: string; color: string; mode: Mode; correcting: boolean };
+    const stories: Record<string, Entry[]> = {};
     for (const [draftId, d] of this.drafts) {
       if (d.orgId !== orgId || d.platform !== platform || d.members.size === 0) continue;
-      const people = new Map<string, { userId: string; name: string; initials: string; color: string; mode: Mode }>();
+      const people = new Map<string, Entry>();
+      const fixer = d.holder?.correcting ? d.holder.holderId : null;
       for (const cid of d.members) {
         const c = this.clients.get(cid);
         if (!c) continue;
@@ -240,7 +256,7 @@ export class PresenceHub {
         if (seen) {
           if (c.mode === "edit") seen.mode = "edit";
         } else {
-          people.set(u.id, { userId: u.id, name: u.name, initials: initials(u.name), color: presenceColor(u.id), mode: c.mode });
+          people.set(u.id, { userId: u.id, name: u.name, initials: initials(u.name), color: presenceColor(u.id), mode: c.mode, correcting: u.id === fixer });
         }
       }
       if (people.size) stories[draftId] = [...people.values()];
@@ -288,7 +304,11 @@ export class PresenceHub {
   private setHolder(draftId: string, d: DraftState, next: Holder | null) {
     const prev = d.holder;
     d.holder = next;
-    if ((prev?.holderId ?? null) === (next?.holderId ?? null)) return;
+    if ((prev?.holderId ?? null) === (next?.holderId ?? null)) {
+      // The same holder, another kind of hold (a claim that became a correction): the list says which
+      if (prev && next && prev.correcting !== next.correcting) this.scheduleList(d.orgId);
+      return;
+    }
     d.checkedSenders.clear();
     if (!prev) return;
     let changed = false;
@@ -313,7 +333,7 @@ export class PresenceHub {
 
   private holderOf(row: { status: string; claimedBy: string | null; claimExpiresAt: Date | null }): Holder | null {
     if (!HELD_STATUSES.has(row.status) || !row.claimedBy || !row.claimExpiresAt || row.claimExpiresAt.getTime() <= Date.now()) return null;
-    return { holderId: row.claimedBy, expiresAt: row.claimExpiresAt.getTime() };
+    return { holderId: row.claimedBy, expiresAt: row.claimExpiresAt.getTime(), correcting: row.status === "published" };
   }
 
   /**
@@ -461,6 +481,7 @@ export class PresenceHub {
       name: user.name,
       color: presenceColor(user.id),
       at: new Date().toISOString(),
+      correcting: d.holder!.correcting,
     };
     if (Buffer.byteLength(JSON.stringify(state)) > (this.opts.maxStateBytes ?? MAX_STATE_BYTES)) return { ok: false, error: "too_long" };
 
@@ -485,7 +506,18 @@ export class PresenceHub {
     if (!this.allowed(user, "request")) return { ok: false, error: "rate_limited" };
     if (!isObj(p) || !isId(p.draftId)) return { ok: false, error: "bad_request" };
     const { draftId } = p;
+    const key = `${draftId}:${user.id}`;
+    // Still waiting for an answer: "pending"; asked (and answered, or left) within the cooldown: "cooldown". Both
+    // are answered from memory, before any database read, so asking again and again costs no reads
+    const waiting = (now: number): PresenceResult | null => {
+      const pending = this.drafts.get(draftId)?.takeovers.get(user.id);
+      if (pending && pending > now) return { ok: false, error: "pending" };
+      if ((this.cooldowns.get(key) ?? 0) > now) return { ok: false, error: "cooldown" };
+      return null;
+    };
     if (!this.drafts.has(draftId) || c.draftId !== draftId) return { ok: false, error: "not_joined" };
+    const early = waiting(Date.now());
+    if (early) return early;
     // No holder cached, or its cached lease has run out: read the lock before answering
     const cached = this.drafts.get(draftId)!.holder;
     if (!cached || cached.expiresAt <= Date.now()) await this.refreshHolder(draftId);
@@ -494,16 +526,21 @@ export class PresenceHub {
     const holder = d.holder && d.holder.expiresAt > Date.now() ? d.holder : null;
     if (!holder) return { ok: false, error: "no_holder" };
     if (holder.holderId === user.id) return { ok: false, error: "already_holder" };
-    // Only someone who could take the story may ask: else the holder would let go and nobody could take it
-    if (this.opts.mayTakeOver && !(await this.opts.mayTakeOver(user, draftId))) return { ok: false, error: "forbidden" };
+    // A posted story under correction is never taken over: who may fix a post is the correction rules' call
+    if (holder.correcting) return { ok: false, error: "correcting" };
+    // Only someone who could take the story may ask: else the holder would let go and nobody could take it. This
+    // reads the draft again, so a correction hold the cache has not seen yet is refused as well
+    if (this.opts.mayTakeOver) {
+      const may = await this.opts.mayTakeOver(user, draftId);
+      if (may === "correcting") return { ok: false, error: "correcting" };
+      if (!may) return { ok: false, error: "forbidden" };
+    }
     d = this.drafts.get(draftId);
     if (!d || c.draftId !== draftId) return { ok: false, error: "not_joined" };
     const now = Date.now();
-    const key = `${draftId}:${user.id}`;
-    // Still waiting for an answer: "pending"; asked (and answered, or left) within the cooldown: "cooldown"
-    const pending = d.takeovers.get(user.id);
-    if (pending && pending > now) return { ok: false, error: "pending" };
-    if ((this.cooldowns.get(key) ?? 0) > now) return { ok: false, error: "cooldown" };
+    // Again after the reads: another request let through meanwhile is now the pending one
+    const late = waiting(now);
+    if (late) return late;
     const targets = this.clientsOf(d, holder.holderId);
     if (!targets.length) return { ok: false, error: "holder_away" };
     d.takeovers.set(user.id, now + TAKEOVER_TTL_MS);

@@ -6,10 +6,16 @@
 //                               own events, the org's queue events for that platform (draft.claimed, story.arrived,
 //                               …) and "resync" after the event listener reconnects. ": ping" every 15 s.
 //                               "replaced" {} just before the server closes it for a newer stream of the same user
-//                               (the browser should not reconnect).
+//                               (the browser should not reconnect). Headers: private, no-store, no-transform;
+//                               X-Accel-Buffering: no; sent at once.
+// GET /live/stream?platform=x&probe=1
+//                               a reachability check: the same auth and the same headers, then the response ends.
+//                               No client is registered, it is not counted towards the per-person stream limit and
+//                               never makes another stream "replaced".
 // POST /live/join | /live/leave | /live/state | /live/takeover/request | /live/takeover/answer
 //                               body { clientId, … }, answer { ok, error?, mode? }. The clientId must be a stream
-//                               opened by this same session (else 403).
+//                               opened by this same session (else 403). A take-over request on a posted story
+//                               under a correction hold: 409 { ok: false, error: "correcting" }.
 //
 // A stream lives only as long as its session: access.changed closes it at once, and every recheckMs the open
 // streams' sessions are checked again (gone, expired, user deactivated, or the user's platforms changed since the
@@ -18,14 +24,13 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { Type } from "@fastify/type-provider-typebox";
-import { postDrafts, publishedPosts } from "@socia/db";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { postDrafts } from "@socia/db";
+import { and, eq } from "drizzle-orm";
 import type { FastifyReply } from "fastify";
 import { HttpError, guard, liveSessionIds, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
 import { createEventFeed, type FeedEvent } from "../events";
 import { PresenceHub, type LiveClient, type PresenceResult } from "../presence";
-import { correctable } from "./desk";
 
 export const PING_MS = 15_000;
 export const MAX_STREAMS_PER_USER = 8;
@@ -55,6 +60,7 @@ const STATUS: Record<string, number> = {
   not_found: 404,
   rate_limited: 429,
   cooldown: 429,
+  correcting: 409,
 };
 const statusOf = (r: PresenceResult) => (r.ok ? 200 : (STATUS[r.error ?? ""] ?? 200));
 
@@ -67,7 +73,19 @@ export function sseFrame(event: string, data: unknown): string | null {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-const StreamQuery = Type.Object({ platform: Type.Optional(Type.String({ pattern: "^[a-z][a-z0-9_-]{0,31}$" })) });
+const StreamQuery = Type.Object({
+  platform: Type.Optional(Type.String({ pattern: "^[a-z][a-z0-9_-]{0,31}$" })),
+  /** 1: only check that the stream can be opened (auth, platform, headers through the proxy), then end */
+  probe: Type.Optional(Type.String({ pattern: "^[01]$" })),
+});
+
+/** The stream's response headers (the probe sends the same) */
+const STREAM_HEADERS = {
+  "content-type": "text/event-stream",
+  "cache-control": "private, no-store, no-transform",
+  "x-accel-buffering": "no",
+  connection: "keep-alive",
+} as const;
 
 interface Stream {
   client: LiveClient;
@@ -82,21 +100,14 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
 
   /**
    * Whether the user could take the story if its holder let go, so asking makes sense: Edit drafts on the story's
-   * platform; for a correction hold on a posted story also the correction rules of POST /drafts/:id/correction
-   * (a live Copy & Posted record from today, IST, and the poster or someone who may correct others' posts).
+   * platform. A posted story (status published) is held only under a correction hold, and that is never taken over:
+   * "correcting", whoever asks.
    */
-  const mayTakeOver = async (user: SessionUser, draftId: string): Promise<boolean> => {
+  const mayTakeOver = async (user: SessionUser, draftId: string): Promise<boolean | "correcting"> => {
     const [d] = await db.select({ status: postDrafts.status, platform: postDrafts.platform }).from(postDrafts).where(and(eq(postDrafts.id, draftId), eq(postDrafts.orgId, user.orgId)));
     if (!d) return false;
-    if (!user.permissions.has("draft.edit") || (user.platformScoped && !user.platforms.includes(d.platform))) return false;
-    if (d.status !== "published") return true;
-    const [post] = await db
-      .select({ publishedAt: publishedPosts.publishedAt, publishedBy: publishedPosts.publishedBy })
-      .from(publishedPosts)
-      .where(and(eq(publishedPosts.orgId, user.orgId), eq(publishedPosts.draftId, draftId), eq(publishedPosts.manual, true), isNull(publishedPosts.permalink), isNull(publishedPosts.recalledAt)))
-      .orderBy(desc(publishedPosts.publishedAt))
-      .limit(1);
-    return !!post && correctable(user, "published", { publishedAt: post.publishedAt, postedById: post.publishedBy });
+    if (d.status === "published") return "correcting";
+    return user.permissions.has("draft.edit") && (!user.platformScoped || user.platforms.includes(d.platform));
   };
 
   const hub = new PresenceHub({
@@ -180,6 +191,15 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
     const { user } = session;
     const platform = req.query.platform ?? "x";
     if (user.platformScoped && !user.platforms.includes(platform)) throw new HttpError(403, "forbidden", "Your role cannot see this platform.");
+
+    // The probe: the stream's answer and headers, then the end; nothing registered, counted or replaced
+    if (req.query.probe === "1") {
+      reply.hijack();
+      reply.raw.writeHead(200, { ...(reply.getHeaders() as Record<string, string>), ...STREAM_HEADERS });
+      reply.raw.end();
+      return;
+    }
+
     unsubscribe ??= feed.subscribe(onFeed);
 
     // The ninth stream of a user closes the oldest, which is told so it does not reconnect (and close this one)
@@ -193,13 +213,9 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
     const id = randomUUID();
     reply.hijack();
     const raw = reply.raw;
-    raw.writeHead(200, {
-      ...(reply.getHeaders() as Record<string, string>),
-      "content-type": "text/event-stream",
-      "cache-control": "private, no-store, no-transform",
-      "x-accel-buffering": "no",
-      connection: "keep-alive",
-    });
+    raw.writeHead(200, { ...(reply.getHeaders() as Record<string, string>), ...STREAM_HEADERS });
+    // Headers out now, not with the first write: a proxy or browser sees the stream open at once
+    raw.flushHeaders();
 
     let open = true;
     const finish = () => {

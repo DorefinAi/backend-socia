@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDb, notify, orgs, postDrafts, runMigrations, sessions, stories, userPermissionOverrides, users, type Db, type DbHandle } from "@socia/db";
+import { createDb, notify, orgs, postDrafts, releaseExpiredClaims, runMigrations, sessions, stories, userPermissionOverrides, users, type Db, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -23,7 +23,7 @@ const URL_ = process.env.TEST_DATABASE_URL;
 type Session = { cookie: string; csrf: string };
 type Logged = { event: string; data: any };
 type Client = { clientId: string; session: Session; log: Logged[]; comments: string[]; headers: Headers; close: () => void; ended: Promise<void> };
-type Person = { userId: string; name: string; initials: string; color: string; mode: "edit" | "watch" };
+type Person = { userId: string; name: string; initials: string; color: string; mode: "edit" | "watch"; correcting: boolean };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -257,8 +257,8 @@ describe("presence colour and initials", () => {
     expect(await send(holder, "join", { draftId: id, mode: "edit" })).toEqual({ ok: true, mode: "edit" });
     expect(await send(watcher, "join", { draftId: id, mode: "watch" })).toEqual({ ok: true, mode: "watch" });
     const list = await listSettles(watcher, id, (p) => p.length === 2);
-    expect(list).toContainEqual({ userId: uid.holder, name: "Asha Rani Verma", initials: "AR", color: presenceColor(uid.holder!), mode: "edit" });
-    expect(list).toContainEqual({ userId: uid.watcher, name: "Ravi Kumar", initials: "RK", color: presenceColor(uid.watcher!), mode: "watch" });
+    expect(list).toContainEqual({ userId: uid.holder, name: "Asha Rani Verma", initials: "AR", color: presenceColor(uid.holder!), mode: "edit", correcting: false });
+    expect(list).toContainEqual({ userId: uid.watcher, name: "Ravi Kumar", initials: "RK", color: presenceColor(uid.watcher!), mode: "watch", correcting: false });
 
     // A new stream gets the current list right after hello; a second tab of the holder, watching: one entry, still edit
     const tab = await stream(who.holder);
@@ -310,7 +310,7 @@ describe("presence colour and initials", () => {
     const got = await waitFor(watcher, "edit.state");
     expect(got).toEqual({
       draftId: id, text: "Jaipur: first", selStart: 13, selEnd: 13, version: 3,
-      userId: uid.holder, name: "Asha Rani Verma", color: presenceColor(uid.holder!), at: expect.any(String),
+      userId: uid.holder, name: "Asha Rani Verma", color: presenceColor(uid.holder!), at: expect.any(String), correcting: false,
     });
     await sleep(80);
     expect(holder.log.some((l) => l.event === "edit.state")).toBe(false);
@@ -522,7 +522,7 @@ describe("presence colour and initials", () => {
   /** Resolves true when the stream ends within `ms` */
   const closes = (c: Client, ms = 3000) => Promise.race([c.ended.then(() => true), sleep(ms).then(() => false)]);
 
-  it("refuses a take-over request from someone who could not take the story (claim and correction rights)", async () => {
+  it("refuses a take-over request from someone who could not take the story (claim rights)", async () => {
     const id = await draft("rights");
     await claim(who.holder, id);
     const holder = await stream(who.holder);
@@ -533,21 +533,233 @@ describe("presence colour and initials", () => {
     expect(await post(viewer, "takeover/request", { draftId: id })).toEqual({ status: 403, body: { ok: false, error: "forbidden" } });
     await sleep(80);
     expect(holder.log.some((l) => l.event === "takeover.requested")).toBe(false);
+  });
 
-    // A correction hold on a posted story: the holder edits live; only the poster, Undo or an admin may ask
-    const posted = await postedDraft("rights-posted");
+  // ─── One lock per story (L1–L4) ─────────────────────────────────────────────
+
+  it("L1 one lock record for a claim and a correction hold: a story has at most one holder", async () => {
+    // A claim keeps a correction out, and presence reads that one holder
+    const id = await draft("l1-claimed");
+    await claim(who.holder, id);
+    expect((await call(who.admin, "POST", `/drafts/${id}/correction`)).body.error).toBe("invalid_state");
+    expect((await call(who.admin, "POST", `/drafts/${id}/claim`)).status).toBe(409);
+    const [claimed] = await h.db.select().from(postDrafts).where(eq(postDrafts.id, id));
+    expect(claimed).toMatchObject({ status: "claimed", claimedBy: uid.holder });
+
+    // A correction hold is the same record (claimed_by on the published draft): nobody else can claim or correct it
+    const posted = await postedDraft("l1-posted");
     expect((await call(who.holder, "POST", `/drafts/${posted}/correction`)).status).toBe(200);
+    const [held] = await h.db.select().from(postDrafts).where(eq(postDrafts.id, posted));
+    expect(held).toMatchObject({ status: "published", claimedBy: uid.holder });
+    expect(held!.claimExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+    expect((await call(who.admin, "POST", `/drafts/${posted}/correction`)).body.error).toBe("held_by_other");
+    expect((await call(who.admin, "POST", `/drafts/${posted}/claim`)).status).toBe(409);
+
+    // Presence: the holder alone may edit and stream, on either kind of hold
+    const holder = await stream(who.holder);
+    const admin = await stream(who.admin);
+    for (const story of [id, posted]) {
+      expect(await send(holder, "join", { draftId: story, mode: "edit" })).toEqual({ ok: true, mode: "edit" });
+      expect(await send(admin, "join", { draftId: story, mode: "edit" })).toEqual({ ok: true, mode: "watch" });
+      expect(await send(admin, "state", state(story, "not mine"))).toEqual({ ok: false, error: "not_holder" });
+      expect(await send(holder, "state", state(story, "mine"))).toEqual({ ok: true });
+    }
+    await call(who.holder, "POST", `/drafts/${posted}/correction/done`);
+    await call(who.holder, "POST", `/drafts/${id}/release`);
+  });
+
+  it("L2 refuses a take-over request on a posted story under correction: 409 correcting, to everyone", async () => {
+    const posted = await postedDraft("l2-posted");
+    expect((await call(who.holder, "POST", `/drafts/${posted}/correction`)).status).toBe(200);
+    const holder = await stream(who.holder);
     const watcher = await stream(who.watcher);
     const noundo = await stream(who.noundo);
+    const admin = await stream(who.admin);
+    expect(await send(holder, "join", { draftId: posted, mode: "edit" })).toEqual({ ok: true, mode: "edit" });
+    for (const c of [watcher, noundo, admin]) {
+      await send(c, "join", { draftId: posted, mode: "watch" });
+      expect(await post(c, "takeover/request", { draftId: posted })).toEqual({ status: 409, body: { ok: false, error: "correcting" } });
+    }
+    await sleep(80);
+    expect(holder.log.some((l) => l.event === "takeover.requested")).toBe(false);
+    // Refused, not a cooldown: still refused for what it is
+    expect(await post(admin, "takeover/request", { draftId: posted })).toEqual({ status: 409, body: { ok: false, error: "correcting" } });
+    await call(who.holder, "POST", `/drafts/${posted}/correction/done`);
+  });
+
+  it("L2 refuses a correction hold the presence cache has not seen yet (the request reads the draft)", async () => {
+    const id = await draft("l2-unseen");
+    await claim(who.holder, id);
+    const holder = await stream(who.holder);
+    const watcher = await stream(who.watcher);
+    await send(holder, "join", { draftId: id, mode: "edit" });
+    await send(watcher, "join", { draftId: id, mode: "watch" });
+    // Presence cached a claim; the same record turns into a correction hold with no event
+    await h.db.update(postDrafts).set({ status: "published" }).where(eq(postDrafts.id, id));
+    expect(await post(watcher, "takeover/request", { draftId: id })).toEqual({ status: 409, body: { ok: false, error: "correcting" } });
+    await sleep(80);
+    expect(holder.log.some((l) => l.event === "takeover.requested")).toBe(false);
+  });
+
+  it("L3 every way a hold ends clears the same record and sends the same edit.ended, claim or correction", async () => {
+    const watcher = await stream(who.watcher);
+    const holder = await stream(who.holder);
+    const ended = async (id: string) => {
+      // The queue event: draft.released for either kind of hold, never a draft.updated for the hold's end
+      expect(await waitFor(watcher, "draft.released", (d) => d.draftId === id, 0, 5000)).toEqual({ type: "draft.released", draftId: id });
+      expect(await waitFor(watcher, "edit.ended", (d) => d.draftId === id, 0, 5000)).toEqual({ draftId: id, userId: uid.holder });
+      await listSettles(watcher, id, (p) => p.find((x) => x.userId === uid.holder)?.mode === "watch");
+      const [row] = await h.db.select({ claimedBy: postDrafts.claimedBy, claimExpiresAt: postDrafts.claimExpiresAt }).from(postDrafts).where(eq(postDrafts.id, id));
+      return row!;
+    };
+    const held = async (id: string, start: () => Promise<unknown>) => {
+      await start();
+      await sleep(100);
+      updatesFrom = watcher.log.length;
+      expect(await send(holder, "join", { draftId: id, mode: "edit" })).toEqual({ ok: true, mode: "edit" });
+      await send(watcher, "join", { draftId: id, mode: "watch" });
+      expect(await send(holder, "state", state(id, "live"))).toEqual({ ok: true });
+      await waitFor(watcher, "edit.state", (d) => d.draftId === id);
+    };
+    const correct = (id: string) => () => call(who.holder, "POST", `/drafts/${id}/correction`);
+    const take = (id: string) => () => call(who.holder, "POST", `/drafts/${id}/claim`);
+    let updatesFrom = 0;
+    const noUpdate = (id: string) => expect(watcher.log.slice(updatesFrom).some((l) => l.event === "draft.updated" && l.data.draftId === id)).toBe(false);
+
+    // Hand over / close the story: release, for a claim and for a correction hold
+    const a = await draft("l3-release");
+    await held(a, take(a));
+    await call(who.holder, "POST", `/drafts/${a}/release`);
+    expect(await ended(a)).toEqual({ claimedBy: null, claimExpiresAt: null });
+    noUpdate(a);
+    const b = await postedDraft("l3-release-posted");
+    await held(b, correct(b));
+    await call(who.holder, "POST", `/drafts/${b}/release`);
+    expect(await ended(b)).toEqual({ claimedBy: null, claimExpiresAt: null });
+    noUpdate(b);
+
+    // Done on a correction
+    const c = await postedDraft("l3-done");
+    await held(c, correct(c));
+    await call(who.holder, "POST", `/drafts/${c}/correction/done`);
+    expect(await ended(c)).toEqual({ claimedBy: null, claimExpiresAt: null });
+    noUpdate(c);
+
+    // The hold expiring (a claim, and a correction hold capped at midnight IST): the same record runs out; presence
+    // notices on its own, and the worker's sweep (run here by hand) sends draft.released for both kinds
+    for (const [id, start] of [[await draft("l3-expired"), take], [await postedDraft("l3-midnight"), correct]] as const) {
+      // Shortened in the database before the join (a lease nobody extends), so presence caches the short one
+      await held(id, async () => {
+        await start(id)();
+        await h.db.update(postDrafts).set({ claimExpiresAt: sql`now() + interval '1 second'` }).where(eq(postDrafts.id, id));
+      });
+      await sleep(1200);
+      // Any read of the lock (here a take-over request from someone else) finds it gone
+      expect(await send(watcher, "takeover/request", { draftId: id })).toEqual({ ok: false, error: "no_holder" });
+      expect(await waitFor(watcher, "edit.ended", (d) => d.draftId === id)).toEqual({ draftId: id, userId: uid.holder });
+      await releaseExpiredClaims(h.db);
+      expect(await ended(id)).toEqual({ claimedBy: null, claimExpiresAt: null });
+      noUpdate(id);
+    }
+  });
+
+  it("L4 presence and edit.state mark a story under correction, so the client can show who is fixing the post", async () => {
+    const posted = await postedDraft("l4-posted");
+    expect((await call(who.holder, "POST", `/drafts/${posted}/correction`)).status).toBe(200);
+    const holder = await stream(who.holder);
+    const watcher = await stream(who.watcher);
     expect(await send(holder, "join", { draftId: posted, mode: "edit" })).toEqual({ ok: true, mode: "edit" });
     await send(watcher, "join", { draftId: posted, mode: "watch" });
-    await send(noundo, "join", { draftId: posted, mode: "watch" });
+    const list = await listSettles(watcher, posted, (p) => p.length === 2);
+    expect(list.find((p) => p.userId === uid.holder)).toMatchObject({ mode: "edit", correcting: true });
+    expect(list.find((p) => p.userId === uid.watcher)).toMatchObject({ mode: "watch", correcting: false });
+
     expect(await send(holder, "state", state(posted, "a fix"))).toEqual({ ok: true });
-    expect(await waitFor(noundo, "edit.state")).toMatchObject({ text: "a fix", userId: uid.holder });
-    expect(await post(noundo, "takeover/request", { draftId: posted })).toEqual({ status: 403, body: { ok: false, error: "forbidden" } });
-    expect(await send(watcher, "takeover/request", { draftId: posted })).toEqual({ ok: true });
-    expect(await waitFor(holder, "takeover.requested", (d) => d.draftId === posted)).toMatchObject({ from: { userId: uid.watcher } });
+    expect(await waitFor(watcher, "edit.state", (d) => d.draftId === posted)).toMatchObject({ text: "a fix", userId: uid.holder, correcting: true });
+    const late = await stream(who.second);
+    await send(late, "join", { draftId: posted, mode: "watch" });
+    expect(await waitFor(late, "edit.snapshot")).toMatchObject({ text: "a fix", correcting: true });
+
+    // A claim is not a correction
+    const id = await draft("l4-claimed");
+    await claim(who.holder, id);
+    await send(holder, "join", { draftId: id, mode: "edit" });
+    await send(watcher, "join", { draftId: id, mode: "watch" });
+    const claimed = await listSettles(watcher, id, (p) => p.length === 2);
+    expect(claimed.find((p) => p.userId === uid.holder)).toMatchObject({ mode: "edit", correcting: false });
+    expect(await send(holder, "state", state(id, "a draft"))).toEqual({ ok: true });
+    expect(await waitFor(watcher, "edit.state", (d) => d.draftId === id)).toMatchObject({ correcting: false });
     await call(who.holder, "POST", `/drafts/${posted}/correction/done`);
+  });
+
+  it("N5 the probe: stream headers then the end; same auth; no client, not counted, never replaces a stream", async () => {
+    const probe = (s: Session | null, q = "?platform=x&probe=1") => fetch(`${base}/live/stream${q}`, { headers: s ? { cookie: s.cookie } : {} });
+    expect((await probe(null)).status).toBe(401);
+    expect((await probe(who.holder, "?platform=instagram&probe=1")).status).toBe(403);
+    const res = await probe(who.holder);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("private, no-store, no-transform");
+    expect(res.headers.get("x-accel-buffering")).toBe("no");
+    expect(await res.text()).toBe("");
+
+    // Eight streams open (the limit); probes on top replace none of them
+    const eight = [];
+    for (let i = 0; i < 8; i++) eight.push(await stream(who.mover));
+    for (let i = 0; i < 3; i++) expect((await probe(who.mover)).status).toBe(200);
+    await sleep(150);
+    expect(eight.some((c) => c.log.some((l) => l.event === "replaced"))).toBe(false);
+    expect(await closes(eight[0]!, 200)).toBe(false);
+    // The probe registered no client: a POST quoting nothing it could have handed out still finds only real streams
+    const id = await draft("n5");
+    expect(await send(eight[7]!, "join", { draftId: id, mode: "watch" })).toEqual({ ok: true, mode: "watch" });
+    await listSettles(eight[7]!, id, (p) => p.length === 1);
+  });
+
+  it("N10 answers pending and cooldown from memory, before any database read", async () => {
+    let reads = 0;
+    let mayCalls = 0;
+    const counting = new Proxy(h.db, {
+      get(target, prop, recv) {
+        if (prop === "select") reads++;
+        return Reflect.get(target, prop, recv);
+      },
+    }) as Db;
+    const hub = new PresenceHub({
+      db: counting, log: { warn: () => undefined }, takeoverCooldownMs: 60_000,
+      mayTakeOver: async () => (mayCalls++, true),
+    });
+    try {
+      const id = await draft("n10");
+      await claim(who.holder, id);
+      const mk = (name: string, userId: string): LiveClient => ({
+        id: crypto.randomUUID(), user: { id: userId, orgId, name, platformScoped: true, platforms: ["x"] } as unknown as LiveClient["user"],
+        sessionId: name, platform: "x", send: () => undefined, lagging: () => false, close: () => undefined,
+      });
+      const holder = mk("holder", uid.holder!);
+      const asker = mk("watcher", uid.watcher!);
+      hub.connect(holder);
+      hub.connect(asker);
+      await hub.join(holder.id, { draftId: id, mode: "edit" });
+      await hub.join(asker.id, { draftId: id, mode: "watch" });
+      expect(await hub.takeoverRequest(asker.id, { draftId: id })).toEqual({ ok: true });
+      expect(mayCalls).toBe(1);
+
+      // Waiting for the answer: pending, with no read
+      let before = reads;
+      expect(await hub.takeoverRequest(asker.id, { draftId: id })).toEqual({ ok: false, error: "pending" });
+      expect([reads - before, mayCalls]).toEqual([0, 1]);
+
+      // Answered: the cooldown, with no read, even with the cached lease run out (which would otherwise read the lock)
+      expect(await hub.takeoverAnswer(holder.id, { draftId: id, requesterId: uid.watcher, accept: false })).toEqual({ ok: true });
+      await sleep(1100);
+      (hub as unknown as { drafts: Map<string, { holder: { expiresAt: number } }> }).drafts.get(id)!.holder.expiresAt = Date.now() - 1;
+      before = reads;
+      expect(await hub.takeoverRequest(asker.id, { draftId: id })).toEqual({ ok: false, error: "cooldown" });
+      expect([reads - before, mayCalls]).toEqual([0, 1]);
+    } finally {
+      hub.close();
+    }
   });
 
   it("counts a lock only in a held status (claimed, or published under a correction hold)", async () => {

@@ -119,7 +119,8 @@ export async function extendClaim(db: Db, actor: Actor, draftId: string): Promis
 
 /**
  * Let the draft go: a claimed draft returns to the queue (ready). A posted story under a correction hold only
- * loses the hold: it stays published, and its updated_at (the posted view's order and day) is left alone.
+ * loses the hold: it stays published, and its updated_at (the posted view's order and day) is left alone. Either
+ * way the hold's end is announced as draft.released (one lock record, one event, whichever kind of hold it was).
  */
 export async function releaseDraft(db: Db, actor: Actor, draftId: string): Promise<void> {
   await db.transaction(async (tx) => {
@@ -135,15 +136,14 @@ export async function releaseDraft(db: Db, actor: Actor, draftId: string): Promi
       .where(and(eq(postDrafts.id, draftId), eq(postDrafts.claimedBy, actor.id), inArray(postDrafts.status, ["claimed", "published"])))
       .returning({ status: postDrafts.status, version: postDrafts.version });
     if (!row) return;
-    // A posted story is not back in the queue: its hold change is a draft.updated, as when the hold started
-    if (row.status === "published") await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: row.status, version: row.version });
-    else await notify(tx, actor.orgId, { type: "draft.released", draftId });
+    await notify(tx, actor.orgId, { type: "draft.released", draftId });
   });
 }
 
 /**
  * Run by the worker: a lease nobody extended goes back to the queue. An expired correction hold on a posted story
- * is only cleared: it stays published, with its updated_at. The count is both kinds.
+ * (one that ran out, or reached 00:00 IST) is only cleared: it stays published, with its updated_at. Both kinds are
+ * announced as draft.released. The count is both kinds.
  */
 export async function releaseExpiredClaims(db: Db): Promise<number> {
   return db.transaction(async (tx) => {
@@ -154,7 +154,7 @@ export async function releaseExpiredClaims(db: Db): Promise<number> {
       .returning({ id: postDrafts.id, orgId: postDrafts.orgId });
     for (const r of rows) await notify(tx, r.orgId, { type: "draft.released", draftId: r.id });
     const holds = await clearExpiredHolds(tx);
-    for (const r of holds) await notify(tx, r.orgId, { type: "draft.updated", draftId: r.id, status: r.status, version: r.version });
+    for (const r of holds) await notify(tx, r.orgId, { type: "draft.released", draftId: r.id });
     return rows.length + holds.length;
   });
 }
@@ -957,6 +957,8 @@ export async function startCorrection(db: Db, actor: Actor, draftId: string, rig
  * mid-session, the post moved to yesterday, a text that would not pass. Saving is where the rules are enforced (a
  * save that fails them is refused); Done only lets go. The audit row records whether the rules still held. The
  * story stays published. A no-op when the caller does not hold it (also the keepalive Done of a closed tab).
+ * Announced as draft.released, like any hold's end: Done writes nothing to the post (the fix was saved, and
+ * announced as draft.updated, by updateDraft / setCustomCard / clearCustomCard).
  */
 export async function endCorrection(db: Db, actor: Actor, draftId: string, rights: CorrectionRights): Promise<Draft> {
   return db.transaction(async (tx) => {
@@ -980,7 +982,7 @@ export async function endCorrection(db: Db, actor: Actor, draftId: string, right
       before: { until: draft.claimExpiresAt },
       after: { postId: post?.id ?? null, correctedAt: post?.correctedAt ?? null, correctedBy: post?.correctedBy ?? null, rulesFailed: refused },
     });
-    await notify(tx, actor.orgId, { type: "draft.updated", draftId, status: freed!.status, version: freed!.version });
+    await notify(tx, actor.orgId, { type: "draft.released", draftId });
     return freed!;
   });
 }

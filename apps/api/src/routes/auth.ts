@@ -112,8 +112,8 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       if (wait) throw rateLimited(reply, wait);
       const [user] = await db.select().from(users).where(eq(users.email, email));
       const passwordOk = await checkPassword(user?.passwordHash ?? dummyHash, req.body.password);
-      // Same answer (and the same work) for an unknown email, an inactive user and a wrong password
-      if (!user || !user.active || !passwordOk) {
+      // Same answer (and the same work) for an unknown email, an inactive or deleted user and a wrong password
+      if (!user || !user.active || user.deletedAt || !passwordOk) {
         loginGate.fail(req.ip, email);
         throw new HttpError(401, "bad_login", "That email and password do not match.");
       }

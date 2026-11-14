@@ -5,8 +5,8 @@ import {
   BUILT_IN_ROLE_INFO, DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, effectivePermissionSet, isBuiltInRole, isPermissionKey,
   permissionLabel, rolePermissionSet, type PermissionKey,
 } from "@socia/core";
-import { audit, notify, rolePermissions, roles, userPermissionOverrides, users, type Executor } from "@socia/db";
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
+import { audit, notify, releaseUserClaims, rolePermissions, roles, sessions, userPermissionOverrides, users, type Executor } from "@socia/db";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { HttpError, type SessionUser } from "./auth";
 
 export type RoleRow = typeof roles.$inferSelect;
@@ -60,7 +60,8 @@ export function roleView(role: RoleRow, allowed: ReadonlySet<PermissionKey>, use
 }
 
 export async function roleUserCounts(ex: Executor, orgId: string): Promise<Map<string, number>> {
-  const rows = await ex.select({ role: users.role, n: count() }).from(users).where(eq(users.orgId, orgId)).groupBy(users.role);
+  // Deleted users are not counted: they are gone from every list
+  const rows = await ex.select({ role: users.role, n: count() }).from(users).where(and(eq(users.orgId, orgId), isNull(users.deletedAt))).groupBy(users.role);
   return new Map(rows.map((r) => [r.role, Number(r.n)]));
 }
 
@@ -74,7 +75,7 @@ export async function listRoleViews(ex: Executor, orgId: string) {
 }
 
 export async function oneRoleView(ex: Executor, role: RoleRow) {
-  const [n] = await ex.select({ n: count() }).from(users).where(and(eq(users.orgId, role.orgId), eq(users.role, role.key)));
+  const [n] = await ex.select({ n: count() }).from(users).where(and(eq(users.orgId, role.orgId), eq(users.role, role.key), isNull(users.deletedAt)));
   return roleView(role, await roleAllowed(ex, role), Number(n?.n ?? 0));
 }
 
@@ -291,8 +292,27 @@ export async function assertAdminRemains(tx: Executor, orgId: string): Promise<v
   const [row] = await tx
     .select({ n: count() })
     .from(users)
-    .where(and(eq(users.orgId, orgId), eq(users.active, true), has("users.manage"), has("roles.manage")));
+    .where(and(eq(users.orgId, orgId), eq(users.active, true), isNull(users.deletedAt), has("users.manage"), has("roles.manage")));
   if (!Number(row?.n ?? 0)) {
     throw new HttpError(409, "last_admin", "At least one active admin must remain who can manage users and roles. Make someone else an admin first.");
   }
+}
+
+/**
+ * Soft delete of a user (migration 0028), inside the change's transaction, under lockAccess, with the target row
+ * locked and known not deleted: deleted_at = now() and inactive, every session deleted, every draft hold let go,
+ * the audit row "user.delete", the last-admin rule checked (409 last_admin rolls it all back), and their open
+ * sockets dropped. The row stays: names on past posts still resolve, and the email stays taken.
+ */
+export async function softDeleteUser(tx: Executor, target: typeof users.$inferSelect, by: ChangeBy): Promise<void> {
+  await tx.update(users).set({ deletedAt: sql`now()`, active: false }).where(eq(users.id, target.id));
+  await tx.delete(sessions).where(eq(sessions.userId, target.id));
+  const released = await releaseUserClaims(tx, target.orgId, target.id);
+  await audit(tx, {
+    ...by, action: "user.delete", entityType: "user", entityId: target.id,
+    before: { name: target.name, email: target.email, role: target.role, active: target.active },
+    after: { deleted: true, active: false, releasedDrafts: released.length },
+  });
+  await assertAdminRemains(tx, target.orgId);
+  await accessChanged(tx, target.orgId, [target.id]);
 }

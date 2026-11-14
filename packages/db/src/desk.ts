@@ -141,6 +141,27 @@ export async function releaseDraft(db: Db, actor: Actor, draftId: string): Promi
 }
 
 /**
+ * Every hold one user has on the desk let go, inside the caller's transaction (deleting the user): a claimed draft
+ * returns to the queue (ready), any other draft (a posted story under a correction hold) only loses the hold and
+ * keeps its status and updated_at. Each is announced as draft.released. Returns the drafts let go.
+ */
+export async function releaseUserClaims(tx: Executor, orgId: string, userId: string): Promise<string[]> {
+  const claimed = sql`${postDrafts.status} = 'claimed'`;
+  const rows = await tx
+    .update(postDrafts)
+    .set({
+      status: sql`CASE WHEN ${claimed} THEN 'ready' ELSE ${postDrafts.status} END`,
+      claimedBy: null,
+      claimExpiresAt: null,
+      updatedAt: sql`CASE WHEN ${claimed} THEN now() ELSE ${postDrafts.updatedAt} END`,
+    })
+    .where(and(eq(postDrafts.orgId, orgId), eq(postDrafts.claimedBy, userId)))
+    .returning({ id: postDrafts.id });
+  for (const r of rows) await notify(tx, orgId, { type: "draft.released", draftId: r.id });
+  return rows.map((r) => r.id);
+}
+
+/**
  * Run by the worker: a lease nobody extended goes back to the queue. An expired correction hold on a posted story
  * (one that ran out, or reached 00:00 IST) is only cleared: it stays published, with its updated_at. Both kinds are
  * announced as draft.released. The count is both kinds.

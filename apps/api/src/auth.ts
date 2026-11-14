@@ -8,7 +8,7 @@ import {
   effectivePermissionSet, isPermissionKey, permissionLabel, rolePermissionSet, type PermissionKey, type PermissionSetting,
 } from "@socia/core";
 import { rolePermissions, roles, sessions, userPermissionOverrides, users, type Db } from "@socia/db";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { readKeyBindings, type KeyBindings } from "./key-bindings";
 
@@ -79,7 +79,7 @@ export async function loadSession(db: Db, token: string | undefined): Promise<Se
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(roles, and(eq(roles.orgId, users.orgId), eq(roles.key, users.role)))
-    .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, sql`now()`), eq(users.active, true)));
+    .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, sql`now()`), eq(users.active, true), isNull(users.deletedAt)));
   if (!row) return null;
   const { s, u } = row;
   const overrides = row.overrideRows.filter((o): o is { permission: PermissionKey; allowed: boolean } => isPermissionKey(o.permission));
@@ -156,7 +156,7 @@ export async function liveSessionIds(db: Db, ids: string[]): Promise<Map<string,
       .from(sessions)
       .innerJoin(users, eq(users.id, sessions.userId))
       .innerJoin(roles, and(eq(roles.orgId, users.orgId), eq(roles.key, users.role)))
-      .where(and(inArray(sessions.id, ids.slice(i, i + 500)), gt(sessions.expiresAt, sql`now()`), eq(sessions.verified, true), eq(users.active, true)));
+      .where(and(inArray(sessions.id, ids.slice(i, i + 500)), gt(sessions.expiresAt, sql`now()`), eq(sessions.verified, true), eq(users.active, true), isNull(users.deletedAt)));
     for (const r of rows) live.set(r.id, { platformScoped: r.platformScoped, platforms: r.platforms });
   }
   return live;

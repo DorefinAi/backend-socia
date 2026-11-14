@@ -65,6 +65,12 @@ export const users = pgTable(
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     /** The user's own preferences (UserPrefs); {} when none are set */
     prefs: jsonb("prefs").$type<UserPrefs>().notNull().default(sql`'{}'::jsonb`),
+    /**
+     * Soft delete (migration 0028): set once, never cleared by the API. A deleted user is also inactive, cannot sign
+     * in, and is left out of every user list; the row stays so names on past posts still resolve, and the email
+     * (username) stays taken.
+     */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("users_email_key").on(t.email),

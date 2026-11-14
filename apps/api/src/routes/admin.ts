@@ -16,11 +16,11 @@ import { ADMIN_ALWAYS, PERMISSION_KEYS, roleKeyFromLabel, type PermissionKey } f
 import { audit, auditLog, rolePermissions, roles, sessions, userPermissionOverrides, users, type Executor } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { randomBytes } from "node:crypto";
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   accessChanged, assertActorCovers, assertActorCoversScope, assertAdminRemains, assertLabelFree, assertScopeWithinOwn, assertWithinOwn,
   builtInDefaults, effectiveOf, getRole, isFullAdmin, listRoleViews, lockAccess, oneRoleView, parsePermissionList, reloadActor, replaceOverrides,
-  roleAllowed, rolePlatforms, roleUserIds, userPermissionView, writeRolePermissions, type RoleRow,
+  roleAllowed, rolePlatforms, roleUserIds, softDeleteUser, userPermissionView, writeRolePermissions, type RoleRow,
 } from "../access";
 import { HttpError, guard, hashPassword, requirePermission, type SessionUser } from "../auth";
 import type { AppDeps } from "../app";
@@ -54,8 +54,10 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
     totpEnabled: u.totpEnabled, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt, overrideCount,
   });
   const selectUsers = () => db.select(userColumns).from(users).leftJoin(roles, and(eq(roles.orgId, users.orgId), eq(roles.key, users.role)));
+  /** A user of the org who is not deleted: a deleted user is "not found" everywhere here */
+  const liveUser = (orgId: string, id: string) => and(eq(users.id, id), eq(users.orgId, orgId), isNull(users.deletedAt));
   async function oneUser(orgId: string, id: string) {
-    const [row] = await selectUsers().where(and(eq(users.id, id), eq(users.orgId, orgId)));
+    const [row] = await selectUsers().where(liveUser(orgId, id));
     if (!row) throw new HttpError(404, "not_found", "This user does not exist.");
     return publicUser(row);
   }
@@ -81,7 +83,7 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
     app.get(`${base}/users`, async (req) => {
       const { user } = guard(req);
       requirePermission(user, "users.manage");
-      return { items: (await selectUsers().where(eq(users.orgId, user.orgId)).orderBy(users.name)).map(publicUser) };
+      return { items: (await selectUsers().where(and(eq(users.orgId, user.orgId), isNull(users.deletedAt))).orderBy(users.name)).map(publicUser) };
     });
 
     app.post(
@@ -155,7 +157,7 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
         await db.transaction(async (tx) => {
           await lockAccess(tx, user.orgId);
           const actor = await actorIn(tx, user, "users.manage");
-          const [before] = await tx.select().from(users).where(and(eq(users.id, uuid(req.params.id)), eq(users.orgId, user.orgId))).for("update");
+          const [before] = await tx.select().from(users).where(liveUser(user.orgId, uuid(req.params.id))).for("update");
           if (!before) throw new HttpError(404, "not_found", "This user does not exist.");
           const beforeRole = await getRole(tx, user.orgId, before.role);
           if (before.id === actor.id) {
@@ -199,12 +201,31 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
         return oneUser(user.orgId, uuid(req.params.id));
       },
     );
+
+    // Soft delete (migration 0028): the same guards as PATCH (not yourself, not someone who can do more or reaches
+    // wider than you), then softDeleteUser. 204; 400 self; 404 unknown or already deleted; 409 last_admin.
+    app.delete(`${base}/users/:id`, { schema: { params: Id } }, async (req, reply) => {
+      const { user } = guard(req);
+      requirePermission(user, "users.manage");
+      await db.transaction(async (tx) => {
+        await lockAccess(tx, user.orgId);
+        const actor = await actorIn(tx, user, "users.manage");
+        const [target] = await tx.select().from(users).where(liveUser(user.orgId, uuid(req.params.id))).for("update");
+        if (!target) throw new HttpError(404, "not_found", "This user does not exist.");
+        if (target.id === actor.id) throw new HttpError(400, "self", "You cannot delete yourself. Ask another admin.");
+        assertActorCovers(actor, await effectiveOf(tx, target), target.name);
+        const targetRole = await getRole(tx, user.orgId, target.role);
+        assertActorCoversScope(actor, { platformScoped: targetRole?.platformScoped ?? false, platforms: target.platforms }, target.name);
+        await softDeleteUser(tx, target, { orgId: user.orgId, actorId: actor.id });
+      });
+      return reply.status(204).send();
+    });
   }
 
   app.get("/admin/users/:id/permissions", { schema: { params: Id } }, async (req) => {
     const { user } = guard(req);
     requirePermission(user, "users.manage");
-    const [target] = await db.select().from(users).where(and(eq(users.id, uuid(req.params.id)), eq(users.orgId, user.orgId)));
+    const [target] = await db.select().from(users).where(liveUser(user.orgId, uuid(req.params.id)));
     if (!target) throw new HttpError(404, "not_found", "This user does not exist.");
     return userPermissionView(db, target);
   });
@@ -234,7 +255,7 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
       return db.transaction(async (tx) => {
         await lockAccess(tx, sessionUser.orgId);
         const user = await actorIn(tx, sessionUser, "users.manage");
-        const [target] = await tx.select().from(users).where(and(eq(users.id, uuid(req.params.id)), eq(users.orgId, user.orgId))).for("update");
+        const [target] = await tx.select().from(users).where(liveUser(user.orgId, uuid(req.params.id))).for("update");
         if (!target) throw new HttpError(404, "not_found", "This user does not exist.");
         if (target.id === user.id) throw new HttpError(409, "self_change", "Ask another admin to set exceptions for you.");
         assertActorCovers(user, await effectiveOf(tx, target), target.name);
@@ -408,12 +429,15 @@ export const adminRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db 
       const role = await getRole(tx, user.orgId, req.params.key);
       if (!role) throw new HttpError(404, "not_found", "This role does not exist.");
       if (role.builtIn) throw new HttpError(409, "built_in", "Built-in roles cannot be deleted.");
-      const [n] = await tx.select({ n: count() }).from(users).where(and(eq(users.orgId, role.orgId), eq(users.role, role.key)));
+      const [n] = await tx.select({ n: count() }).from(users).where(and(eq(users.orgId, role.orgId), eq(users.role, role.key), isNull(users.deletedAt)));
       const inUse = Number(n?.n ?? 0);
       if (inUse) throw new HttpError(409, "in_use", `${inUse} ${inUse === 1 ? "user has" : "users have"} this role. Give them another role first.`);
       const beforeView = await oneRoleView(tx, role);
       // Unused (else in_use above), but still not one stronger or wider than the actor
       await assertMayEditRole(tx, user, role, new Set(beforeView.permissions));
+      // Deleted users may still carry the role key (users_org_role_fk): they move to the built-in viewer role, which
+      // gives them nothing (they cannot sign in anyway), so the role can go
+      await tx.update(users).set({ role: "viewer" }).where(and(eq(users.orgId, role.orgId), eq(users.role, role.key), sql`${users.deletedAt} IS NOT NULL`));
       await tx.delete(roles).where(and(eq(roles.orgId, role.orgId), eq(roles.key, role.key)));
       await audit(tx, entry(user, "role.deleted", "role", role.key, beforeView, null));
       return { ok: true };

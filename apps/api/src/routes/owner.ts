@@ -15,10 +15,10 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { PERMISSIONS, isPermissionKey, type PermissionKey } from "@socia/core";
 import { audit, auditLog, readOpsHeartbeats, readOpsLog, roles, sessions, userPermissionOverrides, users, type Executor } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
-import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { FastifyRequest } from "fastify";
-import { accessChanged, assertAdminRemains, getRole, lockAccess, replaceOverrides, userPermissionView, type ChangeBy } from "../access";
+import { accessChanged, assertAdminRemains, getRole, lockAccess, replaceOverrides, softDeleteUser, userPermissionView, type ChangeBy } from "../access";
 import { HttpError } from "../auth";
 import type { AppDeps } from "../app";
 import { SlidingLimiter } from "../limiter";
@@ -92,12 +92,13 @@ export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string
   });
   const selectPeople = (ex: Executor) => ex.select(personColumns).from(users).leftJoin(roles, and(eq(roles.orgId, users.orgId), eq(roles.key, users.role)));
   async function onePerson(ex: Executor, id: string) {
-    const [row] = await selectPeople(ex).where(eq(users.id, id));
+    const [row] = await selectPeople(ex).where(and(eq(users.id, id), isNull(users.deletedAt)));
     if (!row) throw new HttpError(404, "not_found", "This user does not exist.");
     return person(row);
   }
+  /** A user who is not deleted (migration 0028): a deleted user is "not found" everywhere here */
   async function target(ex: Executor, id: string, lock = false) {
-    const q = ex.select().from(users).where(eq(users.id, uuid(id)));
+    const q = ex.select().from(users).where(and(eq(users.id, uuid(id)), isNull(users.deletedAt)));
     const [row] = lock ? await q.for("update") : await q;
     if (!row) throw new HttpError(404, "not_found", "This user does not exist.");
     return row;
@@ -110,7 +111,7 @@ export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string
 
   app.get("/owner/people", async () => {
     const [people, roleRows] = await Promise.all([
-      selectPeople(db).orderBy(asc(users.name), asc(users.email)),
+      selectPeople(db).where(isNull(users.deletedAt)).orderBy(asc(users.name), asc(users.email)),
       db
         .select({ key: roles.key, label: roles.label })
         .from(roles)
@@ -162,6 +163,17 @@ export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string
       return { user: await onePerson(db, id) };
     },
   );
+
+  // Soft delete (migration 0028), under the same lock as PATCH: 204; 404 unknown or already deleted; 409 last_admin.
+  // An owner is not a user, so there is no "yourself" here.
+  app.delete("/owner/people/:id", { schema: { params: Id } }, async (req, reply) => {
+    const actor = ownerActor(req);
+    await db.transaction(async (tx) => {
+      const t = await lockedTarget(tx, req.params.id);
+      await softDeleteUser(tx, t, { orgId: t.orgId, actorId: null, actor });
+    });
+    return reply.status(204).send();
+  });
 
   app.put(
     "/owner/people/:id/overrides",

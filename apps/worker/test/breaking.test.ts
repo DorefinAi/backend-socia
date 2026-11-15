@@ -479,20 +479,26 @@ describe("BreakingShareSource (no database)", () => {
     await writeFile(join(root, "OCTOBER_2026", "31_OCTOBER_2026", "BTN_RJ_BRAKING_5_31OCT.txt"), "x");
     await writeFile(join(root, "OCTOBER_2026", "31_OCTOBER_2026", "BTN_RAJ_SCROLL_3_31OCT.txt"), "x");
     await writeFile(join(root, "OCTOBER_2026", "31_OCTOBER_2026", "nat_flash_rj_breaking_4.txt"), "x");
-    await writeFile(join(root, "OCTOBER_2026", "31_OCTOBER_2026", "BTN_RAJ_BREAKING_6_HUGE.txt"), Buffer.alloc(1024 * 1024 + 1, 0x41));
+    // Up to 4 MB is taken; one byte more is skipped
+    await writeFile(join(root, "OCTOBER_2026", "31_OCTOBER_2026", "BTN_RAJ_BREAKING_6_HUGE.txt"), Buffer.alloc(4 * 1024 * 1024 + 1, 0x41));
+    await writeFile(join(root, "OCTOBER_2026", "31_OCTOBER_2026", "BTN_RAJ_BREAKING_7_4MB.txt"), Buffer.alloc(4 * 1024 * 1024, 0x41));
 
     let now = new Date("2026-10-31T09:00:00Z"); // 14:30 IST on the 31st: yesterday still read
     const src = new BreakingShareSource(root, { now: () => now });
     expect((await src.list()).map((f) => f.path).sort()).toEqual([
       "OCTOBER_2026/30_OCTOBER_2026/BTN_RAJ_BREAKING_1_30OCT_NDR_JPR_BIG.txt",
       "OCTOBER_2026/31_OCTOBER_2026/BTN_RAJ_BREAKING_2_31OCT_NDR_JPR_BIG.txt",
+      "OCTOBER_2026/31_OCTOBER_2026/BTN_RAJ_BREAKING_7_4MB.txt",
       "OCTOBER_2026/31_OCTOBER_2026/BTN_RJ_BRAKING_5_31OCT.txt",
+      // The national flash is taken (owner, 15 Nov 2026); SCROLL is not
+      "OCTOBER_2026/31_OCTOBER_2026/nat_flash_rj_breaking_4.txt",
     ]);
-    expect(src.health()).toMatchObject({ reachable: true, todayFolder: "OCTOBER_2026/31_OCTOBER_2026", alsoScanning: "OCTOBER_2026/30_OCTOBER_2026", filesToday: 2 });
+    expect(src.health()).toMatchObject({ reachable: true, todayFolder: "OCTOBER_2026/31_OCTOBER_2026", alsoScanning: "OCTOBER_2026/30_OCTOBER_2026", filesToday: 4 });
+    expect((await src.read("OCTOBER_2026/31_OCTOBER_2026/BTN_RAJ_BREAKING_7_4MB.txt")).length).toBe(4 * 1024 * 1024);
 
     // November has no folder yet: yesterday's still listed, no error
     now = new Date("2026-11-01T03:00:00Z");
-    expect(await src.list()).toHaveLength(2);
+    expect(await src.list()).toHaveLength(4);
     expect(src.health()).toMatchObject({ reachable: true, todayFolder: null, expectedFolder: "01_NOVEMBER_2026" });
 
     // Nothing outside the root, however the path is written
@@ -577,6 +583,26 @@ describe("BreakingShareSource (no database)", () => {
 
   const ingestFor = () =>
     new Ingest({ db: h.db, storage: store, source: new BreakingShareSource(join(dir, "share"), { now: () => new Date(clock) }), orgId, log, now: () => clock, layout: "breaking", startFromNow: true });
+
+  it("reads a Notepad Unicode (UTF-16) file into the queue, and rejects a file that is not text (no draft)", async () => {
+    const ingest = ingestFor();
+    expect(await settle(ingest)).toBe(0); // first start: nothing there
+    const text = "जयपुर: सड़क हादसे में दो घायल\nपुलिस मौके पर पहुंची\n";
+    const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]);
+    await writeFile(join(day("29_OCTOBER_2026"), "BTN_RJ_BREAKING_7001_29OCT_US_CONTROL_JPR_big.txt"), le);
+    await utimes(join(day("29_OCTOBER_2026"), "BTN_RJ_BREAKING_7001_29OCT_US_CONTROL_JPR_big.txt"), new Date(clock), new Date(clock));
+    await put("29_OCTOBER_2026", "BTN_RJ_BREAKING_7002_29OCT_US_CONTROL_big.txt", "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR\u0000\u0000\u0001\u0000");
+    expect(await settle(ingest)).toBe(2);
+
+    const all = await h.db.select().from(stories);
+    expect(all.find((s) => s.sourceCharset === "utf-16le")).toMatchObject({ status: "composed", headline: expect.stringContaining("सड़क हादसे") });
+    const bad = all.find((s) => s.status === "failed")!;
+    expect(bad.lastError).toMatch(/binary data/);
+    // Rejected: no draft, so nothing for the queue
+    const drafts = await h.db.select().from(postDrafts);
+    expect(drafts.map((d) => d.storyId)).not.toContain(bad.id);
+    expect(drafts).toHaveLength(1);
+  }, 60_000);
 
   it("skips what was there at first start, then ingests, parses and composes new files", async () => {
     await put("29_OCTOBER_2026", "BTN_RJ_BREAKING_2198_28OCT_mh_CONTROL_AJM3_big.txt", fixture("BTN_RJ_BREAKING_2198_28OCT_mh_CONTROL_AJM3_big.txt"), clock - 60_000);

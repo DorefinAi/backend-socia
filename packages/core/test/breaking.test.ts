@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CATEGORY_SEED_RULES, EMPTY_HANDLE_RULES, LINKING_WORDS, PlaceBook, actingAgents, assemblePostText, composeBreaking, daysToScan, dayFolderName,
-  fileTags, hashtagGazetteer, isBreakingFileName, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
+  fileTags, fromNationalDesk, hashtagGazetteer, isBreakingFileName, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
   parsePlacesData, parseSubjectHandles, phaseFeatures, phaseFrom, pickCategoryTags, pickHandles, xLen,
   breakingDots, crispPoints, plainHeadline, BREAKING_BODY_FLOOR, BREAKING_BODY_MAX, BREAKING_BODY_MIN, BREAKING_POST_MAX,
 } from "../src";
@@ -34,8 +34,11 @@ describe("breaking file names", () => {
     expect(isBreakingFileName("btn_rj_breaking_29Oct_vks_1501_control_KTA4_big_breaking_full.txt")).toBe(true);
     expect(isBreakingFileName("दbtn_rj_breaking_1_29OCT.txt")).toBe(true);
     expect(isBreakingFileName("BTN_RAJ_SCROLL_1_29OCT_NDR_SET.txt")).toBe(false);
-    expect(isBreakingFileName("nat_flash_rj_breaking_601_bps_29OCT_control_TV_BIG.txt")).toBe(false);
-    expect(isBreakingFileName("nat_fash_rj_breaking_602.txt")).toBe(false);
+    // The national flash is taken too (owner, 15 Nov 2026)
+    expect(isBreakingFileName("nat_flash_rj_breaking_601_bps_29OCT_control_TV_BIG.txt")).toBe(true);
+    expect(isBreakingFileName("nat_fash_rj_breaking_602.txt")).toBe(true);
+    expect(isBreakingFileName("दnat_flash_rj_breaking_603.txt")).toBe(true);
+    expect(isBreakingFileName("nat_flash_rj_scroll_604.txt")).toBe(false);
     expect(isBreakingFileName("BTN_RAJ_BREAKING_1.odt")).toBe(false);
     expect(isBreakingFileName("BTN_RJ_BRAKING_2001_29OCT.txt")).toBe(true);
     expect(isBreakingFileName("BTN_RJ_BREKING_2001_29OCT.txt")).toBe(true);
@@ -52,6 +55,24 @@ describe("breaking file names", () => {
     expect(fileTags("BTN_RJ_BREAKING_6006_29OCT_US_CONTROLL_Name_dl_big.txt", book.codes)).toMatchObject({ district: "Delhi", desk: "US", reporter: "NAME" });
     expect(fileTags("BTN_RJ_BREAKING_29OCT_2725_AM_CONTROL_PRG5_BIG_UPDATE_.txt", book.codes)).toMatchObject({ district: "Pratapgarh", update: true, desk: "AM" });
     expect(fileTags("x_18SPET_KARARI_EXCLUSIVE_PHOTO_WEB_TV.txt", book.codes)).toMatchObject({ date: "18SPET", exclusive: true, photo: true, web: true, tv: true, other: ["KARARI"] });
+  });
+
+  it("reads the national flash as national, never as a reporter called NAT FLASH", () => {
+    const real = fileTags("nat_flash_rj_breaking_604_bps_01NOV_control_TV_BIG_FULL.txt", book.codes);
+    expect(real).toMatchObject({ reporter: null, desk: "BPS", big: true, full: true, tv: true, other: ["NAT", "FLASH"] });
+    expect(fileTags("nat_fash_rj_breaking_602.txt", book.codes)).toMatchObject({ reporter: null, other: ["NAT", "FASH"] });
+    expect(fromNationalDesk(real)).toBe(true);
+    expect(fromNationalDesk(fileTags("BTN_RJ_BREAKING_6810_VG_02NOV_CONTROL_NWS_BIG.txt", book.codes))).toBe(true);
+    expect(fromNationalDesk(fileTags("BTN_RAJ_BREAKING_1303_29OCT_NDR_Reporter_BIG.txt", book.codes))).toBe(false);
+    expect(fromNationalDesk(null)).toBe(false);
+    // A real national flash (01 Nov, Delhi rally): national, so no "no district" check and no Rajasthan brand
+    const s = parseBreaking(
+      "nat_flash_rj_breaking_604_bps_01NOV_control_TV_BIG_FULL\n\nरामलीला मैदान में INDIA गठबंधन की रैली\nदेश बचाने के लिए लड़ाई लड़नी पड़ रही- तेजस्वी\n",
+      "nat_flash_rj_breaking_604_bps_01NOV_control_TV_BIG_FULL.txt",
+      book,
+    );
+    expect(s.headline).toBe("रामलीला मैदान में INDIA गठबंधन की रैली");
+    expect(s.needsCheck).not.toContain("no_district");
   });
 });
 

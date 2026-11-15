@@ -1,5 +1,6 @@
 // The newsroom's breaking-files share, read only: \\10.1.1.19\controldata\BREAKING_TAZA_NEWS (UNC, read natively
-// on the office PC). Today's and yesterday's day folders are listed; only BREAKING .txt files are returned.
+// on the office PC). Today's and yesterday's day folders are listed; only BREAKING .txt files (the national
+// flash, nat_flash_..._breaking_..., included) are returned.
 // Nothing here writes, renames or deletes.
 //
 // Only ENOENT means "not there": a day folder not created yet (waiting, not an error) or a file deleted between
@@ -17,8 +18,8 @@ import type { Logger } from "pino";
 const STAT_CONCURRENCY = 16;
 /** A share call slower than this counts as the share being down (an SMB hang can last minutes) */
 export const SHARE_TIMEOUT_MS = 20_000;
-/** A breaking item is a few KB; anything this big is not one (and is never read whole) */
-export const MAX_FILE_BYTES = 1024 * 1024;
+/** A breaking item is a few KB (the largest seen is about 18 KB); anything over 4 MB is not one and is never read */
+export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
 /** The share cannot be read right now. `code` is the errno (EIO, ETIMEDOUT, ...), for admins and the logs. */
 export class ShareUnreachable extends Error {

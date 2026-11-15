@@ -4,7 +4,7 @@
 // flagged. Rules only: anything odd is flagged for a human, never guessed by a model.
 
 import { fold } from "../fold";
-import { fileTags, type FileTags } from "./filename";
+import { fileTags, fromNationalDesk, type FileTags } from "./filename";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
 
 /**
@@ -464,8 +464,8 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
       national = true;
     }
   }
-  // National news with no place (NWS desk files) is not missing a district
-  if (!district && !national && tags.other.includes("NWS")) national = true;
+  // National news with no place (NWS desk files, the national flash) is not missing a district
+  if (!district && !national && fromNationalDesk(tags)) national = true;
   const leaderPost = LEADER_POST.test(headline);
   // A leader's post and state-wide news (secretariat, a state decision) have no district and need none
   if (!district && !national && !leaderPost && !STATEWIDE.test([headline, ...points].join(" "))) flag("no_district");

@@ -46,8 +46,8 @@ export function asFileTags(value: unknown): FileTags | null {
 export const DESK_CODES = ["VKS", "KS", "BPS", "NDR", "AM", "US", "VG", "MH", "YN", "RT", "VT"] as const;
 const DESKS = new Set<string>(DESK_CODES);
 
-/** Codes that are neither a flag, a desk nor a name */
-const OTHER = new Set(["KARARI", "NWS", "MJSM", "SCREEN", "BLAST", "COURT", "CM", "SET", "FILE", "MEETING", "PROTOCOL", "VISITORS", "JNS", "ROOM"]);
+/** Codes that are neither a flag, a desk nor a name (NAT FLASH / NAT FASH: the national flash, never a reporter) */
+const OTHER = new Set(["KARARI", "NWS", "MJSM", "SCREEN", "BLAST", "COURT", "CM", "SET", "FILE", "MEETING", "PROTOCOL", "VISITORS", "JNS", "ROOM", "NAT", "FLASH", "FASH"]);
 /** The file's kind and the control room, typos included: they say nothing about the story */
 const NOISE = new Set(["BTN", "RJ", "RAJ", "BREAKING", "BREAK", "BRAKING", "BREKING", "CONTROL", "CONTROLL", "CONTRL", "CONTOL", "TXT", "NEWS", "TAZA"]);
 const FLAGS: Record<string, keyof Pick<FileTags, "big" | "full" | "update" | "exclusive" | "photo" | "web" | "tv">> = {
@@ -172,17 +172,23 @@ export function fileSlot(fileName: string, codes: Record<string, string>): FileS
   return slotFromTags(fileTags(fileName, codes));
 }
 
+/** A file from the national desk (NWS) or the national flash (nat_flash_ / nat_fash_): national news, not Rajasthan */
+export function fromNationalDesk(tags: Pick<FileTags, "other"> | null | undefined): boolean {
+  return !!tags && (tags.other.includes("NWS") || tags.other.includes("NAT"));
+}
+
 /** The desk's spellings of BREAKING, typos included (as in NOISE above) */
 const BREAKING_WORD = /breaking|braking|breking|break/;
 
-/** Only BREAKING files, never SCROLL or the national flash (nat_flash / nat_fash), never "x.txtbtn_...". */
+/**
+ * Only BREAKING files (the national flash, nat_flash_rj_breaking_... / nat_fash_..., included: the desk wants
+ * them in the queue, owner 15 Nov 2026), never SCROLL, never "x.txtbtn_...".
+ */
 export function isBreakingFileName(fileName: string): boolean {
   const base = (fileName.split(/[\\/]/).pop() ?? fileName).normalize("NFC");
   if (!/\.txt$/i.test(base)) return false;
   const lower = base.toLowerCase();
   if (!BREAKING_WORD.test(lower) || lower.includes("scroll")) return false;
   // "x.txtbtn_..." is a mis-saved double name: skip it rather than guess which half is the story
-  if (lower.indexOf(".txt") !== lower.length - 4) return false;
-  // A stray Devanagari letter before the name does not make nat_ files acceptable
-  return !/^[^a-z]*nat_/.test(lower);
+  return lower.indexOf(".txt") === lower.length - 4;
 }

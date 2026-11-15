@@ -7,7 +7,7 @@
 
 import { createHash } from "node:crypto";
 import {
-  LEADER_POST, asFileTags, assemblePostText, composeBreaking, recoverDistrictFrom, directoryHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
+  LEADER_POST, asFileTags, assemblePostText, fromNationalDesk, composeBreaking, recoverDistrictFrom, directoryHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
   mergeReporterTokens, resolveReporterStatus, slotFromTags,
   SETTINGS_POSTED_USES, isSettingsHandleType, type BreakingDraft, type Composer, type DeskHandleRow, type DeskHandleRules, type DirectoryHandleRow, type HandlePick, type HandleRules, type SubjectRules, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
   type TagSuggestion,
@@ -267,8 +267,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       // none: its stored file is parsed again for it; failing that storyDistrict's legacy rule applies
       districtFrom: story.districtFrom ?? (await legacyDistrictFrom(tx, story, book)),
       town: story.town,
-      // No place: Rajasthan, unless the file came from the national desk
-      rajasthan: place ? place.rajasthan : !tags?.other.includes("NWS"),
+      // No place: Rajasthan, unless the file came from the national desk or is the national flash
+      rajasthan: place ? place.rajasthan : !fromNationalDesk(tags),
       leaderPost: LEADER_POST.test(headline),
       reporterToken: slot.reporterToken,
       fileDistrict: slot.district,

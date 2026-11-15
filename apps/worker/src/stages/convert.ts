@@ -1,7 +1,7 @@
 // Convert + parse: Kruti Dev → Unicode, then line 1 = headline. Nothing downstream can be trusted
 // until the converter passes the regression set with the control room's real font (doc §11 step 0).
 
-import { SERIOUS_CHECKS, STICKY_CHECKS, conversionConfidence, decodeBytes, detectEncoding, krutiToUnicode, parseBreaking, parseStory, type BreakingStory } from "@socia/core";
+import { SERIOUS_CHECKS, STICKY_CHECKS, conversionConfidence, decodeBreakingFile, decodeBytes, detectEncoding, krutiToUnicode, parseBreaking, parseStory, type BreakingStory } from "@socia/core";
 import { ingestedFiles, stories, type Db } from "@socia/db";
 import type { Storage } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
@@ -62,8 +62,15 @@ export async function convertNext(db: Db, storage: Storage, log: Logger, data?: 
     const bytes = await storage.get(file!.storageKey);
 
     if (story.layout === "breaking") {
-      // Breaking files are UTF-8 Unicode: no Kruti Dev guess (a Latin file-name line can look like Kruti Dev)
-      const { text, charset } = decodeBytes(bytes);
+      // Breaking files are Unicode (UTF-8, or Notepad's UTF-16): no Kruti Dev guess (a Latin file-name line can look
+      // like Kruti Dev). A file that is not text at all is rejected: failed, out of the queue, the reason logged.
+      const decoded = decodeBreakingFile(bytes);
+      if ("unreadable" in decoded) {
+        await tx.update(stories).set({ status: "failed", lastError: decoded.unreadable, updatedAt: sql`now()` }).where(eq(stories.id, story.id));
+        log.warn({ storyId: story.id, file: file!.fileName, why: decoded.unreadable }, "breaking file rejected: not readable text");
+        return;
+      }
+      const { text, charset } = decoded;
       const unicode = text.normalize("NFC");
       const result = { sourceText: text, charset, encoding: "unicode", unicode, confidence: conversionConfidence(unicode) };
       if (!data) throw new Error("Breaking stories need the places file (convert started without it)");

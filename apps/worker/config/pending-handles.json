@@ -1,0 +1,552 @@
+{
+  "version": 1,
+  "_note": "NOT LOADED by the worker or the API (Changes #3 Q4, owner decision 15 Nov 2026). The handles of the 15 Nov 'Extracted' sheet that the desk used on fewer than 2 of the 2,704 posts of the 8-day export (9 Sep – 13 Nov 2026), kept here so nothing is lost. desk_posts = posts in that export carrying the handle.",
+  "_how_to_promote": "Once the desk has used a 'pending' handle on 2 posts, move it into the file for its type (person or organisation: subject-handles.json; party: party-handles.json; police tied to one Rajasthan district: district-handles.json; a force outside Rajasthan: subject-handles.json as kind 'police') with handle_type, verified, source and evidence, and remove it here. keywords_from_sheet are the sheet's own and are NOT vetted: when promoting, keep only names and phrases of 2+ words (Q7) — single generic words such as 'flight', 'बिजली', 'स्वच्छता', 'प्रदूषण', 'मिलावट', 'हॉकी' or a bare surname never trigger a handle.",
+  "_not_to_be_added": "status 'not_to_be_added' entries were decided against by the owner (Changes #3 and Q3/Q4); they are listed for the record and are never promoted by the 2-post rule alone.",
+  "entries": [
+    {
+      "handle": "@AQI_India",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "AQI India",
+      "keywords_from_sheet": [
+        "AQI",
+        "एक्यूआई",
+        "वायु गुणवत्ता",
+        "प्रदूषण"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@AshokParnamiBJP",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Ashok Parnami (BJP leader)",
+      "keywords_from_sheet": [
+        "Ashok Parnami",
+        "अशोक परनामी",
+        "परनामी"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@DefenceMinIndia",
+      "category": "Govt Department",
+      "type": "organisation",
+      "name": "Ministry of Defence, India",
+      "keywords_from_sheet": [
+        "Defence Ministry",
+        "रक्षा मंत्रालय",
+        "सेना"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@DrMaheshJoshimp",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Dr. Mahesh Joshi (Congress leader, former minister)",
+      "keywords_from_sheet": [
+        "Mahesh Joshi",
+        "महेश जोशी"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@DrPramodPSawant",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Dr. Pramod Sawant (CM, Goa)",
+      "keywords_from_sheet": [
+        "Pramod Sawant",
+        "प्रमोद सावंत"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@fssaiindia",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "Food Safety and Standards Authority of India",
+      "keywords_from_sheet": [
+        "FSSAI",
+        "खाद्य सुरक्षा",
+        "मिलावट"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@JaipurDiscom1",
+      "category": "Govt Department",
+      "type": "organisation",
+      "name": "Jaipur Vidyut Vitran Nigam (JVVNL)",
+      "keywords_from_sheet": [
+        "Jaipur Discom",
+        "JVVNL",
+        "डिस्कॉम",
+        "बिजली"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@KailashvermaBJP",
+      "category": "MLA (party)",
+      "type": "person",
+      "name": "Dr. Kailash Verma (BJP MLA, Bagru)",
+      "keywords_from_sheet": [
+        "Kailash Verma",
+        "कैलाश वर्मा",
+        "बगरू"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@lkopolice",
+      "category": "District Police",
+      "type": "police",
+      "name": "Lucknow Police (UP)",
+      "keywords_from_sheet": [
+        "Lucknow Police",
+        "लखनऊ पुलिस"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@MirdhaOfficial",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Harendra Mirdha (Congress MLA, Nagaur)",
+      "keywords_from_sheet": [
+        "Harendra Mirdha",
+        "हरेंद्र मिर्धा",
+        "मिर्धा"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@mygovindia",
+      "category": "Govt Department",
+      "type": "organisation",
+      "name": "MyGov India",
+      "keywords_from_sheet": [
+        "MyGov",
+        "भारत सरकार"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@rajnathsingh",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Rajnath Singh (Union Defence Minister)",
+      "keywords_from_sheet": [
+        "Rajnath Singh",
+        "राजनाथ सिंह",
+        "रक्षा मंत्री"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@RLPINDIAorg",
+      "category": "Party / Wing",
+      "type": "party",
+      "name": "Rashtriya Loktantrik Party (RLP)",
+      "keywords_from_sheet": [
+        "RLP",
+        "आरएलपी",
+        "राष्ट्रीय लोकतांत्रिक पार्टी",
+        "हनुमान बेनीवाल"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@Uppolice",
+      "category": "Police (statewide)",
+      "type": "police",
+      "name": "Uttar Pradesh Police",
+      "keywords_from_sheet": [
+        "UP Police",
+        "यूपी पुलिस",
+        "उत्तर प्रदेश पुलिस"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@withabhinsui",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Abhishek Choudhary (NSUI Rajasthan)",
+      "keywords_from_sheet": [
+        "NSUI",
+        "एनएसयूआई"
+      ],
+      "desk_posts": 1,
+      "status": "pending"
+    },
+    {
+      "handle": "@_LKAdvani",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "L.K. Advani (Senior BJP leader)",
+      "keywords_from_sheet": [
+        "LK Advani",
+        "लालकृष्ण आडवाणी",
+        "आडवाणी"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@ADevvrat",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Acharya Devvrat (Governor)",
+      "keywords_from_sheet": [
+        "Acharya Devvrat",
+        "आचार्य देवव्रत",
+        "देवव्रत"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@adgp",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "ADGPI – Indian Army",
+      "keywords_from_sheet": [
+        "Indian Army",
+        "भारतीय सेना",
+        "जवान"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@bhajanlaljatav",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Bhajanlal Jatav (Congress leader, former minister)",
+      "keywords_from_sheet": [
+        "Bhajanlal Jatav",
+        "भजनलाल जाटव",
+        "जाटव"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@Bharatpur_1One",
+      "category": "Party / Wing",
+      "type": "party",
+      "name": "Bharatpur Congress (local handle)",
+      "keywords_from_sheet": [
+        "Bharatpur Congress",
+        "भरतपुर कांग्रेस"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@DRDO_India",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "DRDO",
+      "keywords_from_sheet": [
+        "DRDO",
+        "डीआरडीओ",
+        "रक्षा अनुसंधान"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@DRSHAILESHBJP",
+      "category": "MLA (party)",
+      "type": "person",
+      "name": "Dr. Shailesh Singh (BJP MLA, Deeg-Kumher)",
+      "keywords_from_sheet": [
+        "Shailesh Singh",
+        "शैलेश सिंह",
+        "डीग-कुम्हेर"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@FADA_India",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "Federation of Automobile Dealers Associations",
+      "keywords_from_sheet": [
+        "FADA",
+        "वाहन बिक्री",
+        "ऑटोमोबाइल"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@hockeyrajasthan",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "Hockey Rajasthan",
+      "keywords_from_sheet": [
+        "Hockey Rajasthan",
+        "हॉकी राजस्थान",
+        "हॉकी"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@IAF_MCC",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "Indian Air Force",
+      "keywords_from_sheet": [
+        "IAF",
+        "वायुसेना",
+        "भारतीय वायुसेना"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@JDAJodhpur",
+      "category": "Govt Department",
+      "type": "organisation",
+      "name": "Jodhpur Development Authority",
+      "keywords_from_sheet": [
+        "JDA Jodhpur",
+        "जेडीए जोधपुर",
+        "जोधपुर विकास प्राधिकरण"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@jodhpurNews",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "Jodhpur News (local news handle)",
+      "keywords_from_sheet": [
+        "Jodhpur News",
+        "जोधपुर"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@kcvenugopalmp",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "K.C. Venugopal (AICC General Secretary, Organisation)",
+      "keywords_from_sheet": [
+        "KC Venugopal",
+        "केसी वेणुगोपाल",
+        "वेणुगोपाल"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@MEAIndia",
+      "category": "Govt Department",
+      "type": "organisation",
+      "name": "Ministry of External Affairs, India",
+      "keywords_from_sheet": [
+        "MEA",
+        "विदेश मंत्रालय"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@myogiadityanath",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Yogi Adityanath (CM, Uttar Pradesh)",
+      "keywords_from_sheet": [
+        "Yogi Adityanath",
+        "योगी आदित्यनाथ",
+        "सीएम योगी"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@NTA_Exams",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "National Testing Agency",
+      "keywords_from_sheet": [
+        "NTA",
+        "एनटीए",
+        "नेशनल टेस्टिंग एजेंसी"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@PSKhachariyawas",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Pratap Singh Khachariyawas (Congress leader, former minister)",
+      "keywords_from_sheet": [
+        "Pratap Singh Khachariyawas",
+        "प्रताप सिंह खाचरियावास",
+        "खाचरियावास"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@pushkardhami",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Pushkar Singh Dhami (CM, Uttarakhand)",
+      "keywords_from_sheet": [
+        "Pushkar Dhami",
+        "पुष्कर धामी"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@Rajendra4BJP",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Rajendra Rathore (BJP leader)",
+      "keywords_from_sheet": [
+        "Rajendra Rathore",
+        "राजेंद्र राठौड़",
+        "राठौड़"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@RPF_INDIA",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "Railway Protection Force",
+      "keywords_from_sheet": [
+        "RPF",
+        "आरपीएफ",
+        "रेलवे सुरक्षा बल"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@TheHockeyIndia",
+      "category": "Institution",
+      "type": "organisation",
+      "name": "Hockey India",
+      "keywords_from_sheet": [
+        "Hockey India",
+        "हॉकी इंडिया",
+        "हॉकी"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@vikrambansiwal",
+      "category": "MLA (party)",
+      "type": "person",
+      "name": "Vikram Bansiwal (BJP MLA, Sikrai)",
+      "keywords_from_sheet": [
+        "Vikram Bansiwal",
+        "विक्रम बंशीवाल",
+        "सिकराय"
+      ],
+      "desk_posts": 0,
+      "status": "pending"
+    },
+    {
+      "handle": "@IYC",
+      "category": "Party / Wing",
+      "type": "party",
+      "name": "Indian Youth Congress",
+      "keywords_from_sheet": [
+        "IYC",
+        "युवा कांग्रेस",
+        "यूथ कांग्रेस"
+      ],
+      "desk_posts": 2,
+      "status": "not_to_be_added",
+      "why": "Changes #3 \"Considered and not included\" and Q3: 2 posts but not added by the owner; revisit with the decision log."
+    },
+    {
+      "handle": "@gtiwariindia",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Ghanshyam Tiwari (BJP MP, Rajya Sabha)",
+      "keywords_from_sheet": [
+        "Ghanshyam Tiwari",
+        "घनश्याम तिवाड़ी",
+        "तिवाड़ी"
+      ],
+      "desk_posts": 1,
+      "status": "not_to_be_added",
+      "why": "Changes #3 \"Considered and not included\" and Q3: 1–2 posts; add when it reaches 2+ corroborated posts."
+    },
+    {
+      "handle": "@RajeshwarS73",
+      "category": "Leader / Person",
+      "type": "person",
+      "name": "Rajeshwar Singh (State Election Commissioner, Rajasthan)",
+      "keywords_from_sheet": [
+        "Rajeshwar Singh",
+        "राजेश्वर सिंह",
+        "राज्य निर्वाचन आयुक्त"
+      ],
+      "desk_posts": 1,
+      "status": "not_to_be_added",
+      "why": "Changes #3 \"Considered and not included\" and Q3: 1–2 posts; add when it reaches 2+ corroborated posts."
+    },
+    {
+      "handle": "@Jodhpurpolice",
+      "category": "District Police",
+      "type": "police",
+      "name": "Jodhpur police",
+      "keywords_from_sheet": [
+        "Jodhpur Police",
+        "जोधपुर पुलिस"
+      ],
+      "desk_posts": 0,
+      "status": "not_to_be_added",
+      "why": "Q4 (owner): do NOT add — @CP_Jodhpur (73 desk uses) is Jodhpur's police handle; this one has 0."
+    },
+    {
+      "handle": "@nsui",
+      "category": "Party / Wing",
+      "type": "party",
+      "name": "NSUI (Congress student wing)",
+      "keywords_from_sheet": [
+        "NSUI",
+        "एनएसयूआई",
+        "छात्र संगठन"
+      ],
+      "desk_posts": 0,
+      "status": "not_to_be_added",
+      "why": "Q4 (owner): do NOT add — @NSUIRajasthan is kept; this one has 0 desk uses."
+    }
+  ]
+}

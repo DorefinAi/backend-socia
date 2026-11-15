@@ -2598,6 +2598,227 @@
       "source": "https://api.fxtwitter.com/RSSorg",
       "checkedAt": "2026-11-12",
       "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5: used by the desk in published posts). X: 'RSS', verified (type 'individual'; bio 'Official Twitter Handle Of Rashtriya Swayamsevak Sangh')."
+    },
+    {
+      "handle": "@DrMohanBhagwat",
+      "handle_type": "person",
+      "kind": "person",
+      "title": "मोहन भागवत (RSS सरसंघचालक)",
+      "names_hi": [
+        "मोहन भागवत",
+        "डॉ. मोहन भागवत"
+      ],
+      "names_en": [
+        "Mohan Bhagwat"
+      ],
+      "keywords_hi": [
+        "संघ प्रमुख"
+      ],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 5 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 5,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 5 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). Dropped (Q7): 'सरसंघचालक' (one word, a title)."
+    },
+    {
+      "handle": "@IndiGo6E",
+      "handle_type": "institution",
+      "kind": "company",
+      "title": "IndiGo (airline)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "इंडिगो"
+      ],
+      "keywords_en": [
+        "IndiGo"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 12 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 12,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 12 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). Dropped (Q7): 'flight', 'फ्लाइट' (generic)."
+    },
+    {
+      "handle": "@flyspicejet",
+      "handle_type": "institution",
+      "kind": "company",
+      "title": "SpiceJet (airline)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "स्पाइसजेट",
+        "स्पाइस जेट"
+      ],
+      "keywords_en": [
+        "SpiceJet",
+        "Spice Jet"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 7 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 7,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 7 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). 'स्पाइस जेट' / 'Spice Jet' are the desk's own spellings on its posts. Dropped (Q7): 'flight', 'फ्लाइट'."
+    },
+    {
+      "handle": "@airindia",
+      "handle_type": "institution",
+      "kind": "company",
+      "title": "Air India (airline)",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "एयर इंडिया"
+      ],
+      "keywords_en": [
+        "Air India"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 3 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 3,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). Dropped (Q7): 'flight', 'फ्लाइट'."
+    },
+    {
+      "handle": "@swacchhjaipur",
+      "handle_type": "district",
+      "kind": "department",
+      "title": "स्वच्छ जयपुर (नगर निगम जयपुर, स्वच्छता)",
+      "names_hi": [
+        "स्वच्छ जयपुर"
+      ],
+      "names_en": [
+        "Swachh Jaipur"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 2 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 2,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 2 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). Tied to Jaipur, so 'district' like the Nagar Nigam account. Dropped (Q7): 'स्वच्छता' (generic); 'नगर निगम जयपुर' left out too: it names the whole corporation, and both desk uses were cleanliness-survey posts. NOT the same account as the unverified @Swachh_Jaipur above (1 desk use), which is left as it was."
+    },
+    {
+      "handle": "@PremBhandariNYC",
+      "handle_type": "person",
+      "kind": "person",
+      "title": "प्रेम भंडारी (RANA अध्यक्ष, जयपुर फुट USA)",
+      "names_hi": [
+        "प्रेम भंडारी"
+      ],
+      "names_en": [
+        "Prem Bhandari"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 3 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 3,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 3 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). Dropped (Q7): 'RANA' (one word), 'जयपुर फुट' (an organisation he chairs, not his name: it would tag him on any Jaipur Foot story)."
+    },
+    {
+      "handle": "@cpjoshiBJP",
+      "handle_type": "person",
+      "kind": "person",
+      "title": "सीपी जोशी (भाजपा सांसद, चित्तौड़गढ़)",
+      "names_hi": [
+        "सीपी जोशी",
+        "सी.पी. जोशी",
+        "चंद्रप्रकाश जोशी"
+      ],
+      "names_en": [
+        "CP Joshi",
+        "C.P. Joshi",
+        "Chandra Prakash Joshi"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "exclude_hi": [
+        "डॉ. सीपी जोशी",
+        "डॉ. सी.पी. जोशी",
+        "डॉ सीपी जोशी",
+        "डॉ सी.पी. जोशी",
+        "विधानसभा अध्यक्ष"
+      ],
+      "exclude_en": [
+        "Dr CP Joshi",
+        "Dr. C.P. Joshi",
+        "Dr. CP Joshi"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 2 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 2,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 2 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). CONTESTED NAME: Dr. C.P. Joshi (Congress, Nathdwara, former Speaker) is a different person. One of the 2 desk uses (Nathdwara, 'पूर्व विधानसभा अध्यक्ष डॉ. सी.पी. जोशी') tagged this BJP account on the Congress leader's story — a desk slip. The excludes keep the 'डॉ.' / Speaker spellings off this entry."
+    },
+    {
+      "handle": "@jualoram",
+      "handle_type": "person",
+      "kind": "person",
+      "title": "जुएल ओराम (केंद्रीय जनजातीय कार्य मंत्री)",
+      "names_hi": [
+        "जुएल ओराम"
+      ],
+      "names_en": [
+        "Jual Oram"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 2 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 2,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 2 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). Dropped (Q7): 'जनजातीय' (generic)."
+    },
+    {
+      "handle": "@RaoRajendraBJP",
+      "handle_type": "person",
+      "kind": "person",
+      "title": "राव राजेंद्र सिंह (भाजपा सांसद, जयपुर ग्रामीण)",
+      "names_hi": [
+        "राव राजेंद्र सिंह"
+      ],
+      "names_en": [
+        "Rao Rajendra Singh"
+      ],
+      "keywords_hi": [
+        "जयपुर ग्रामीण सांसद"
+      ],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 2 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 2,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 2 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7)."
+    },
+    {
+      "handle": "@KolkataPolice",
+      "handle_type": "police",
+      "kind": "police",
+      "title": "Kolkata Police",
+      "names_hi": [],
+      "names_en": [],
+      "keywords_hi": [
+        "कोलकाता पुलिस"
+      ],
+      "keywords_en": [
+        "Kolkata Police"
+      ],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 2 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 2,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): one of the 12 sheet handles the desk used on 2+ posts, taken from the desk's own published output, corroborated by 2 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is. Keywords are names or phrases of 2+ words only (Q7). A force outside Rajasthan, typed 'police' like @DelhiPolice (P3, D2); kind 'police', so it is tagged only where its own rule finds it acting. Neither desk use names 'कोलकाता पुलिस', so on those two posts it does not fire."
+    },
+    {
+      "handle": "@ArvindKejriwal",
+      "handle_type": "person",
+      "kind": "person",
+      "title": "अरविंद केजरीवाल (AAP)",
+      "names_hi": [
+        "अरविंद केजरीवाल"
+      ],
+      "names_en": [
+        "Arvind Kejriwal"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "@1stIndiaNews timeline, 2 posts (8-day export, 9 Sep – 13 Nov 2026; Extracted sheet, 15 Nov 2026)",
+      "evidence": 2,
+      "note": "Changes #3 Q4 (owner, 15 Nov 2026): the 2+ posts rule. The sheet review counted 0 desk uses for this handle; the recount for this change found 2 (Punjab AAP posts), so it meets the owner's rule and goes in as the 13th handle (the pending file's own promotion rule would move it anyway). Taken from the desk's own published output; not yet checked against an official source. Keywords are names only (Q7): dropped the bare surname 'केजरीवाल'."
     }
   ],
   "checkedAt": "2026-10-31T10:08:28+00:00"

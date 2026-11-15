@@ -274,3 +274,65 @@ describe("Changes #3 step 3: the district-when-missing policy for four more repo
     expect(d.hashtags).toEqual(["#FirstIndiaNews"]);
   });
 });
+
+// ─── Step 4: the sheet's handles ─────────────────────────────────────────────
+
+describe("Changes #3 step 4: the 13 sheet handles the desk used on 2+ posts", () => {
+  const NEW: [string, string][] = [
+    ["DrMohanBhagwat", "person"], ["IndiGo6E", "institution"], ["flyspicejet", "institution"], ["airindia", "institution"], ["swacchhjaipur", "district"],
+    ["PremBhandariNYC", "person"], ["cpjoshiBJP", "person"], ["jualoram", "person"], ["RaoRajendraBJP", "person"], ["KolkataPolice", "police"], ["ArvindKejriwal", "person"],
+  ];
+
+  it("each loads, verified, with its type (plus @pratapgarhpol and Shubham Jain from step 1: 13 in all)", () => {
+    const entries = cfg("subject-handles.json").entries as Record<string, unknown>[];
+    for (const [h, type] of NEW) {
+      expect(subjects.types!.get(h.toLowerCase()), h).toBe(type);
+      expect(entries.find((e) => e.handle === `@${h}`), h).toMatchObject({ verified: true });
+      expect(Number(entries.find((e) => e.handle === `@${h}`)!.evidence), h).toBeGreaterThanOrEqual(2);
+    }
+    expect(NEW.length + 2).toBe(13);
+  });
+
+  it("keywords are names or phrases of 2+ words (Q7): no generic single word triggers a handle", () => {
+    const generic = ["flight", "फ्लाइट", "बिजली", "स्वच्छता", "प्रदूषण", "मिलावट", "हॉकी", "राठौड़", "जनजातीय", "केजरीवाल", "सरसंघचालक", "rana"];
+    for (const [h] of NEW) {
+      const e = (cfg("subject-handles.json").entries as Record<string, string[]>[]).find((x) => (x.handle as unknown as string) === `@${h}`)!;
+      for (const k of [...e.names_hi!, ...e.names_en!, ...e.keywords_hi!, ...e.keywords_en!]) expect(generic).not.toContain(k.toLowerCase());
+    }
+    const d = draft(fileFor(null), ["#Jaipur: जयपुर से दुबई की फ्लाइट 18 घंटे लेट", "यात्री एयरपोर्ट पर परेशान"]);
+    for (const h of ["indigo6e", "flyspicejet", "airindia"]) expect(everywhere(d)).not.toContain(h);
+  });
+
+  it("each fires on its name", () => {
+    const cases: [string, string[]][] = [
+      ["indigo6e", ["#Jaipur: इंडिगो की फ्लाइट 6E-7113 हुई करीब 4 घंटे लेट", "यात्री एयरपोर्ट पर परेशान"]],
+      ["flyspicejet", ["#Jaipur: स्पाइस जेट की दुबई-जयपुर फ्लाइट लेट", "यात्री एयरपोर्ट पर परेशान"]],
+      ["airindia", ["#Jaipur: दुबई से जयपुर आने वाली एयर इंडिया की फ्लाइट लेट", "यात्री एयरपोर्ट पर परेशान"]],
+      ["drmohanbhagwat", ["#Jodhpur: RSS के सरसंघचालक डॉ. मोहन भागवत का जोधपुर दौरा", "14 नवंबर को जोधपुर पहुंचेंगे"]],
+      ["prembhandarinyc", ["#Jodhpur: न्यूयॉर्क से जोधपुर पहुंचे RANA अध्यक्ष प्रेम भंडारी", "नाकोड़ा जी मंदिर में किए दर्शन"]],
+      ["jualoram", ["#Delhi: केंद्रीय जनजातीय कार्य मंत्री जुएल ओराम ने की प्रेस ब्रीफिंग", "जनजातीय गौरव दिवस की तैयारियां"]],
+      ["raorajendrabjp", ["#Jaipur: जयपुर ग्रामीण सांसद राव राजेंद्र सिंह ने किए दर्शन", "गोवर्धन महोत्सव में हुए शामिल"]],
+      ["arvindkejriwal", ["#Delhi: अरविंद केजरीवाल ने की पंजाब के मुख्यमंत्री से मुलाकात", "पार्टी की रणनीति पर चर्चा"]],
+      ["cpjoshibjp", ["#Dholpur: बीजेपी के पूर्व प्रदेश अध्यक्ष सीपी जोशी धौलपुर पहुंचे", "कार्यकर्ताओं से की मुलाकात"]],
+    ];
+    for (const [h, lines] of cases) expect(everywhere(draft(fileFor(null), lines)), h).toContain(h);
+  });
+
+  it("@cpjoshiBJP: the Congress leader Dr. C.P. Joshi (former Speaker) never triggers it", () => {
+    const d = draft(fileFor(null), ["#Rajsamand #नाथद्वारा: नगर पालिका के 40 वार्डों के लिए मतदान प्रक्रिया जारी", "पूर्व विधानसभा अध्यक्ष डॉ. सी.पी. जोशी ने डाला वोट"]);
+    expect(everywhere(d)).not.toContain("cpjoshibjp");
+  });
+
+  it("pending-handles.json: 42 entries (37 pending, 5 not to be added), none in a loaded file, and nothing loads it", () => {
+    const p = cfg("pending-handles.json") as { entries: { handle: string; status: string; desk_posts: number }[] };
+    expect(p.entries).toHaveLength(42);
+    expect(p.entries.filter((e) => e.status === "pending")).toHaveLength(37);
+    expect(p.entries.filter((e) => e.status === "not_to_be_added").map((e) => e.handle).sort()).toEqual(["@gtiwariindia", "@IYC", "@Jodhpurpolice", "@nsui", "@RajeshwarS73"].sort());
+    for (const e of p.entries) {
+      expect(directory.has(lc(e.handle)), e.handle).toBe(false);
+      if (e.status === "pending") expect(e.desk_posts).toBeLessThan(2);
+    }
+    const loaders = ["apps/worker/src/data-files.ts", "apps/api/src/handle-keywords.ts", "apps/api/src/handle-search.ts"].map((f) => readFileSync(new URL(`../../../${f}`, import.meta.url), "utf8"));
+    for (const src of loaders) expect(src).not.toMatch(/pending-handles/);
+  });
+});

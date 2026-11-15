@@ -46,6 +46,34 @@ export interface PartyHandleEntry {
   evidence?: number;
   xUserId?: string;
   note?: string;
+  /**
+   * Changes #3 §2.1 (party_of_leader): the party's leaders. When one of these handles is on the draft (emitted or
+   * offered), or one of `leader_names` is in the copy, and none of the party's own state or national handles is
+   * already there, this entry's handle is OFFERED (never tagged) with `leader_reason`. It goes first among the
+   * suggestions when the filing reporter is one of `leader_first_for_reporters`. Optional; a malformed block is
+   * ignored and reported, the entry itself still loads.
+   */
+  leaders?: string[];
+  leader_names?: string[];
+  leader_first_for_reporters?: string[];
+  leader_reason?: string;
+}
+
+/** A party offered because one of its leaders is on the draft (Changes #3 §2.1) */
+export interface LeaderRule {
+  /** The party handle offered, without the @ */
+  handle: string;
+  name: string;
+  party: string;
+  /** The leaders' handles, lower-cased without the @ */
+  leaders: ReadonlySet<string>;
+  /** Folded leader names matched in the copy (Sonia Gandhi has no handle the desk uses): tokens as whole words, phrases as phrases */
+  nameTokens: string[];
+  namePhrases: string[];
+  /** Reporters (lower-cased handles without the @) for whom the offer goes first */
+  firstFor: ReadonlySet<string>;
+  /** The line the desk sees */
+  reason: string;
 }
 
 export interface PartyHandlesData {
@@ -84,6 +112,8 @@ export interface PartyRules {
   handles?: ReadonlySet<string>;
   /** Each entry's handle_type, lower-cased handle without the @; a rejected entry has none */
   types?: ReadonlyMap<string, HandleType>;
+  /** Changes #3 §2.1: parties offered when a leader of theirs is on the draft (verified state or national entries only) */
+  leaderRules?: LeaderRule[];
 }
 
 export const EMPTY_PARTY_RULES: PartyRules = { rules: [], count: 0 };
@@ -117,6 +147,7 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
   const mla: PartyRule[] = [];
   const handles = new Set<string>();
   const types = new Map<string, HandleType>();
+  const leaderRules: LeaderRule[] = [];
   root.entries.forEach((raw, i) => {
     const e = raw as Partial<PartyHandleEntry> | null;
     const where = `entries[${i}]`;
@@ -145,16 +176,85 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
     const keys = [...strings(e.keywords_hi), ...strings(e.keywords_en)].map(fold).filter(Boolean);
     if (!keys.length) return problem(`${who}: no keywords to match on, entry rejected`);
     const party = e.party.trim().toLowerCase();
-    (member ? mla : rules).push({
+    const rule: PartyRule = {
       handle: e.handle.trim().replace(/^@/, ""),
       name: typeof e.name === "string" && e.name.trim() ? e.name.trim() : party,
       party,
       scope,
       tokens: keys.filter((k) => !k.includes(" ")),
       phrases: keys.filter((k) => k.includes(" ")),
-    });
+    };
+    (member ? mla : rules).push(rule);
+    const leader = parseLeaders(e, rule, (m) => problem(`${who}: ${m}; the leaders block is ignored, the entry still loads`));
+    if (leader) leaderRules.push(leader);
   });
-  return { rules, count: rules.length, mla, handles, types };
+  return { rules, count: rules.length, mla, handles, types, leaderRules };
+}
+
+const isHandleList = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && HANDLE.test(x.trim()));
+const isOptionalStrings = (v: unknown): boolean => v === undefined || (Array.isArray(v) && v.every((x) => typeof x === "string"));
+
+/**
+ * The entry's leaders block (Changes #3 §2.1), or null when it has none. Only a party's own state or national handle
+ * may carry one: an MLA, a wing or a media cell is never offered on a leader's behalf.
+ */
+function parseLeaders(e: Partial<PartyHandleEntry>, rule: PartyRule, problem: (message: string) => void): LeaderRule | null {
+  if (e.leaders === undefined && e.leader_names === undefined && e.leader_first_for_reporters === undefined && e.leader_reason === undefined) return null;
+  if (rule.scope !== "state" && rule.scope !== "national") return problem(`a leaders block is only read on a "state" or "national" entry, not "${rule.scope}"`), null;
+  if (!isHandleList(e.leaders)) return problem(`"leaders" must be a non-empty list of X handles`), null;
+  if (!isOptionalStrings(e.leader_names)) return problem(`"leader_names" must be a list of strings`), null;
+  if (e.leader_first_for_reporters !== undefined && !(Array.isArray(e.leader_first_for_reporters) && e.leader_first_for_reporters.every((x) => typeof x === "string" && HANDLE.test(x.trim())))) {
+    return problem(`"leader_first_for_reporters" must be a list of X handles`), null;
+  }
+  if (e.leader_reason !== undefined && (typeof e.leader_reason !== "string" || !e.leader_reason.trim())) return problem(`"leader_reason" must be a non-empty string`), null;
+  const bare = (h: string) => h.trim().replace(/^@/, "").toLowerCase();
+  const names = strings(e.leader_names).map((n) => fold(n.normalize("NFC"))).filter(Boolean);
+  return {
+    handle: rule.handle,
+    name: rule.name,
+    party: rule.party,
+    leaders: new Set(e.leaders.map(bare)),
+    nameTokens: names.filter((k) => !k.includes(" ")),
+    namePhrases: names.filter((k) => k.includes(" ")),
+    firstFor: new Set((e.leader_first_for_reporters ?? []).map(bare)),
+    reason: e.leader_reason?.trim() || `${rule.name} leader tagged`,
+  };
+}
+
+/** What partyOfLeader offers */
+export interface LeaderOffer {
+  /** The party handle, without the @ */
+  handle: string;
+  name: string;
+  reason: string;
+  /** The filing reporter is one the desk puts this offer first for */
+  first: boolean;
+}
+
+/**
+ * Changes #3 §2.1: a party to OFFER because one of its leaders is on the draft. `present` is every handle already on
+ * the draft or offered (the emitted handles and the suggestions, after every other rule). Fires when a leader's handle
+ * is among them, or a leader's name is in the copy, and none of the party's own state or national handles is. Never
+ * tags, and changes nothing already there. One offer per party, file order.
+ */
+export function partyOfLeader(text: string, present: readonly { handle: string }[], rules: PartyRules, reporterHandle?: string | null): LeaderOffer[] {
+  const list = rules.leaderRules ?? [];
+  if (!list.length) return [];
+  const have = new Set(present.map((p) => p.handle.replace(/^@/, "").toLowerCase()));
+  const f = fold(text.normalize("NFC"));
+  const words = new Set(f.split(" ").filter(Boolean));
+  const reporter = reporterHandle ? reporterHandle.replace(/^@/, "").toLowerCase() : null;
+  const out: LeaderOffer[] = [];
+  for (const l of list) {
+    // The party's own handles: the one offered and its state or national twin (@INCRajasthan / @INCIndia)
+    const own = rules.rules.filter((r) => r.party === l.party && (r.scope === "state" || r.scope === "national")).map((r) => r.handle.toLowerCase());
+    if ([l.handle.toLowerCase(), ...own].some((h) => have.has(h)) || out.some((o) => o.handle.toLowerCase() === l.handle.toLowerCase())) continue;
+    const leaderOn = [...l.leaders].some((h) => have.has(h));
+    const named = l.nameTokens.some((k) => words.has(k)) || l.namePhrases.some((p) => f.includes(p));
+    if (!leaderOn && !named) continue;
+    out.push({ handle: l.handle, name: l.name, reason: l.reason, first: !!reporter && l.firstFor.has(reporter) });
+  }
+  return out;
 }
 
 /** The rules of a list the text names: tokens as whole words, phrases as substrings of the folded text */

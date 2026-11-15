@@ -29,6 +29,8 @@ export const PROPOSAL_SOURCES = {
   reporterPrior: "reporter_prior",
   /** "CM" / "मुख्यमंत्री" with no name (brief §6) */
   officeCm: "office_alias.rajasthan_cm",
+  /** A party offered because one of its leaders is on the draft (Changes #3 §2.1: @INCRajasthan beside @RahulGandhi) */
+  partyOfLeader: "party_of_leader",
 } as const;
 
 /** The rule ids of the handle picker's own reasons (handleSource) */

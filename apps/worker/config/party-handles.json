@@ -39,7 +39,12 @@
       ],
       "verified": true,
       "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
-      "evidence": 39
+      "evidence": 39,
+      "leaders": ["@RahulGandhi", "@ashokgehlot51", "@SachinPilot", "@GovindDotasra", "@TikaRamJullyINC", "@kharge"],
+      "leader_names": ["सोनिया गांधी", "Sonia Gandhi"],
+      "leader_first_for_reporters": ["@dineshdangi84", "@naresh_jsharma"],
+      "leader_reason": "Congress leader tagged",
+      "_leaders_note": "Changes #3 §2.1 (party_of_leader): one of these leaders on the draft (emitted or offered), or Sonia Gandhi named, with no @INCRajasthan or @INCIndia there, OFFERS @INCRajasthan, never tags it. First in the suggestions when the file names Dinesh Dangi (36 of 39 Congress-leader posts carried INC) or Naresh (29 of 38); after the other text suggestions for anyone else (29 of 50). Nothing the other rules produced moves."
     },
     {
       "handle": "@BJP4India",

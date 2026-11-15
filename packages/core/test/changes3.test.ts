@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   PlaceBook, composeBreaking, districtKey, parseBeatHandles, parseBreaking, parseHandleRules, parseHashtagNormalise, parsePartyHandles,
-  parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules, pickReporter, slotFromTags, type BreakingDraft,
+  parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules, partyOfLeader, pickReporter, slotFromTags, type BreakingDraft,
 } from "../src";
 
 const cfgText = (f: string) => readFileSync(new URL(`../../../apps/worker/config/${f}`, import.meta.url), "utf8");
@@ -129,5 +129,94 @@ describe("Changes #3 step 1: config", () => {
     const r = pickReporter("DINESH", reporters);
     expect(r.match).toBeNull();
     expect(r.collision).toBe("DINESH");
+  });
+});
+
+// ─── Step 2: §2.1 party_of_leader ────────────────────────────────────────────
+
+describe("Changes #3 step 2: a Congress leader on the draft offers @INCRajasthan", () => {
+  // Changes #3 §2.1's 13 Nov post (Dinesh Dangi): no "कांग्रेस" / "Congress" anywhere in the copy
+  const RAHUL = ["#Jaipur: लोकसभा में नेता प्रतिपक्ष राहुल गांधी का बड़ा दावा", "वोट चोरी के आरोपों पर फिर साधा निशाना, चुनाव आयोग से मांगा जवाब"];
+  const inc = (d: BreakingDraft) => d.handleSuggestions.filter((h) => lc(h.handle) === "incrajasthan");
+
+  it("the leaders are config (party-handles.json @INCRajasthan.leaders), each a verified directory handle", () => {
+    const e = (cfg("party-handles.json").entries as Record<string, unknown>[]).find((x) => x.handle === "@INCRajasthan")!;
+    expect(e.leaders).toEqual(["@RahulGandhi", "@ashokgehlot51", "@SachinPilot", "@GovindDotasra", "@TikaRamJullyINC", "@kharge"]);
+    expect(e.leader_names).toEqual(["सोनिया गांधी", "Sonia Gandhi"]);
+    expect(e.leader_first_for_reporters).toEqual(["@dineshdangi84", "@naresh_jsharma"]);
+    for (const h of e.leaders as string[]) expect(subjects.handles!.has(lc(h))).toBe(true);
+    expect(parties.leaderRules).toHaveLength(1);
+  });
+
+  it("the 13 Nov post: emit @RahulGandhi @dineshdangi84; @INCRajasthan offered FIRST with 'Congress leader tagged'; nothing new emitted", () => {
+    const d = draft(fileFor("DINESH_DANGI"), RAHUL);
+    const off = draft(fileFor("DINESH_DANGI"), RAHUL);
+    expect(emitted(d)).toEqual(["rahulgandhi", "dineshdangi84"]);
+    expect(d.handleSuggestions[0]).toMatchObject({ handle: "INCRajasthan", reason: "party", source: "party_of_leader", detail: "Congress leader tagged" });
+    expect(d.proposals).toEqual(expect.arrayContaining([expect.objectContaining({ item: "@INCRajasthan", layer: "suggest", source: "party_of_leader", reason: "Congress leader tagged" })]));
+    expect(d.proposals.some((p) => p.layer === "emit" && p.item === "@INCRajasthan")).toBe(false);
+    expect(off.bodyText).toBe(d.bodyText);
+  });
+
+  it("Naresh's 13 Nov #Delhi post (former CM Gehlot): INC offered once, first; no Rajasthan CM suggestion", () => {
+    const d = draft(fileFor("NARESH"), ["#Delhi: राजीव गांधी स्टडी सर्किल का कार्यक्रम", "दिल्ली में नेहरू मेमोरियल यूथ फेस्टिवल का शुभारंभ, पूर्व सीएम अशोक गहलोत ने किया संबोधित"]);
+    expect(everywhere(d).filter((h) => h === "incrajasthan")).toHaveLength(1);
+    if (!emitted(d).includes("incrajasthan")) expect(d.handleSuggestions[0]).toMatchObject({ handle: "INCRajasthan", source: "party_of_leader" });
+    for (const cm of ["bhajanlalbjp", "rajcmo"]) expect(everywhere(d)).not.toContain(cm);
+  });
+
+  it("INC already on the draft: no duplicate INC suggestion (and @INCIndia counts as present too)", () => {
+    const d = draft(fileFor("NARESH"), ["#Jaipur: कांग्रेस नेता अशोक गहलोत ने साधा निशाना", "प्रदेश कांग्रेस मुख्यालय में हुई बैठक"]);
+    expect(everywhere(d).filter((h) => h === "incrajasthan").length).toBeLessThanOrEqual(1);
+    expect(d.handleSuggestions.some((h) => h.source === "party_of_leader")).toBe(false);
+    expect(partyOfLeader("राहुल गांधी", [{ handle: "RahulGandhi" }, { handle: "@INCIndia" }], parties)).toEqual([]);
+    expect(partyOfLeader("राहुल गांधी", [{ handle: "RahulGandhi" }], parties)).toEqual([{ handle: "INCRajasthan", name: "Congress Rajasthan", reason: "Congress leader tagged", first: false }]);
+    expect(partyOfLeader("राहुल गांधी", [{ handle: "RahulGandhi" }], parties, "@naresh_jsharma")[0]!.first).toBe(true);
+  });
+
+  it("any other reporter: offered after the other text suggestions, not first; Dangi or Naresh: first", () => {
+    const lines = ["#Jaipur: सचिन पायलट ने यूडीएच मंत्री झाबर सिंह खर्रा पर साधा निशाना", "शहर की सड़कों की हालत पर उठाए सवाल"];
+    const other = draft(fileFor(null), lines);
+    const dangi = draft(fileFor("DINESH_DANGI"), lines);
+    expect(offered(other)).toContain("incrajasthan");
+    expect(offered(other)[0]).not.toBe("incrajasthan");
+    expect(offered(dangi)[0]).toBe("incrajasthan");
+    // Nothing else moved: the other suggestions keep their order behind it
+    expect(offered(dangi).filter((h) => h !== "incrajasthan")).toEqual(offered(other).filter((h) => h !== "incrajasthan"));
+    expect(dangi.handles.map((h) => h.handle).filter((h) => h !== "dineshdangi84")).toEqual(other.handles.map((h) => h.handle));
+  });
+
+  it("Sonia Gandhi named (by name) offers it too", () => {
+    const d = draft(fileFor(null), ["#Delhi: सोनिया गांधी अस्पताल में भर्ती", "स्वास्थ्य जांच के लिए भर्ती कराया गया"]);
+    expect(everywhere(d)).toContain("incrajasthan");
+  });
+
+  it("no Congress leader, nothing offered; a BJP leader never offers INC", () => {
+    const d = draft(fileFor("DINESH_DANGI"), ["#Jaipur: मुख्यमंत्री भजनलाल शर्मा ने किया लोकार्पण", "विकास कार्यों की दी सौगात"]);
+    expect(d.handleSuggestions.some((h) => h.source === "party_of_leader")).toBe(false);
+  });
+
+  it("independent of the reporter prior (L7): the same offer, in the same place, with the prior on or off", () => {
+    for (const token of ["DINESH_DANGI", "NARESH", null]) {
+      const on = draft(fileFor(token), RAHUL);
+      const off = draft(fileFor(token), RAHUL, { reporterPrior: false });
+      expect(on.handleSuggestions.slice(0, off.handleSuggestions.length)).toEqual(off.handleSuggestions);
+      expect(inc(on)).toHaveLength(1);
+    }
+  });
+
+  it("parser: a malformed leaders block is ignored and reported, the entry still loads; an MLA cannot carry one", () => {
+    const e = { handle: "@INCRajasthan", handle_type: "institution", party: "congress", scope: "state", keywords_hi: ["कांग्रेस"], verified: true };
+    for (const bad of [{ ...e, leaders: "@RahulGandhi" }, { ...e, leaders: [] }, { ...e, leaders: ["not a handle"] }, { ...e, leaders: ["@RahulGandhi"], leader_reason: "" }]) {
+      const problems: string[] = [];
+      const r = parsePartyHandles({ version: 1, entries: [bad] }, (m) => problems.push(m));
+      expect(r.count).toBe(1);
+      expect(r.leaderRules).toEqual([]);
+      expect(problems.join(" ")).toMatch(/leaders block is ignored/);
+    }
+    const problems: string[] = [];
+    const mla = parsePartyHandles({ version: 1, entries: [{ ...e, handle: "@someMLA", scope: "mla", verified: false, leaders: ["@RahulGandhi"] }] }, (m) => problems.push(m));
+    expect(mla.leaderRules).toEqual([]);
+    expect(problems.join(" ")).toMatch(/only read on a "state" or "national" entry/);
   });
 });

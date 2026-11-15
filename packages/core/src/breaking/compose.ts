@@ -16,7 +16,7 @@ import { xLen } from "../xtext";
 import { pickCategoryTags } from "./categories";
 import { pickHandlesExplained, type HandlePick, type HandleRules } from "./handles";
 import { EMPTY_DESK_HANDLE_RULES, type DeskHandleRules } from "./desk-handles";
-import { EMPTY_PARTY_RULES, type PartyRules } from "./parties";
+import { EMPTY_PARTY_RULES, partyOfLeader, type PartyRules } from "./parties";
 import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, type ReporterMatch, type ReporterRules } from "./reporters";
 import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
@@ -625,6 +625,17 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
       taken.add(h.handle.toLowerCase());
     }
   }
+  // Changes #3 §2.1 (party_of_leader): a Congress leader on the draft (emitted, or offered by a text rule above) with no
+  // INC handle there offers @INCRajasthan, never tags it. A text rule, so it runs BEFORE the reporter prior and does not
+  // depend on it (L7): the prior then sees the handle as taken and does not offer it twice. Nothing above is removed,
+  // re-ordered or replaced: the offer goes first in the list when the filing reporter is one the config names (Dangi,
+  // Naresh), else into its own tier (a party: text_other, after the other text suggestions).
+  const leaderFirst: HandlePick[] = [];
+  for (const o of partyOfLeader(text, [...handles, ...offeredHandles], parties, reporter?.handle)) {
+    const pick: HandlePick = { handle: o.handle, reason: "party", source: PROPOSAL_SOURCES.partyOfLeader, title: o.name, detail: o.reason };
+    (o.first ? leaderFirst : offeredHandles).push(pick);
+    taken.add(o.handle.toLowerCase());
+  }
   const priorWarnings: string[] = [];
   // The reporter routing prior (§3): measured rates and declared beats of the reporter the FILE NAME names
   if (reporterPriorOn && profile) {
@@ -638,7 +649,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     priorWarnings.push(...prior.warnings);
   }
   // The desk's order (R4, 14 Nov): a person or office the copy names, the other text rules, declared beats, the prior
-  const handleSuggestions = rankHandleSuggestions(offeredHandles, types);
+  // Changes #3 §2.1 (party_of_leader) is placed before the prior below: see leaderFirst
+  const handleSuggestions = [...leaderFirst, ...rankHandleSuggestions(offeredHandles, types)];
   // First occurrence of each tag wins; never the footer, never a tag already in line 1's prefix or anywhere in the
   // headline or points (the same tag, any case, or the same place as "#<Place>News")
   const onPost = copyTagKeys(book, [headline, ...story.points]);

@@ -19,6 +19,8 @@ import type { Logger } from "pino";
 const STAT_CONCURRENCY = 16;
 /** A share call slower than this counts as the share being down (an SMB hang can last minutes) */
 export const SHARE_TIMEOUT_MS = 20_000;
+/** Folder-watch failures in a row after which watching is given up for good (the scans carry on) */
+export const WATCH_GIVE_UP = 3;
 /** A breaking item is a few KB (the largest seen is about 18 KB); anything over 4 MB is not one and is never read */
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
@@ -96,8 +98,10 @@ export class BreakingShareSource implements FileSource {
   private skipped = { day: "", names: new Set<string>() };
   /** The day folders watched now (today's and yesterday's), by folder path */
   private watchers = new Map<string, ShareWatch>();
-  /** Folders whose watch could not start, so the failure is logged once per folder */
-  private watchFailed = new Set<string>();
+  /** Watch failures in a row (any folder); reset when a watch delivers a notice */
+  private watchFailures = 0;
+  /** Set after WATCH_GIVE_UP failures in a row: the share does not send change notices, the scans do the work */
+  private watchOff = false;
 
   constructor(root: string, private readonly opts: BreakingShareOptions = {}) {
     this.root = resolve(root);
@@ -257,7 +261,7 @@ export class BreakingShareSource implements FileSource {
    */
   private watchFolders(folders: string[]): void {
     const { onChange, log } = this.opts;
-    if (!onChange || !this.fs.watch) return;
+    if (!onChange || !this.fs.watch || this.watchOff) return;
     const wanted = new Set(folders);
     for (const [folder, w] of this.watchers) {
       if (wanted.has(folder)) continue;
@@ -269,17 +273,23 @@ export class BreakingShareSource implements FileSource {
       const drop = (err: unknown) => {
         this.watchers.get(folder)?.close();
         this.watchers.delete(folder);
-        if (!this.watchFailed.has(folder)) log?.warn({ err, folder }, "share folder watch stopped; scans carry on and it is tried again");
-        this.watchFailed.add(folder);
+        this.watchFailures += 1;
+        // Some servers accept a watch and then fail it at once, every time: after a few in a row, stop asking and
+        // say so once (the scans every few seconds find every file anyway)
+        if (this.watchFailures >= WATCH_GIVE_UP && !this.watchOff) {
+          this.watchOff = true;
+          for (const w of this.watchers.values()) w.close();
+          this.watchers.clear();
+          log?.warn({ err, folder }, "the share does not send change notices; files are found by the regular scans");
+        }
       };
       try {
         const w = this.fs.watch(this.abs(folder), (name) => {
+          this.watchFailures = 0;
           // Only text files matter; a notice with no name (some servers send none) might be one
           if (name === null || /\.txt$/i.test(name)) onChange();
         }, drop);
         this.watchers.set(folder, w);
-        if (this.watchFailed.delete(folder)) log?.info({ folder }, "share folder watch running again");
-        else log?.info({ folder }, "share folder watched: new files are scanned at once");
       } catch (err) {
         drop(err);
       }

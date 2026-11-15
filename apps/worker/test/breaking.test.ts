@@ -596,6 +596,40 @@ describe("BreakingShareSource (no database)", () => {
     expect(live()).toEqual([]);
   });
 
+  it("a share that fails every watch: after three failures in a row it stops asking and says so once; scans carry on", async () => {
+    const root = "/share";
+    const tree: Record<string, string[]> = { [root]: ["OCTOBER_2026"], [`${root}/OCTOBER_2026`]: ["30_OCTOBER_2026", "31_OCTOBER_2026"] };
+    const fails: ((err: unknown) => void)[] = [];
+    let started = 0;
+    const fakeFs: ShareFs = {
+      readdir: async (p) => {
+        const dirs = tree[p.replace(/\\/g, "/").replace(/^[A-Za-z]:/, "")];
+        return dirs ? dirs.map((name) => ({ name, isDirectory: () => true, isFile: () => false })) : [];
+      },
+      stat: async () => ({ size: 1, mtime: new Date() }),
+      readFileBounded: async () => Buffer.from(""),
+      watch: (_p, _onEvent, onError) => {
+        started++;
+        fails.push(onError);
+        return { close: () => undefined };
+      },
+    };
+    const warn = vi.fn();
+    const quiet = { warn, info: () => undefined, debug: () => undefined, error: () => undefined } as unknown as pino.Logger;
+    const src = new BreakingShareSource(root, { fs: fakeFs, log: quiet, now: () => new Date("2026-10-31T09:00:00Z"), onChange: () => undefined });
+    // Each watch fails as soon as it starts (as Node reports "UNKNOWN: unknown error, watch" on such a server)
+    for (let i = 0; i < 4; i++) {
+      await src.list();
+      while (fails.length) fails.shift()!(new Error("UNKNOWN: unknown error, watch"));
+    }
+    expect(started).toBe(4);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![1]).toMatch(/does not send change notices/);
+    // Listing still works, and no watch is asked for again
+    expect(await src.list()).toEqual([]);
+    expect(started).toBe(4);
+  });
+
   it("without onChange nothing is watched", async () => {
     let watches = 0;
     const fakeFs: ShareFs = {

@@ -220,3 +220,57 @@ describe("Changes #3 step 2: a Congress leader on the draft offers @INCRajasthan
     expect(problems.join(" ")).toMatch(/only read on a "state" or "national" entry/);
   });
 });
+
+// ─── Step 3: §2.2 district_when_missing (Part 3's examples) ──────────────────
+
+describe("Changes #3 step 3: the district-when-missing policy for four more reporters", () => {
+  const NONE = ["सरकार ने जारी किए नए दिशा-निर्देश", "सभी विभागों को भेजे गए आदेश"];
+
+  it.each([["YOGESH", "Jaipur"], ["SHIVENDRA", "Jaipur"], ["KAMALKANT", "Jaipur"], ["BHANWAR", "Kota"]])("%s, standard post, no district: #%s: emitted as the desk rule", (token, district) => {
+    const d = draft(fileFor(token), NONE);
+    expect(d.bodyText.startsWith(`#${district}: `)).toBe(true);
+    expect(d.districtSource).toBe("reporter_policy");
+  });
+
+  it("Yogesh, standard post, no district: #Jaipur: and no @jaipur_police / @DcDmJaipur (V7)", () => {
+    // A police story naming no place: the desk rule writes #Jaipur:, and it chooses no force or collector
+    const d = draft(fileFor("YOGESH"), ["पुलिस ने निकाला फ्लैग मार्च, थाना प्रभारी ने दिए निर्देश", "कानून-व्यवस्था बनाए रखने की अपील"]);
+    expect(d.bodyText.startsWith("#Jaipur: ")).toBe(true);
+    for (const h of [...jaipur.police, ...jaipur.collector, "jaipur_police", "DcDmJaipur"]) expect(everywhere(d)).not.toContain(lc(h));
+  });
+
+  it("Bhanwar, video post, no district: #Kota offered in the trailing run, no leading tag", () => {
+    const d = draft(fileFor("BHANWAR"), ["कोचिंग छात्रों के लिए नई गाइडलाइन जारी | Rajasthan News", "सभी संस्थानों को भेजे गए निर्देश"]);
+    expect(d.bodyText.startsWith("#")).toBe(false);
+    expect(d.hashtagSuggestionItems[0]).toMatchObject({ tag: "#Kota", source: "reporter_policy" });
+  });
+
+  it("Bhanwar, '#Bundi: …': unchanged, the policy does not fire", () => {
+    const d = draft(fileFor("BHANWAR"), ["#Bundi: जिला अस्पताल में नई सुविधा शुरू", "मरीजों को मिलेगा लाभ"]);
+    expect(d.bodyText.startsWith("#Bundi")).toBe(true);
+    expect(d.bodyText).not.toContain("#Kota");
+    expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
+  });
+
+  it("Kamalkant, '#Delhi: …': unchanged", () => {
+    const d = draft(fileFor("KAMALKANT"), ["#Delhi: सुप्रीम कोर्ट ने सुनाया अहम फैसला", "याचिका पर हुई सुनवाई"]);
+    expect(d.bodyText.startsWith("#Delhi")).toBe(true);
+    expect(d.bodyText).not.toContain("#Jaipur");
+    expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
+  });
+
+  it("#XNews and an out-of-state tag block it (R2); a place the desk wrote stays (R3)", () => {
+    for (const lines of [["सरकार ने जारी किए नए आदेश #JodhpurNews", "सभी विभागों को भेजे गए आदेश"], ["#Bihar: चुनावी सभा में उमड़ी भीड़", "नेताओं ने किया संबोधन"], ["आकोला: पंचायत समिति की बैठक", "विकास कार्यों पर चर्चा"]]) {
+      const d = draft(fileFor("YOGESH"), lines);
+      expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
+    }
+  });
+
+  it("R2: '#Ladakh: …' (Kamalkant, oct20) is out of state: no #Jaipur in front, and the national footer", () => {
+    const d = draft(fileFor("KAMALKANT"), ["#Ladakh: हिमालय की दुर्गम वादियों में न्यायिक व्यवस्था का नया अध्याय", "लेह में हुई सुनवाई"]);
+    expect(d.bodyText.startsWith("#Ladakh")).toBe(true);
+    expect(d.bodyText).not.toContain("#Jaipur");
+    expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
+    expect(d.hashtags).toEqual(["#FirstIndiaNews"]);
+  });
+});

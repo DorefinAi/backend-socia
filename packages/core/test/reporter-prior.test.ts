@@ -464,8 +464,9 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.districtSource).toBeNull();
   });
-  it("the policy is opt-in per reporter: rituraj alone carries one", () => {
-    expect([...reporters.profiles!.values()].filter((p) => p.districtWhenMissing).map((p) => p.handle)).toEqual(["rituraj9999"]);
+  it("the policy is opt-in per reporter: rituraj and the four desk-stated reporters of Changes #3 §2.2 carry one", () => {
+    const policies = Object.fromEntries([...reporters.profiles!.values()].filter((p) => p.districtWhenMissing).map((p) => [p.handle, p.districtWhenMissing]));
+    expect(policies).toEqual({ rituraj9999: "Jaipur", parmarshivendra: "Jaipur", vyaskamalkant: "Jaipur", yogesh2727sh1: "Jaipur", bhanwar_83: "Kota" });
     expect(reporterProfile(reporters, reporters.byToken.get("RITURAJ"))?.districtWhenMissing).toBe("Jaipur");
   });
 });

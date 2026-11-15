@@ -62,6 +62,9 @@ const NATIONAL: [string, string[]][] = [
   ["Bhopal", ["भोपाल"]], ["Indore", ["इंदौर"]], ["Chandigarh", ["चंडीगढ़"]], ["Ahmedabad", ["अहमदाबाद"]], ["Gandhinagar", ["गांधीनगर"]],
   ["Noida", ["नोएडा"]], ["Gurugram", ["गुरुग्राम", "गुड़गांव"]], ["Agra", ["आगरा"]], ["Prayagraj", ["प्रयागराज"]], ["Ayodhya", ["अयोध्या"]],
   ["Hyderabad", ["हैदराबाद"]], ["Bengaluru", ["बेंगलुरु", "बेंगलुरू"]], ["Chennai", ["चेन्नई"]], ["Srinagar", ["श्रीनगर"]],
+  // Ladakh (Changes #3 §2.2, R2): the desk led an oct20 post with "#Ladakh:" (@vyaskamalkant); unknown, it read as a
+  // label run and a reporter's desk rule put "#Jaipur:" in front of it
+  ["Ladakh", ["लद्दाख"]],
   ["Jammu", ["जम्मू"]], ["Dehradun", ["देहरादून"]], ["Shimla", ["शिमला"]], ["Ranchi", ["रांची"]], ["Mathura", ["मथुरा"]],
   ["Bihar", ["बिहार"]], ["UttarPradesh", ["उत्तर प्रदेश", "यूपी"]], ["MadhyaPradesh", ["मध्य प्रदेश", "मध्यप्रदेश"]], ["Punjab", ["पंजाब"]],
   ["Haryana", ["हरियाणा"]], ["Gujarat", ["गुजरात"]], ["Maharashtra", ["महाराष्ट्र"]], ["WestBengal", ["पश्चिम बंगाल"]], ["Karnataka", ["कर्नाटक"]],

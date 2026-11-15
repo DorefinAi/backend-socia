@@ -24,6 +24,15 @@ export function storyLabels(external: StoryExternal | null | undefined): { prior
  */
 export const NOT_A_CHECK = "desk_note";
 
+/**
+ * A story's received time as shown (stories.received_at): a breaking file's time is on the share's clock, which can
+ * run a few seconds ahead of this one, so it is capped at now and never reads as "in the future". Sorting uses the
+ * stored value.
+ */
+export function shownReceivedAt(receivedAt: Date, now = new Date()): Date {
+  return receivedAt.getTime() > now.getTime() ? now : receivedAt;
+}
+
 /** The sentence older stories carry in parse_note for a removed desk note; no longer shown */
 const OLD_DESK_NOTE_SENTENCE = "A desk instruction (नोट) was taken out of the text.";
 
@@ -162,7 +171,7 @@ export async function draftView(db: Db, storage: Storage, draft: Draft, story: S
       slug: story.slug,
       headline: story.headline,
       body: story.body,
-      receivedAt: story.createdAt,
+      receivedAt: shownReceivedAt(story.receivedAt),
       mediaState: story.mediaState,
       conversionConfidence: story.conversionConfidence,
       lowConfidence: story.conversionConfidence !== null && story.conversionConfidence < LOW_CONFIDENCE,

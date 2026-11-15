@@ -51,11 +51,14 @@ describe("parseQueueDay", () => {
   }
   const names = async (q: string) => (await call(`/x/queue?${q}`)).body.items.map((i: { headline: string }) => i.headline);
 
-  /** A story received at `receivedAt`; its draft is made at `draftAt` (the inbox's sort key) */
-  async function draft(key: string, receivedAt: Date, draftAt: Date, district: string | null = null) {
+  /**
+   * A story received at `receivedAt` (the inbox's sort key and day, migration 0030); its draft is made at `draftAt`.
+   * `createdAt` (the story link's time) defaults to `receivedAt`.
+   */
+  async function draft(key: string, receivedAt: Date, draftAt: Date, district: string | null = null, createdAt = receivedAt) {
     const [s] = await h.db
       .insert(stories)
-      .values({ orgId, slug: key, status: "composed", headline: key, body: "", layout: "breaking", mediaState: "none", district, createdAt: receivedAt })
+      .values({ orgId, slug: key, status: "composed", headline: key, body: "", layout: "breaking", mediaState: "none", district, createdAt, receivedAt })
       .returning();
     const [row] = await h.db
       .insert(postDrafts)
@@ -97,8 +100,9 @@ describe("parseQueueDay", () => {
     await h?.close();
   });
 
-  it("puts 23:50 IST on D and 00:10 IST on D+1 in their own days, newest draft first", async () => {
-    expect(await names("day=2026-11-01")).toEqual(["received-D-drafted-later", "late-on-D", "start-of-D"]);
+  it("puts 23:50 IST on D and 00:10 IST on D+1 in their own days, newest received first", async () => {
+    // By when the story was received, not when its draft was made (owner, 15 Nov 2026)
+    expect(await names("day=2026-11-01")).toEqual(["late-on-D", "received-D-drafted-later", "start-of-D"]);
     expect(await names("day=2026-11-02")).toEqual(["early-on-D+1"]);
     expect(await names("day=2026-10-31")).toEqual(["end-of-D-1"]);
     expect(await names("day=2026-10-30")).toEqual([]);
@@ -106,13 +110,13 @@ describe("parseQueueDay", () => {
   });
 
   it("without day the queue is unchanged", async () => {
-    expect(await names("")).toEqual(["today", "received-D-drafted-later", "early-on-D+1", "late-on-D", "start-of-D", "end-of-D-1"]);
+    expect(await names("")).toEqual(["today", "early-on-D+1", "late-on-D", "received-D-drafted-later", "start-of-D", "end-of-D-1"]);
   });
 
   it("combines with the other filters and pages within the day", async () => {
     expect(await names("day=2026-11-01&district=Kota")).toEqual(["received-D-drafted-later", "start-of-D"]);
     const first = (await call("/x/queue?view=inbox&day=2026-11-01&limit=2")).body;
-    expect(first.items.map((i: { headline: string }) => i.headline)).toEqual(["received-D-drafted-later", "late-on-D"]);
+    expect(first.items.map((i: { headline: string }) => i.headline)).toEqual(["late-on-D", "received-D-drafted-later"]);
     expect(first.nextCursor).not.toBeNull();
     const next = (await call(`/x/queue?view=inbox&day=2026-11-01&limit=2&before=${encodeURIComponent(first.nextCursor)}`)).body;
     expect(next.items.map((i: { headline: string }) => i.headline)).toEqual(["start-of-D"]);
@@ -131,5 +135,24 @@ describe("parseQueueDay", () => {
   it("leaves the facets alone: today counts stay today, and they take no day", async () => {
     expect((await call("/x/queue/facets")).body).toMatchObject({ total: 6, today: { total: 1 } });
     expect((await call("/x/queue/facets?day=2026-11-01")).status).toBe(400);
+  });
+
+  it("orders and groups by the time on the share, not by when Socia took the file; links keep created_at; never in the future", async () => {
+    // Added to the share 10:00 and 10:04 UTC on 20 Oct, but taken in the other way round (10:05 and 10:01)
+    await draft("share-early", new Date("2026-10-20T10:00:00Z"), new Date("2026-10-20T10:05:30Z"), null, new Date("2026-10-20T10:05:00Z"));
+    await draft("share-late", new Date("2026-10-20T10:04:00Z"), new Date("2026-10-20T10:01:30Z"), null, new Date("2026-10-20T10:01:00Z"));
+    expect(await names("day=2026-10-20")).toEqual(["share-late", "share-early"]);
+    const items = (await call("/x/queue?day=2026-10-20")).body.items as { headline: string; receivedAt: string; linkSlug: string }[];
+    const early = items.find((i) => i.headline === "share-early")!;
+    expect(early.receivedAt).toBe("2026-10-20T10:00:00.000Z");
+    // The story link is from created_at (10:05 UTC = 15:35 IST), so links made before 0030 still open
+    expect(early.linkSlug.endsWith("-1535")).toBe(true);
+    // A file time on a share clock running ahead: sorted first, shown as now at the latest
+    const before = Date.now();
+    await draft("clock-ahead", new Date(Date.now() + 60_000), new Date(), null, new Date());
+    const top = (await call("/x/queue")).body.items[0] as { headline: string; receivedAt: string };
+    expect(top.headline).toBe("clock-ahead");
+    expect(new Date(top.receivedAt).getTime()).toBeLessThanOrEqual(Date.now());
+    expect(new Date(top.receivedAt).getTime()).toBeGreaterThanOrEqual(before);
   });
 });

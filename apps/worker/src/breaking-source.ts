@@ -38,7 +38,8 @@ export interface ShareWatch {
 /** The fs calls the source makes; tests pass slow or failing ones */
 export interface ShareFs {
   readdir: (path: string) => Promise<{ name: string; isDirectory(): boolean; isFile(): boolean }[]>;
-  stat: (path: string) => Promise<{ size: number; mtime: Date }>;
+  /** `birthtime`: when the file was created in that folder (a copy gets the time it was copied in) */
+  stat: (path: string) => Promise<{ size: number; mtime: Date; birthtime?: Date }>;
   readFileBounded: (path: string, max: number) => Promise<Buffer>;
   /**
    * Change notices for one folder (Windows passes them over SMB): `onEvent` with the file name when known.
@@ -179,7 +180,10 @@ export class BreakingShareSource implements FileSource {
               this.skipOnce(e.name, `over ${MAX_FILE_BYTES} bytes`);
               return null;
             }
-            return { path, name: e.name, size: s.size, mtime: s.mtime };
+            // When it was added to the share: its creation time there (a re-save in place keeps it; a copy gets the
+            // time it was copied in). A source that does not report one leaves it to the ingest stage
+            const addedAt = s.birthtime && s.birthtime.getTime() > 0 ? s.birthtime : null;
+            return { path, name: e.name, size: s.size, mtime: s.mtime, addedAt };
           } catch (err) {
             // Deleted between readdir and stat: simply gone
             if (isMissing(err)) return null;

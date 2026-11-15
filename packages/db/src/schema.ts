@@ -313,11 +313,20 @@ export const stories = pgTable(
     deskNote: text("desk_note"),
     /** A breaking file saved again after its post went out: the posted draft this story updates (migration 0016) */
     updateOfDraftId: uuid("update_of_draft_id").references((): AnyPgColumn => postDrafts.id),
+    /**
+     * When the story reached the desk's source, for the queue's order, its day and "time ago" (migration 0030). A
+     * breaking file: when it was added to the share (its creation time there; a re-save keeps it, an update of a
+     * posted story takes the time of that save). Everything else, and rows from before 0030: created_at. On the
+     * share's clock, which can run a few seconds off this one: shown capped at now. Story links keep created_at.
+     */
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index("stories_status_idx").on(t.status, t.createdAt),
+    // The queue's order and day (migration 0030)
+    index("stories_org_received_idx").on(t.orgId, t.receivedAt),
     index("stories_slug_idx").on(t.orgId, t.slug, t.createdAt),
     uniqueIndex("stories_external_key").on(t.orgId, t.source, t.externalId).where(sql`${t.externalId} IS NOT NULL`),
     index("stories_source_recent_idx").on(t.source, t.createdAt),

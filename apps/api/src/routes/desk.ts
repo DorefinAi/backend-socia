@@ -16,7 +16,7 @@ import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import { jpegSize, pngSize } from "../image-size";
 import type { AppDeps } from "../app";
 import { ReporterHandles } from "../handle-keywords";
-import { NOT_A_CHECK, breakingFields, cardUrl, draftView, storyLabels } from "../views";
+import { NOT_A_CHECK, breakingFields, cardUrl, draftView, shownReceivedAt, storyLabels } from "../views";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
@@ -185,7 +185,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
           /** view=posted only: how many IST days back, today included (default 1 = today) */
           days: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
-          /** Only stories received (stories.created_at) on this India calendar day, "YYYY-MM-DD"; checked in the handler (400 bad_day) */
+          /** Only stories received (stories.received_at: on the share, for a breaking file) on this India calendar day, "YYYY-MM-DD"; checked in the handler (400 bad_day) */
           day: Type.Optional(Type.String({ maxLength: 40 })),
           ...QueueFilters,
         }),
@@ -195,8 +195,9 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const { user } = guard(req);
       const day = parseQueueDay(req.query.day);
       const viewName = (req.query.view ?? "inbox") as QueueViewName;
-      // Rejected and posted page by when that happened (the draft's last change); the other views by when it was made
-      const sortCol = viewName === "rejected" || viewName === "posted" ? postDrafts.updatedAt : postDrafts.createdAt;
+      // Rejected and posted page by when that happened (the draft's last change); the other views by when the story
+      // reached its source (a breaking file: when it was added to the share; migration 0030)
+      const sortCol = viewName === "rejected" || viewName === "posted" ? postDrafts.updatedAt : stories.receivedAt;
       const cursor = parseQueueCursor(req.query.before);
       const limit = req.query.limit ?? 100;
       const rows = await db
@@ -235,7 +236,9 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           headline: stories.headline,
           /** The story's points, one per line: the card text (bodyText is the tweet) */
           storyBody: stories.body,
-          receivedAt: stories.createdAt,
+          receivedAt: stories.receivedAt,
+          /** The story link's time: always created_at, so links made before 0030 keep working */
+          linkAt: stories.createdAt,
           sourcePath: ingestedFiles.sourcePath,
           lowConfidence: sql<boolean>`coalesce(${stories.conversionConfidence} < 0.97, false)`,
           needsReview: sql<boolean>`${stories.parseMethod} = 'needs_review'`,
@@ -253,8 +256,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
             cursor?.id ? sql`(${sortCol}, ${postDrafts.id}) < (${cursor.at.toISOString()}::timestamptz, ${cursor.id}::uuid)` : undefined,
             cursor && !cursor.id ? lt(sortCol, cursor.at) : undefined,
             viewName === "posted" ? postedInWindow(req.query.days ?? 1) : undefined,
-            day ? gte(stories.createdAt, day.start) : undefined,
-            day ? lt(stories.createdAt, day.end) : undefined,
+            day ? gte(stories.receivedAt, day.start) : undefined,
+            day ? lt(stories.receivedAt, day.end) : undefined,
             ...filterWhere(req.query),
           ),
         )
@@ -282,11 +285,12 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               version: r.version,
               slug: r.slug,
               /** The story's name for the editor link (?story=) and downloaded files, instead of the draft id */
-              ...storyLinkName({ district: r.district, headline: r.headline, receivedAt: r.receivedAt }),
+              ...storyLinkName({ district: r.district, headline: r.headline, receivedAt: r.linkAt }),
               headline: r.headline,
               bodyText: r.bodyText,
               storyBody: r.storyBody ?? "",
-              receivedAt: r.receivedAt,
+              // On the share's clock, which can run a few seconds ahead: never shown in the future
+              receivedAt: shownReceivedAt(r.receivedAt, now),
               createdAt: r.createdAt,
               /** The original file's path (ingested_files.source_path); null when the story has no file */
               sourcePath: r.sourcePath ?? null,
@@ -403,7 +407,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     );
     const desk = sql<string | null>`${stories.fileTags}->>'desk'`;
     // The desk's headline numbers are for stories received today (IST); the full view stays in `total`
-    const receivedToday = gte(stories.createdAt, istDayStart(new Date()));
+    const receivedToday = gte(stories.receivedAt, istDayStart(new Date()));
     const [[totals], districts, desks] = await Promise.all([
       db
         .select({

@@ -134,12 +134,13 @@ const tags = (over: Partial<FileTags>): FileTags => ({
 
     // The desk's "To post" is today's: a story received days ago stays in the list and the total, not in `today`
     const [old] = await h.db.select({ s: postDrafts.storyId }).from(postDrafts).where(eq(postDrafts.id, ids["no-district"]!));
-    const [before] = await h.db.select({ at: stories.createdAt }).from(stories).where(eq(stories.id, old!.s));
-    await h.db.update(stories).set({ createdAt: sql`now() - interval '3 days'` }).where(eq(stories.id, old!.s));
+    // "Received" is stories.received_at (migration 0030): when the file reached the share
+    const [before] = await h.db.select({ at: stories.createdAt, received: stories.receivedAt }).from(stories).where(eq(stories.id, old!.s));
+    await h.db.update(stories).set({ createdAt: sql`now() - interval '3 days'`, receivedAt: sql`now() - interval '3 days'` }).where(eq(stories.id, old!.s));
     const aged = (await call("GET", "/x/queue/facets")).body;
     expect(aged).toMatchObject({ total: 4, needsCheck: 1, today: { total: 3, needsCheck: 0 } });
     expect((await call("GET", "/x/queue")).body.items.map((i: { id: string }) => i.id)).toContain(ids["no-district"]);
-    await h.db.update(stories).set({ createdAt: before!.at }).where(eq(stories.id, old!.s));
+    await h.db.update(stories).set({ createdAt: before!.at, receivedAt: before!.received }).where(eq(stories.id, old!.s));
   });
 
   it("Copy & Posted records who and when, shows in the posted view and /posts, and can be undone", async () => {

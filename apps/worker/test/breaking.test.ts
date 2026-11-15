@@ -7,7 +7,7 @@ import { join } from "node:path";
 import {
   LOGIC_VERSION, createDb, ingestedFiles, orgs, postDecisions, postDrafts, publishedPosts, readIngestStatus, recordIngestPoll, runMigrations, stories, users, type DbHandle,
 } from "@socia/db";
-import { LocalStorage } from "@socia/providers";
+import { LocalStorage, type FileSource } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
 import pino from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -537,6 +537,7 @@ describe("BreakingShareSource (no database)", () => {
       [`${root}/OCTOBER_2026`]: ["30_OCTOBER_2026", "31_OCTOBER_2026"],
       [`${root}/NOVEMBER_2026`]: ["01_NOVEMBER_2026"],
     };
+    const born = new Date("2026-10-31T08:59:00Z");
     const watched = new Map<string, { emit: (name: string | null) => void; fail: (err: unknown) => void; closed: boolean }>();
     let failNext = false;
     const fakeFs: ShareFs = {
@@ -546,7 +547,7 @@ describe("BreakingShareSource (no database)", () => {
         if (dirs) return dirs.map((name) => ({ name, isDirectory: () => true, isFile: () => false }));
         return [{ name: "BTN_RAJ_BREAKING_1_31OCT.txt", isDirectory: () => false, isFile: () => true }];
       },
-      stat: async () => ({ size: 10, mtime: new Date("2026-10-31T09:00:00Z") }),
+      stat: async () => ({ size: 10, mtime: new Date("2026-10-31T09:00:00Z"), birthtime: born }),
       readFileBounded: async () => Buffer.from("x"),
       watch: (p, onEvent, onError) => {
         if (failNext) {
@@ -563,7 +564,8 @@ describe("BreakingShareSource (no database)", () => {
     let now = new Date("2026-10-31T09:00:00Z");
     const src = new BreakingShareSource(root, { fs: fakeFs, now: () => now, onChange: () => void changes++ });
 
-    await src.list();
+    // The file's creation time on the share comes through as addedAt
+    expect((await src.list())[0]).toMatchObject({ addedAt: born });
     const live = () => [...watched].filter(([, w]) => !w.closed).map(([k]) => k).sort();
     expect(live()).toEqual([`${root}/OCTOBER_2026/30_OCTOBER_2026`, `${root}/OCTOBER_2026/31_OCTOBER_2026`]);
 
@@ -665,6 +667,64 @@ describe("BreakingShareSource (no database)", () => {
 
   const ingestFor = () =>
     new Ingest({ db: h.db, storage: store, source: new BreakingShareSource(join(dir, "share"), { now: () => new Date(clock) }), orgId, log, now: () => clock, layout: "breaking", startFromNow: true });
+
+  it("received_at is when the file was added to the share; a re-save keeps it; an update of a posted story takes its save time", async () => {
+    const files = new Map<string, { bytes: Buffer; mtime: Date; addedAt: Date | null }>();
+    const source: FileSource = {
+      list: async () => [...files].map(([path, f]) => ({ path, name: path.split("/").pop()!, size: f.bytes.length, mtime: f.mtime, addedAt: f.addedAt })),
+      read: async (p) => files.get(p)!.bytes,
+      close: async () => undefined,
+    };
+    const ingest = new Ingest({ db: h.db, storage: store, source, orgId, log, now: () => clock, layout: "breaking" });
+    const run = async () => {
+      await ingest.scan();
+      clock += 1500;
+      const taken = await ingest.scan();
+      while (await convertNext(h.db, store, log, data));
+      while (await composeNext(h.db, new Dictionaries(h.db, orgId), log, { cardOnDemand: true, data, exploreRate: 0 }));
+      return taken;
+    };
+    const text = (headline: string) => Buffer.from(`x\n\nजयपुर: ${headline}\nपुलिस मौके पर पहुंची\n`);
+    const at = (ms: number) => new Date(clock + ms);
+    // The newest story whose current file has this path (an update of a posted story is a second one)
+    const story = async (path: string) =>
+      (await h.db.select().from(stories).innerJoin(ingestedFiles, eq(ingestedFiles.id, stories.fileId)).where(eq(ingestedFiles.sourcePath, path)).orderBy(sql`${stories.createdAt} DESC`))[0]!.stories;
+
+    // Added to the share in the order A, B; taken in together: each keeps its own time on the share
+    const A = "OCTOBER_2026/29_OCTOBER_2026/BTN_RJ_BREAKING_1_29OCT_A.txt";
+    const B = "OCTOBER_2026/29_OCTOBER_2026/BTN_RJ_BREAKING_2_29OCT_B.txt";
+    files.set(A, { bytes: text("पहली खबर"), mtime: at(-60_000), addedAt: at(-90_000) });
+    files.set(B, { bytes: text("दूसरी खबर"), mtime: at(-30_000), addedAt: at(-40_000) });
+    expect(await run()).toBe(2);
+    const a = await story(A);
+    expect(a.receivedAt.getTime()).toBe(clock - 1500 - 90_000);
+    expect((await story(B)).receivedAt.getTime()).toBe(clock - 1500 - 40_000);
+
+    // Saved again with new text (its creation time is unchanged, its mtime new): the story keeps its place
+    files.set(A, { bytes: text("पहली खबर, नया अपडेट"), mtime: at(0), addedAt: files.get(A)!.addedAt });
+    expect(await run()).toBe(1);
+    expect((await story(A)).receivedAt.getTime()).toBe(a.receivedAt.getTime());
+
+    // Posted, then saved again: the update is a new story, placed at that save's time
+    const [draftA] = await h.db.select().from(postDrafts).where(eq(postDrafts.storyId, a.id));
+    await h.db.update(postDrafts).set({ status: "published" }).where(eq(postDrafts.id, draftA!.id));
+    const saved = at(0);
+    files.set(A, { bytes: text("पहली खबर, दूसरा अपडेट"), mtime: saved, addedAt: files.get(A)!.addedAt });
+    expect(await run()).toBe(1);
+    const update = await story(A);
+    expect(update.id).not.toBe(a.id);
+    expect(update.receivedAt.getTime()).toBe(saved.getTime());
+
+    // No creation time: the mtime; a time far ahead of this clock (a wrong server clock): now
+    const C = "OCTOBER_2026/29_OCTOBER_2026/BTN_RJ_BREAKING_3_29OCT_C.txt";
+    const D = "OCTOBER_2026/29_OCTOBER_2026/BTN_RJ_BREAKING_4_29OCT_D.txt";
+    const cMtime = at(-5_000);
+    files.set(C, { bytes: text("तीसरी खबर"), mtime: cMtime, addedAt: null });
+    files.set(D, { bytes: text("चौथी खबर"), mtime: at(3_600_000), addedAt: at(3_600_000) });
+    expect(await run()).toBe(2);
+    expect((await story(C)).receivedAt.getTime()).toBe(cMtime.getTime());
+    expect((await story(D)).receivedAt.getTime()).toBe(clock);
+  }, 60_000);
 
   it("reads a Notepad Unicode (UTF-16) file into the queue, and rejects a file that is not text (no draft)", async () => {
     const ingest = ingestFor();

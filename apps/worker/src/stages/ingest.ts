@@ -25,6 +25,8 @@ const FIRST_START_KEY = "ingest.first_start";
 const WATERMARK_GRACE_MS = 10 * 60 * 1000;
 /** A file must look the same to two scans this far apart; the loop rescans after this while files settle */
 export const STABLE_MS = 1000;
+/** A file's time on the share further ahead of this clock than this is not believed: the story takes now */
+const FUTURE_SLACK_MS = 10 * 60 * 1000;
 /** Draft states that went (or are going) out: a re-saved file makes a new draft instead of rewriting these */
 const SENT = ["published", "recalled", "queued", "publishing"];
 
@@ -223,6 +225,18 @@ export class Ingest {
   }
 
   /**
+   * When a new breaking story reached the share, for the queue's order (stories.received_at): the time the file was
+   * added there, or for an update of a posted story the time of that save (the file itself is older). A re-saved
+   * story is not given a new one (breakingStory keeps the row), so it never jumps in the queue. A time missing, or
+   * further ahead of this clock than FUTURE_SLACK_MS, is not believed: now.
+   */
+  private receivedAt(file: RemoteFile, update: boolean): Date {
+    const now = this.now();
+    const at = (update ? file.mtime : (file.addedAt ?? file.mtime))?.getTime();
+    return new Date(at !== undefined && Number.isFinite(at) && at <= now + FUTURE_SLACK_MS ? at : now);
+  }
+
+  /**
    * A breaking file's story. New path: a new story. The same path saved with new text: its story goes back
    * through convert and compose and rewrites its unposted draft ("resaved"); if that draft already went out,
    * a new story is made, flagged "update_of_posted" and linked to the posted draft.
@@ -249,6 +263,7 @@ export class Ingest {
       .insert(stories)
       .values({
         orgId, fileId, slug, layout: "breaking", mediaState: "none",
+        receivedAt: this.receivedAt(file, !!draft),
         ...(draft && { needsCheck: ["update_of_posted"], updateOfDraftId: draft.id }),
       })
       .returning({ id: stories.id });

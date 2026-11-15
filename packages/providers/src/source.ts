@@ -12,6 +12,8 @@ export interface RemoteFile {
   name: string;
   size: number;
   mtime: Date | null;
+  /** When the file was added to the share (its creation time there), where the source knows it */
+  addedAt?: Date | null;
 }
 
 export interface FileSource {

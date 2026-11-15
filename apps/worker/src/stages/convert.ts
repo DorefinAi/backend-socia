@@ -2,9 +2,9 @@
 // until the converter passes the regression set with the control room's real font (doc §11 step 0).
 
 import { SERIOUS_CHECKS, STICKY_CHECKS, conversionConfidence, decodeBreakingFile, decodeBytes, detectEncoding, krutiToUnicode, parseBreaking, parseStory, type BreakingStory } from "@socia/core";
-import { ingestedFiles, stories, type Db } from "@socia/db";
+import { ingestedFiles, postDrafts, stories, type Db, type Tx } from "@socia/db";
 import type { Storage } from "@socia/providers";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import type { PhaseOneData } from "../data-files";
 import { nextStoryIsolated } from "./isolate";
@@ -49,6 +49,25 @@ export function breakingColumns(b: BreakingStory, sticky: string[] = []) {
   };
 }
 
+/** Draft states still waiting in the queue (not sent, not rejected, not failed) */
+const UNSENT = ["rendering", "ready", "claimed"];
+/** How a withdrawn draft's reason starts: compose brings such a draft back to the queue when the file is fixed */
+export const WITHDRAWN_NOTE = "The file was saved again and can't be used: ";
+
+/**
+ * A breaking file saved again as something that cannot become a post (unreadable, or no text): the story's draft
+ * from the earlier save leaves the queue, to Failed with the reason, so only good, current stories wait there
+ * (owner, 15 Nov 2026, M1). A draft that went out, or was rejected, is left alone. Returns its id, or null.
+ */
+async function withdrawUnsentDraft(tx: Tx, storyId: string, reason: string): Promise<string | null> {
+  const [draft] = await tx
+    .update(postDrafts)
+    .set({ status: "failed", renderError: `${WITHDRAWN_NOTE}${reason}`, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
+    .where(and(eq(postDrafts.storyId, storyId), inArray(postDrafts.status, UNSENT)))
+    .returning({ id: postDrafts.id });
+  return draft?.id ?? null;
+}
+
 export async function convertNext(db: Db, storage: Storage, log: Logger, data?: PhaseOneData): Promise<boolean> {
   return nextStoryIsolated(db, "ingested", log, "convert", async (tx, story) => {
     // Samvadia stories arrive as Unicode text and skip this stage (status "converted"); a story with no
@@ -67,7 +86,8 @@ export async function convertNext(db: Db, storage: Storage, log: Logger, data?: 
       const decoded = decodeBreakingFile(bytes);
       if ("unreadable" in decoded) {
         await tx.update(stories).set({ status: "failed", lastError: decoded.unreadable, updatedAt: sql`now()` }).where(eq(stories.id, story.id));
-        log.warn({ storyId: story.id, file: file!.fileName, why: decoded.unreadable }, "breaking file rejected: not readable text");
+        const withdrawn = await withdrawUnsentDraft(tx, story.id, decoded.unreadable);
+        log.warn({ storyId: story.id, file: file!.fileName, why: decoded.unreadable, withdrawn }, "breaking file rejected: not readable text");
         return;
       }
       const { text, charset } = decoded;
@@ -92,7 +112,9 @@ export async function convertNext(db: Db, storage: Storage, log: Logger, data?: 
           updatedAt: sql`now()`,
         })
         .where(eq(stories.id, story.id));
-      log.info({ storyId: story.id, district: b.district, districtFrom: b.districtFrom, town: b.town, checks: b.needsCheck }, failed ? "breaking file could not be parsed" : "breaking file converted");
+      // A file saved again with no text: its earlier draft leaves the queue too (M1)
+      const withdrawn = failed ? await withdrawUnsentDraft(tx, story.id, cols.parseNote ?? "The file has no text.") : null;
+      log.info({ storyId: story.id, district: b.district, districtFrom: b.districtFrom, town: b.town, checks: b.needsCheck, ...(withdrawn && { withdrawn }) }, failed ? "breaking file could not be parsed" : "breaking file converted");
       return;
     }
 

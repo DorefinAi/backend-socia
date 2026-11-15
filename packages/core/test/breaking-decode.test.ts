@@ -48,6 +48,19 @@ describe("decodeBreakingFile", () => {
     expect(decodeBreakingFile(new Uint8Array([...utf8("जयपुर"), 0, ...utf8(" खबर")]))).toEqual({ unreadable: expect.stringContaining("binary data") });
   });
 
+  it("keeps a short file with one or two stray broken bytes (M2)", () => {
+    const short = utf8("जयपुर: दो घायल");
+    expect(decodeBreakingFile(new Uint8Array([...short, 0xff]))).toMatchObject({ charset: "utf-8" });
+    expect(decodeBreakingFile(new Uint8Array([0xff, ...short, 0xfe]))).toMatchObject({ charset: "utf-8" });
+    // Three broken bytes against two letters: not text
+    expect(decodeBreakingFile(new Uint8Array([0x80, 0x81, 0x82, ...short.slice(0, 6)]))).toHaveProperty("unreadable");
+  });
+
+  it("reads Hindi UTF-16 with no byte-order mark (L1), both byte orders", () => {
+    expect(decodeBreakingFile(utf16(STORY, "le", false))).toEqual({ text: STORY, charset: "utf-16le" });
+    expect(decodeBreakingFile(utf16(STORY, "be", false))).toEqual({ text: STORY, charset: "utf-16be" });
+  });
+
   it("passes an empty file on as empty text (the parser fails it: no headline)", () => {
     expect(decodeBreakingFile(new Uint8Array())).toEqual({ text: "", charset: "utf-8" });
   });

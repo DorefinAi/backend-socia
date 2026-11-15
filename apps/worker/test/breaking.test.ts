@@ -780,6 +780,47 @@ describe("BreakingShareSource (no database)", () => {
     expect((await h.db.select().from(postDrafts).where(eq(postDrafts.id, first!.id)))[0]!.status).toBe("published");
   }, 60_000);
 
+  it("re-saved as junk or with no text: the earlier unposted draft leaves the queue, to Failed with the reason (M1)", async () => {
+    const ingest = ingestFor();
+    await settle(ingest);
+    const name = "btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt";
+    await put("29_OCTOBER_2026", name, fixture(name));
+    expect(await settle(ingest)).toBe(1);
+    const [first] = await h.db.select().from(postDrafts);
+    expect(first).toMatchObject({ status: "ready" });
+
+    // Saved again as binary junk
+    clock += 60_000;
+    await put("29_OCTOBER_2026", name, "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR\u0000\u0000\u0001\u0000");
+    expect(await settle(ingest)).toBe(1);
+    const [gone] = await h.db.select().from(postDrafts).where(eq(postDrafts.id, first!.id));
+    expect(gone).toMatchObject({ status: "failed", claimedBy: null, version: first!.version + 1 });
+    expect(gone!.renderError).toMatch(/saved again and can't be used: .*binary data/);
+    expect((await h.db.select().from(stories).where(eq(stories.id, first!.storyId)))[0]).toMatchObject({ status: "failed" });
+
+    // A good save after that: the story is read again and composed; still one draft for it, nothing doubles up
+    clock += 60_000;
+    await put("29_OCTOBER_2026", name, `${name}\n\nकोटा में हिस्ट्रीशीटर के घर में तोड़फोड़, दो गिरफ्तार\nपुलिस ने दो आरोपियों को पकड़ा\n`);
+    expect(await settle(ingest)).toBe(1);
+    const back = await h.db.select().from(postDrafts).where(eq(postDrafts.storyId, first!.storyId));
+    expect(back).toHaveLength(1);
+    // ...and the withdrawn draft is back in the queue with the new text
+    expect(back[0]).toMatchObject({ id: first!.id, status: "ready", renderError: null });
+    expect(back[0]!.bodyText).toContain("दो गिरफ्तार");
+    expect((await h.db.select().from(stories).where(eq(stories.id, first!.storyId)))[0]).toMatchObject({ status: "composed" });
+
+    // A posted draft is never touched by a bad re-save
+    const other = "BTN_RAJ_BREAKING_1307_29OCT_NDR_REPORTER_UPDATE_BIG.txt";
+    await put("29_OCTOBER_2026", other, fixture(other));
+    await settle(ingest);
+    const [posted] = await h.db.select().from(postDrafts).innerJoin(stories, eq(stories.id, postDrafts.storyId)).where(eq(stories.slug, (await h.db.select().from(stories)).find((s) => s.district === "Dausa")!.slug));
+    await h.db.update(postDrafts).set({ status: "published" }).where(eq(postDrafts.id, posted!.post_drafts.id));
+    clock += 60_000;
+    await put("29_OCTOBER_2026", other, "");
+    await settle(ingest);
+    expect((await h.db.select().from(postDrafts).where(eq(postDrafts.id, posted!.post_drafts.id)))[0]).toMatchObject({ status: "published" });
+  }, 60_000);
+
   it("one story that throws is marked failed and the next one goes through", async () => {
     const ingest = ingestFor();
     await settle(ingest);

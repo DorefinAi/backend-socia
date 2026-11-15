@@ -27,7 +27,26 @@ function utf16Guess(bytes: Uint8Array): "utf-16le" | "utf-16be" | null {
 
 /** Control codes other than tab, line breaks and form feed; and U+FFFD, a byte that was no character */
 const JUNK = /[\u0000-\u0008\u000E-\u001F\u007F�]/g;
-const tooMuchJunk = (text: string) => (text.match(JUNK)?.length ?? 0) > Math.max(0, text.length * MAX_JUNK);
+/** At least two junk characters are allowed, so one stray byte never rejects a short file (M2) */
+const tooMuchJunk = (text: string) => (text.match(JUNK)?.length ?? 0) > Math.max(2, text.length * MAX_JUNK);
+
+/** Characters a breaking file is made of: Devanagari, Latin letters and digits, punctuation, spaces and line breaks */
+const PLAIN = /[ऀ-ॿ -~\t\n\r ‌‍‐-‧₹]/g;
+const plainShare = (text: string) => (text.length ? (text.match(PLAIN)?.length ?? 0) / text.length : 0);
+
+/**
+ * UTF-16 with no byte-order mark and mostly Hindi (few zero bytes, so utf16Guess misses it): read both ways, the
+ * one that is almost all plain characters (L1). Its bytes are valid UTF-8 control codes, so this is tried only when
+ * the UTF-8 reading came out as junk.
+ */
+function utf16ByContent(bytes: Uint8Array): { text: string; charset: BreakingCharset } | null {
+  if (bytes.length < 4 || bytes.length % 2) return null;
+  for (const charset of ["utf-16le", "utf-16be"] as const) {
+    const text = decode(charset, bytes, false);
+    if (plainShare(text) >= 0.95 && !tooMuchJunk(text)) return { text, charset };
+  }
+  return null;
+}
 
 export function decodeBreakingFile(bytes: Uint8Array): DecodedBreaking {
   const charset: BreakingCharset =
@@ -39,9 +58,9 @@ export function decodeBreakingFile(bytes: Uint8Array): DecodedBreaking {
   } catch {
     // A few broken bytes in an otherwise good file keep the story (each shows as U+FFFD); more is not text
     text = decode(charset, bytes, false);
-    if (tooMuchJunk(text)) return { unreadable: UNREADABLE };
+    if (tooMuchJunk(text)) return utf16ByContent(bytes) ?? { unreadable: UNREADABLE };
   }
-  // A NUL in UTF-8 text, or control codes all over: binary data saved with a .txt name
-  if (text.includes("\u0000") || tooMuchJunk(text)) return { unreadable: BINARY };
+  // A NUL in UTF-8 text, or control codes all over: Hindi UTF-16 with no mark, else binary data saved as .txt
+  if (text.includes("\u0000") || tooMuchJunk(text)) return (charset === "utf-8" && utf16ByContent(bytes)) || { unreadable: BINARY };
   return { text, charset };
 }

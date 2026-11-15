@@ -177,6 +177,11 @@ export function fromNationalDesk(tags: Pick<FileTags, "other"> | null | undefine
   return !!tags && (tags.other.includes("NWS") || tags.other.includes("NAT"));
 }
 
+/** The national flash (nat_flash_ / nat_fash_): always national news, whatever place it names */
+export function isNationalFlash(tags: Pick<FileTags, "other"> | null | undefined): boolean {
+  return !!tags && tags.other.includes("NAT");
+}
+
 /** The desk's spellings of BREAKING, typos included (as in NOISE above) */
 const BREAKING_WORD = /breaking|braking|breking|break/;
 

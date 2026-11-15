@@ -17,6 +17,7 @@ import {
   stories, type Db, type LoggedProposal, type Tx,
 } from "@socia/db";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
+import { WITHDRAWN_NOTE } from "./convert";
 import { nextStoryIsolated } from "./isolate";
 import { BROKEN_REMINDER_MS, brokenDirectoryFiles, type DirectoryFiles, type PhaseOneData } from "../data-files";
 import type { Logger } from "pino";
@@ -359,10 +360,13 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       // Posted between the re-save and now: the post stays as it went out; the story keeps the new text
       log.warn({ storyId: story.id, draftId: existing.id, status: existing.status }, "re-saved file's draft already went out; draft left as it is");
     } else {
+      // Withdrawn by a bad re-save (convert.ts, M1) and now saved properly: back in the queue
+      const withdrawn = existing.status === "failed" && !!existing.renderError?.startsWith(WITHDRAWN_NOTE);
       const [row] = await tx
         .update(postDrafts)
         .set({
           ...content,
+          ...(withdrawn && { status: opts.cardOnDemand ? "ready" : "rendering", renderError: null }),
           // A card already asked for is drawn again with the new headline; none asked for stays none
           ...(existing.cardRev > 0 && existing.cardHeadline !== headline && { cardRev: sql`${postDrafts.cardRev} + 1` }),
           version: sql`${postDrafts.version} + 1`,

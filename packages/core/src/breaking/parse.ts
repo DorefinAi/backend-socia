@@ -4,7 +4,7 @@
 // flagged. Rules only: anything odd is flagged for a human, never guessed by a model.
 
 import { fold } from "../fold";
-import { fileTags, fromNationalDesk, type FileTags } from "./filename";
+import { fileTags, fromNationalDesk, isNationalFlash, type FileTags } from "./filename";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
 
 /**
@@ -466,6 +466,13 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   }
   // National news with no place (NWS desk files, the national flash) is not missing a district
   if (!district && !national && fromNationalDesk(tags)) national = true;
+  // The national flash is national news whatever place its text names (owner, 15 Nov 2026, L2): a Rajasthan
+  // district it mentions is not its place, so no Rajasthan district tag, police handle or brand
+  const flashDropped = isNationalFlash(tags) && !!district?.rajasthan;
+  if (isNationalFlash(tags)) {
+    national = true;
+    if (district?.rajasthan) district = null;
+  }
   const leaderPost = LEADER_POST.test(headline);
   // A leader's post and state-wide news (secretariat, a state decision) have no district and need none
   if (!district && !national && !leaderPost && !STATEWIDE.test([headline, ...points].join(" "))) flag("no_district");
@@ -475,7 +482,7 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
 
   // A town tag without its district reads oddly ("#सचिवालय:"): keep it only with a district, or when the desk wrote it
   // before the headline's colon ("आकोला: ..."); no_district still asks the desk to look
-  const town = (district || (where?.town && where.town === loneTown)) && where?.town && where.town !== district?.hi ? where.town : null;
+  const town = !flashDropped && (district || (where?.town && where.town === loneTown)) && where?.town && where.town !== district?.hi ? where.town : null;
   return {
     headline,
     rawHeadline,

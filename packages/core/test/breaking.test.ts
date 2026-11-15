@@ -73,6 +73,18 @@ describe("breaking file names", () => {
     );
     expect(s.headline).toBe("रामलीला मैदान में INDIA गठबंधन की रैली");
     expect(s.needsCheck).not.toContain("no_district");
+    expect(s.rajasthan).toBe(false);
+  });
+
+  it("keeps the national flash national even when it names a Rajasthan place (L2); a BTN file with it stays Rajasthan", () => {
+    const text = "जयपुर: केंद्रीय मंत्री का दौरा\nकई कार्यक्रमों में शामिल होंगे\n";
+    const flash = parseBreaking(text, "nat_flash_rj_breaking_750_bps_15NOV_control_TV_BIG.txt", book);
+    expect(flash).toMatchObject({ district: null, districtFrom: null, town: null, rajasthan: false });
+    expect(flash.needsCheck).not.toContain("no_district");
+    const btn = parseBreaking(text, "BTN_RJ_BREAKING_750_15NOV_US_CONTROL_big.txt", book);
+    expect(btn).toMatchObject({ district: "Jaipur", rajasthan: true });
+    // A non-Rajasthan place (Delhi) stays on the flash: it is national anyway
+    expect(parseBreaking("दिल्ली: संसद का सत्र शुरू\nविपक्ष का हंगामा\n", "nat_flash_rj_breaking_751.txt", book)).toMatchObject({ rajasthan: false });
   });
 });
 

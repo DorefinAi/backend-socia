@@ -529,6 +529,88 @@ describe("BreakingShareSource (no database)", () => {
     await expect(broken.list()).rejects.toMatchObject({ code: "EIO" });
     expect(broken.health()).toMatchObject({ reachable: false, lastError: { code: "EIO" } });
   });
+
+  it("watches today's and yesterday's folders: a .txt change calls onChange; the day moving on swaps the watches", async () => {
+    const root = "/share";
+    const tree: Record<string, string[]> = {
+      [root]: ["OCTOBER_2026", "NOVEMBER_2026"],
+      [`${root}/OCTOBER_2026`]: ["30_OCTOBER_2026", "31_OCTOBER_2026"],
+      [`${root}/NOVEMBER_2026`]: ["01_NOVEMBER_2026"],
+    };
+    const watched = new Map<string, { emit: (name: string | null) => void; fail: (err: unknown) => void; closed: boolean }>();
+    let failNext = false;
+    const fakeFs: ShareFs = {
+      readdir: async (p) => {
+        const key = p.replace(/\\/g, "/").replace(/^[A-Za-z]:/, "");
+        const dirs = tree[key];
+        if (dirs) return dirs.map((name) => ({ name, isDirectory: () => true, isFile: () => false }));
+        return [{ name: "BTN_RAJ_BREAKING_1_31OCT.txt", isDirectory: () => false, isFile: () => true }];
+      },
+      stat: async () => ({ size: 10, mtime: new Date("2026-10-31T09:00:00Z") }),
+      readFileBounded: async () => Buffer.from("x"),
+      watch: (p, onEvent, onError) => {
+        if (failNext) {
+          failNext = false;
+          throw Object.assign(new Error("no watch"), { code: "EPERM" });
+        }
+        const key = p.replace(/\\/g, "/").replace(/^[A-Za-z]:/, "");
+        const w = { emit: onEvent, fail: onError, closed: false };
+        watched.set(key, w);
+        return { close: () => void (w.closed = true) };
+      },
+    };
+    let changes = 0;
+    let now = new Date("2026-10-31T09:00:00Z");
+    const src = new BreakingShareSource(root, { fs: fakeFs, now: () => now, onChange: () => void changes++ });
+
+    await src.list();
+    const live = () => [...watched].filter(([, w]) => !w.closed).map(([k]) => k).sort();
+    expect(live()).toEqual([`${root}/OCTOBER_2026/30_OCTOBER_2026`, `${root}/OCTOBER_2026/31_OCTOBER_2026`]);
+
+    // A text file added or saved: one change each; anything else (a temp file) is not one; no name might be one
+    watched.get(`${root}/OCTOBER_2026/31_OCTOBER_2026`)!.emit("BTN_RAJ_BREAKING_2_31OCT.txt");
+    watched.get(`${root}/OCTOBER_2026/31_OCTOBER_2026`)!.emit("~$temp.tmp");
+    watched.get(`${root}/OCTOBER_2026/30_OCTOBER_2026`)!.emit(null);
+    expect(changes).toBe(2);
+
+    // Listing again changes nothing; the next day: the 30th's watch stops, the 1st's starts
+    await src.list();
+    expect(live()).toHaveLength(2);
+    now = new Date("2026-11-01T03:00:00Z");
+    await src.list();
+    expect(live()).toEqual([`${root}/NOVEMBER_2026/01_NOVEMBER_2026`, `${root}/OCTOBER_2026/31_OCTOBER_2026`]);
+
+    // A watch that errors is dropped and started again on the next listing; one that cannot start is tried again too
+    watched.get(`${root}/OCTOBER_2026/31_OCTOBER_2026`)!.fail(new Error("network name no longer available"));
+    expect(live()).toEqual([`${root}/NOVEMBER_2026/01_NOVEMBER_2026`]);
+    failNext = true;
+    await src.list();
+    expect(live()).toEqual([`${root}/NOVEMBER_2026/01_NOVEMBER_2026`]);
+    await src.list();
+    expect(live()).toEqual([`${root}/NOVEMBER_2026/01_NOVEMBER_2026`, `${root}/OCTOBER_2026/31_OCTOBER_2026`]);
+
+    // close() stops every watch
+    await src.close();
+    expect(live()).toEqual([]);
+  });
+
+  it("without onChange nothing is watched", async () => {
+    let watches = 0;
+    const fakeFs: ShareFs = {
+      readdir: async (p) =>
+        /_2026$/.test(p) && !/OCTOBER_2026$/.test(p)
+          ? [{ name: "a.txt", isDirectory: () => false, isFile: () => true }]
+          : [{ name: /OCTOBER_2026$/.test(p) ? "31_OCTOBER_2026" : "OCTOBER_2026", isDirectory: () => true, isFile: () => false }],
+      stat: async () => ({ size: 1, mtime: new Date() }),
+      readFileBounded: async () => Buffer.from(""),
+      watch: () => {
+        watches++;
+        return { close: () => undefined };
+      },
+    };
+    await new BreakingShareSource("/share", { fs: fakeFs, now: () => new Date("2026-10-31T09:00:00Z") }).list();
+    expect(watches).toBe(0);
+  });
 });
 
 (URL_ ? describe : describe.skip)("phase 1 pipeline: share → ready draft", () => {

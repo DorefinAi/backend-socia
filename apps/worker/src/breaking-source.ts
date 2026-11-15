@@ -10,6 +10,7 @@
 import { daysToScan, dayFolderName, isBreakingFileName, matchDayFolder, matchMonthFolder, type IstDay } from "@socia/core";
 import type { SourceHealth } from "@socia/db";
 import type { FileSource, RemoteFile } from "@socia/providers";
+import { watch as fsWatch } from "node:fs";
 import * as fsp from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import type { Logger } from "pino";
@@ -29,16 +30,32 @@ export class ShareUnreachable extends Error {
   }
 }
 
+/** A folder being watched; `close` stops it */
+export interface ShareWatch {
+  close(): void;
+}
+
 /** The fs calls the source makes; tests pass slow or failing ones */
 export interface ShareFs {
   readdir: (path: string) => Promise<{ name: string; isDirectory(): boolean; isFile(): boolean }[]>;
   stat: (path: string) => Promise<{ size: number; mtime: Date }>;
   readFileBounded: (path: string, max: number) => Promise<Buffer>;
+  /**
+   * Change notices for one folder (Windows passes them over SMB): `onEvent` with the file name when known.
+   * Optional; without it, or when a watch fails, the regular scans still find every file.
+   */
+  watch?: (path: string, onEvent: (name: string | null) => void, onError: (err: unknown) => void) => ShareWatch;
 }
 
 const realFs: ShareFs = {
   readdir: (path) => fsp.readdir(path, { withFileTypes: true }),
   stat: (path) => fsp.stat(path),
+  watch(path, onEvent, onError) {
+    // persistent: false, so a watch never keeps the process alive on its own
+    const w = fsWatch(path, { persistent: false }, (_event, name) => onEvent(name ? String(name) : null));
+    w.on("error", onError);
+    return w;
+  },
   async readFileBounded(path, max) {
     const handle = await fsp.open(path, "r");
     try {
@@ -61,6 +78,11 @@ export interface BreakingShareOptions {
   log?: Logger;
   fs?: ShareFs;
   timeoutMs?: number;
+  /**
+   * Called when a .txt file in a listed day folder is added or changed (the folders of the last list() are
+   * watched): the ingest loop scans at once instead of waiting for its next poll. Without it nothing is watched.
+   */
+  onChange?: () => void;
 }
 
 export class BreakingShareSource implements FileSource {
@@ -71,6 +93,10 @@ export class BreakingShareSource implements FileSource {
   private readonly timeoutMs: number;
   /** Names already logged as skipped (not BREAKING, too big), per IST day, so each is logged once */
   private skipped = { day: "", names: new Set<string>() };
+  /** The day folders watched now (today's and yesterday's), by folder path */
+  private watchers = new Map<string, ShareWatch>();
+  /** Folders whose watch could not start, so the failure is logged once per folder */
+  private watchFailed = new Set<string>();
 
   constructor(root: string, private readonly opts: BreakingShareOptions = {}) {
     this.root = resolve(root);
@@ -193,6 +219,7 @@ export class BreakingShareSource implements FileSource {
       health.lastFileAt = newest?.mtime?.toISOString() ?? null;
       health.lastFileName = newest?.name ?? null;
       this.last = health;
+      this.watchFolders([health.todayFolder, health.alsoScanning].filter((f): f is string => !!f));
       return files;
     } catch (err) {
       const e = err instanceof ShareUnreachable ? err : new ShareUnreachable(codeOf(err));
@@ -219,5 +246,44 @@ export class BreakingShareSource implements FileSource {
     }
   }
 
-  async close(): Promise<void> {}
+  /**
+   * Watches exactly `folders` (the day folders just listed): new ones are started, ones no longer listed (the day
+   * moved on) stopped. A watch that fails or errors is dropped and tried again after the next listing; the regular
+   * scans find every file meanwhile, so a watch is only ever a way to be quicker.
+   */
+  private watchFolders(folders: string[]): void {
+    const { onChange, log } = this.opts;
+    if (!onChange || !this.fs.watch) return;
+    const wanted = new Set(folders);
+    for (const [folder, w] of this.watchers) {
+      if (wanted.has(folder)) continue;
+      w.close();
+      this.watchers.delete(folder);
+    }
+    for (const folder of wanted) {
+      if (this.watchers.has(folder)) continue;
+      const drop = (err: unknown) => {
+        this.watchers.get(folder)?.close();
+        this.watchers.delete(folder);
+        if (!this.watchFailed.has(folder)) log?.warn({ err, folder }, "share folder watch stopped; scans carry on and it is tried again");
+        this.watchFailed.add(folder);
+      };
+      try {
+        const w = this.fs.watch(this.abs(folder), (name) => {
+          // Only text files matter; a notice with no name (some servers send none) might be one
+          if (name === null || /\.txt$/i.test(name)) onChange();
+        }, drop);
+        this.watchers.set(folder, w);
+        if (this.watchFailed.delete(folder)) log?.info({ folder }, "share folder watch running again");
+        else log?.info({ folder }, "share folder watched: new files are scanned at once");
+      } catch (err) {
+        drop(err);
+      }
+    }
+  }
+
+  async close(): Promise<void> {
+    for (const w of this.watchers.values()) w.close();
+    this.watchers.clear();
+  }
 }

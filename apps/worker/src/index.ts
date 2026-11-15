@@ -47,6 +47,13 @@ const log = ops.enabled
     )
   : pino({ base: { service: "socia-worker" }, level: stdoutLevel });
 type Stage = "ingest" | "render" | "publish" | "crons";
+
+/** The breaking share is scanned at least this often (FTP_POLL_SECONDS may only make it more often) */
+const BREAKING_POLL_MS = 2000;
+/** How often the ingest loop looks at the folder watch's flag while idle */
+const WATCH_WAKE_MS = 250;
+/** Convert and compose look for new work this often when idle */
+const PIPELINE_IDLE_MS = 500;
 /** WORKER_ROLES → the stage its lines are filed under in Sentry */
 const ROLE_STAGES: Record<string, Stage> = {
   ingest: "ingest", pipeline: "ingest", trends: "ingest", render: "render", publish: "publish", maintenance: "crons",
@@ -111,7 +118,9 @@ async function main(): Promise<void> {
   } else if (cfg.roles.includes("ingest")) {
     const log = stageLog("ingest");
     const breaking = cfg.sourceLayout === "breaking";
-    const share = breaking ? new BreakingShareSource(need("SOURCE_DIR"), { log }) : null;
+    // A file added to (or saved in) today's or yesterday's folder: the share tells us, and the loop scans at once
+    let shareChanged = false;
+    const share = breaking ? new BreakingShareSource(need("SOURCE_DIR"), { log, onChange: () => void (shareChanged = true) }) : null;
     const source = share ?? makeSource(cfg.sourceMode);
     cleanups.push(() => source.close());
     // The breaking share holds the whole day already: a first start takes only what arrives from then on
@@ -120,14 +129,25 @@ async function main(): Promise<void> {
     log.info({ mode, layout: cfg.sourceLayout }, breaking ? "ingest: breaking files from the share (read only)" : "ingest: text files from the share");
     let wasDown = false;
     let scanCheckFailed = false;
+    let askedAt = 0;
     loops.start({
       name: "ingest",
-      idleMs: cfg.pollSeconds * 1000,
+      // The breaking share is scanned at least every BREAKING_POLL_MS (a scan of both day folders takes well under a
+      // second); the folder watch usually starts one sooner
+      idleMs: breaking ? Math.min(cfg.pollSeconds * 1000, BREAKING_POLL_MS) : cfg.pollSeconds * 1000,
       log,
-      // "Scan now" on the desk (POST /ingest/scan): seen within a second, and the share is read straight away
+      // A change on the share (the folder watch): seen within WATCH_WAKE_MS. "Scan now" on the desk (POST
+      // /ingest/scan): seen within a second. Either way the share is read straight away
       wake: {
-        everyMs: 1000,
+        everyMs: breaking ? WATCH_WAKE_MS : 1000,
         check: async () => {
+          if (shareChanged) {
+            shareChanged = false;
+            return true;
+          }
+          // The database is asked about "Scan now" once a second, whatever the watch's pace
+          if (Date.now() - askedAt < 1000) return false;
+          askedAt = Date.now();
           try {
             const asked = await takeIngestScanRequest(db, cfg.orgId);
             scanCheckFailed = false;
@@ -215,8 +235,9 @@ async function main(): Promise<void> {
     const log = stageLog("ingest");
     const dictionaries = new Dictionaries(db, cfg.orgId, log);
     const composeOpts = { cardOnDemand: cfg.phase === 1, data, exploreRate: cfg.reporterPrior.exploreRate };
-    loops.start({ name: "convert", idleMs: 1000, log, tick: () => convertNext(db, storage!, log, data) });
-    loops.start({ name: "compose", idleMs: 1000, log, tick: () => composeNext(db, dictionaries, log, composeOpts) });
+    // Half a second between looks when idle: a new story is in the queue about a second after it is taken
+    loops.start({ name: "convert", idleMs: PIPELINE_IDLE_MS, log, tick: () => convertNext(db, storage!, log, data) });
+    loops.start({ name: "compose", idleMs: PIPELINE_IDLE_MS, log, tick: () => composeNext(db, dictionaries, log, composeOpts) });
   }
 
   if (cfg.roles.includes("render")) {

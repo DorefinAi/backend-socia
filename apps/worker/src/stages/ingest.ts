@@ -1,7 +1,7 @@
 // Ingest: watch the control-room share, and turn each new, finished file into a row.
 //
-// A file is taken only when two scans at least 2 s apart see the same size and mtime: at one file
-// every 90 s, reading a half-saved Notepad file is otherwise a certainty. The sha256 is the
+// A file is taken only when two scans at least 1 s apart see the same size and mtime: reading a half-saved
+// Notepad file is otherwise a certainty (a breaking file is a few KB, saved in milliseconds). The sha256 is the
 // dedupe key, so a re-save or a reused name never makes a second story. The raw bytes go to
 // storage untouched, so a converter fix can reprocess the archive later.
 //
@@ -24,7 +24,7 @@ const FIRST_START_KEY = "ingest.first_start";
 /** Files older than the watermark by this much were handled before the last restart */
 const WATERMARK_GRACE_MS = 10 * 60 * 1000;
 /** A file must look the same to two scans this far apart; the loop rescans after this while files settle */
-export const STABLE_MS = 2000;
+export const STABLE_MS = 1000;
 /** Draft states that went (or are going) out: a re-saved file makes a new draft instead of rewriting these */
 const SENT = ["published", "recalled", "queued", "publishing"];
 

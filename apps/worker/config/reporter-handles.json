@@ -107,7 +107,8 @@
       "name": "Kamalkant Vyas",
       "names_hi": [],
       "names_en": ["kamalkant", "kamal kant", "kamalkant_vyas", "kk_vyas"],
-      "districts": ["Jaipur", "Delhi", "Jodhpur"],
+      "districts": ["Jaipur"],
+      "_districts_note": "Changes #3 §1.3 (15 Nov 2026): the desk confirmed he sends Jaipur news; 29 of his 43 posts lead with #Jaipur. Was [\"Jaipur\", \"Delhi\", \"Jodhpur\"]; his #Delhi and #Jodhpur posts state their own district.",
       "beats": ["court"],
       "beats_source": "observed",
       "_beats_note": "R6: 31 of 43 posts are court stories (measured, so 'observed'). Display only: no court-story rule reads it until Logic Update v4 B2 lands.",
@@ -189,7 +190,9 @@
       "name": "Dinesh Kasana",
       "names_hi": [],
       "names_en": ["dinesh_kasana", "kasana"],
-      "districts": [],
+      "districts": ["Jaipur"],
+      "bureau": true,
+      "_districts_note": "Changes #3 §1.1 and Q2 (owner, 15 Nov 2026): districts Jaipur, NO district policy, and no #Jaipur: is ever added for him. \"bureau\": true keeps that: as a special correspondent his file code is where he sits, not where the story is, so it is never the story's district and Jaipur is never offered from it.",
       "beats": ["jda", "rca-cricket", "minister"],
       "beats_source": "desk",
       "_todo": "An RCA handle for the 'rca-cricket' beat: NOT AVAILABLE (owner, 14 Nov: build without it). 'rca-cricket' stays a display-only beat with no handles, and no handle is guessed (0 corpus posts). Districts left empty on purpose (special correspondent, 69 of 102 files carry no code); the brief's 'Jaipur' was not applied because it would make his file code and the reporter-district suggestion fire on every story.",
@@ -197,7 +200,7 @@
       "verified": true,
       "evidence": 36,
       "source": "https://api.fxtwitter.com/DineshKasana15",
-      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5). X bio: 'Special Correspondent @1stIndiaNews'. Token DINESH KASANA on 102 breaking files (32 with the Jaipur code, 69 with none); special correspondent, so no district is listed."
+      "note": "Added 12 Nov 2026 (HASHTAG_HANDLE_CHANGES_v3 §5.5). X bio: 'Special Correspondent @1stIndiaNews'. Token DINESH KASANA on 102 breaking files (32 with the Jaipur code, 69 with none); special correspondent: listed for Jaipur since 15 Nov (Changes #3 Q2) but kept a bureau reporter (\"bureau\": true), so the district never sets a tag."
     },
     {
       "handle": "@dineshdangi84",
@@ -326,6 +329,18 @@
       "source": "@1stIndiaNews timeline, 3 posts",
       "evidence": 3,
       "note": "3 published posts, all Jodhpur. Could be a stringer or an outside account — confirm before giving it a token."
+    },
+    {
+      "handle": "@shubhamjain8824",
+      "handle_type": "person",
+      "name": "Shubham Jain",
+      "names_hi": ["शुभम जैन"],
+      "names_en": ["shubham_jain", "SHUBHAM_JAIN"],
+      "districts": ["Ajmer"],
+      "verified": false,
+      "source": "@1stIndiaNews timeline, 6 posts (Extracted sheet, 15 Nov 2026)",
+      "evidence": 6,
+      "note": "Changes #3 Q8 (owner, 15 Nov 2026): added UNCONFIRMED. All 6 of his posts are Ajmer. No district policy. Tokens shubham_jain / SHUBHAM_JAIN only, never a bare SHUBHAM (it could name another reporter, as bare DINESH did). The file-name spellings are not confirmed: an unverified entry is not loaded, so he is never tagged until the desk confirms a token and verified is set to true."
     }
   ]
 }

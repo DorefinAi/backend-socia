@@ -329,16 +329,17 @@ function cutPoints(parts: string[], all: string, dots: string, max: number): str
  * Navin's ACB beat) or for several. Their roster entry is never offered as the story's district. Whether their
  * FILE CODE stands is trustsFileCode's question (b6 fix brief P5).
  */
-const isBureauReporter = (m: ReporterMatch | null): boolean => !!m && m.districts.length !== 1;
+const isBureauReporter = (m: ReporterMatch | null): boolean => !!m && (!!m.bureau || m.districts.length !== 1);
 const districtKey = (s: string) => fold(s).replace(/\s+/g, "");
 /**
  * Whether the file name's district code can be taken as the story's district for this reporter. A reporter listed
  * for no district files statewide (Navin's ACB bureau: the code is where he sits, not where the story is). A
  * reporter listed for several (Jaipur and Delhi) is trusted when the code is one of them: @aishwaryam99's JPR
- * file is a Jaipur story. A single-district reporter, or none matched, keeps the code as before b6.
+ * file is a Jaipur story. A single-district reporter, or none matched, keeps the code as before b6. A reporter marked
+ * `bureau` (Kasana, Changes #3 Q2) is never trusted, whatever districts he is listed for.
  */
 const trustsFileCode = (m: ReporterMatch | null, code: DistrictInfo): boolean =>
-  !m || m.districts.length === 1 || m.districts.some((d) => districtKey(d) === districtKey(code.name) || districtKey(d) === districtKey(code.tag));
+  !m || (!m.bureau && (m.districts.length === 1 || m.districts.some((d) => districtKey(d) === districtKey(code.name) || districtKey(d) === districtKey(code.tag))));
 
 /**
  * The story's district with its provenance. Precedence (user decision, 12 Nov): the desk's own copy (place line,

@@ -58,6 +58,8 @@ export interface ReporterHandleEntry {
   beats_source?: "desk" | "observed";
   /** A standing desk rule for this reporter (reporter-prior brief §4). Absent for almost everyone. */
   policy?: { district_when_missing?: string };
+  /** A bureau reporter whatever `districts` lists: the file code is never the story's district (ReporterMatch.bureau) */
+  bureau?: boolean;
   /** Measured rates for the reporter-routing prior (§3.3): seeded from the corpus, refreshed from the decision log */
   prior?: ReporterPriorData;
   verified: boolean;
@@ -122,6 +124,12 @@ export interface ReporterMatch {
   name: string;
   /** Districts the desk associates with this reporter, for the mismatch warning */
   districts: string[];
+  /**
+   * A bureau reporter whatever `districts` says (Changes #3 Q2: Dinesh Kasana, a special correspondent listed for
+   * Jaipur): the file name's code is where he sits, not where the story is. As for a reporter with no single district,
+   * the code is never the story's district, the reporter's district is never offered, and no mismatch is flagged.
+   */
+  bureau?: boolean;
 }
 
 export interface ReporterRules {
@@ -364,12 +372,16 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     if (pol !== undefined && (!pol || typeof pol !== "object" || Array.isArray(pol) || ((pol as { district_when_missing?: unknown }).district_when_missing !== undefined && typeof (pol as { district_when_missing?: unknown }).district_when_missing !== "string"))) {
       entryProblems.push(`"policy" must be { "district_when_missing": "<District>" }`);
     }
+    const bureau = (e as { bureau?: unknown }).bureau;
+    if (bureau !== undefined && typeof bureau !== "boolean") entryProblems.push(`"bureau" must be true or false`);
+    // A bureau reporter's file code is never the story's district, so a desk rule naming one would contradict it
+    if (bureau === true && e.policy?.district_when_missing !== undefined) entryProblems.push(`a "bureau" reporter cannot carry a district_when_missing policy`);
     const profile = parseProfile(e as ReporterHandleEntry, handle, name, who, problem, (m) => entryProblems.push(m), priorCheck);
     if (entryProblems.length) {
       return problem(`${who}: entry REJECTED, this reporter is not loaded (no byline, no desk rule, no prior) until it is fixed — ${entryProblems.join("; ")}`);
     }
     verifiedHandles.add(handle.toLowerCase());
-    const match: ReporterMatch = { handle, name, districts: strings(e.districts) };
+    const match: ReporterMatch = { handle, name, districts: strings(e.districts), ...(bureau === true && { bureau: true }) };
     profiles.set(handle.toLowerCase(), profile);
     let added = 0;
     for (const spelling of strings(e.names_en)) {
@@ -534,7 +546,7 @@ export function pickReporter(token: string | null | undefined, rules: ReporterRu
 
 /** Whether a reporter's known districts disagree with the story's. A warning for the draft, never a block. */
 export function districtMismatch(m: ReporterMatch, district: string | null): boolean {
-  if (!district || !m.districts.length) return false;
+  if (!district || !m.districts.length || m.bureau) return false;
   // fold() already lower-cases and drops punctuation; only the spaces have to go, so that "SawaiMadhopur"
   // and "Sawai Madhopur" are one district. Stripping everything non-ASCII instead would collapse every
   // Devanagari district name to "" and compare them all equal.
@@ -563,5 +575,5 @@ const CARVED_FROM: ReadonlyMap<string, string> = new Map(
  * Measured 98.5% (670/680) against posts that do carry a district — and still only ever a suggestion.
  */
 export function reporterDistrict(m: ReporterMatch | null | undefined): string | null {
-  return m && m.districts.length === 1 ? m.districts[0]! : null;
+  return m && !m.bureau && m.districts.length === 1 ? m.districts[0]! : null;
 }

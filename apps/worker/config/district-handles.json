@@ -120,20 +120,22 @@
         "note": "profile name 'Baran Police', bio: \"Official handle of Baran Police. \", X grey Government badge [https://api.fxtwitter.com/BaranPolice]"
       },
       {
-        "handle": "@DcDmBaran_",
-        "handle_type": "district",
-        "role": "collector",
-        "verified": true,
-        "source": "https://api.fxtwitter.com/DcDmBaran_",
-        "note": "Primary (most active, 24k posts); baran.rajasthan.gov.in lists no X link; profile name 'District Collector & Magistrate - Baran', bio: \"Official Handle of District Collector and District Magistrate, #Baran, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DcDmBaran_]"
-      },
-      {
         "handle": "@DcDmBaran",
         "handle_type": "district",
         "role": "collector",
         "verified": true,
-        "source": "https://api.fxtwitter.com/DcDmBaran",
-        "note": "Older second account with the same bio (created 2018, ~4.5k posts); prefer @DcDmBaran_; profile name 'District Collector & Magistrate, Baran', bio: \"Official Handle of District Collector and District Magistrate, #Baran, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DcDmBaran]"
+        "source": "@1stIndiaNews timeline, 4 post(s) on #Baran",
+        "evidence": 4,
+        "note": "PREFERRED (Changes #3 §1.4 and Q1, owner decision 15 Nov 2026): the desk tagged this account on 4 posts, all leading #Baran, and @DcDmBaran_ on none. Older account with the same bio (created 2018, ~4.5k posts); profile name 'District Collector & Magistrate, Baran', bio: \"Official Handle of District Collector and District Magistrate, #Baran, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DcDmBaran]"
+      },
+      {
+        "handle": "@DcDmBaran_",
+        "handle_type": "district",
+        "role": "collector",
+        "verified": true,
+        "alternate": true,
+        "source": "https://api.fxtwitter.com/DcDmBaran_",
+        "note": "ALTERNATE, never chosen (Changes #3 Q1, owner decision 15 Nov 2026): the desk used it on 0 of the 2,704 posts. The more active account (24k posts); baran.rajasthan.gov.in lists no X link; profile name 'District Collector & Magistrate - Baran', bio: \"Official Handle of District Collector and District Magistrate, #Baran, #Rajasthan. Citizens can report their queries her\", no Government badge [https://api.fxtwitter.com/DcDmBaran_]"
       }
     ],
     "Barmer": [
@@ -661,7 +663,18 @@
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/PratapgrhPolice",
-        "note": "Note spelling 'Pratapgrh'. Do NOT use @PratapgarhPol (Pratapgarh, Uttar Pradesh); profile name 'Pratapgarh police', bio: \"Official handle of Pratapgarh Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crim\", X grey Government badge [https://api.fxtwitter.com/PratapgrhPolice]"
+        "note": "Note spelling 'Pratapgrh'. Do NOT use @PratapgarhPol (Pratapgarh, Uttar Pradesh); profile name 'Pratapgarh police', bio: \"Official handle of Pratapgarh Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crim\", X grey Government badge [https://api.fxtwitter.com/PratapgrhPolice]",
+        "evidence": 6
+      },
+      {
+        "handle": "@pratapgarhpol",
+        "handle_type": "district",
+        "role": "police",
+        "verified": true,
+        "alternate": true,
+        "source": "@1stIndiaNews timeline: 5 posts leading #Pratapgarh (10-11 Nov 2026), never beside @PratapgrhPolice",
+        "evidence": 5,
+        "note": "Changes #3 Q4 (owner decision, 15 Nov 2026): a known ALTERNATE, recognised when the desk types it, never chosen; @PratapgrhPolice stays the only one Socia picks. CAUTION: X handles are case-insensitive, so this is the same account as @PratapgarhPol, which the note above records as Pratapgarh, UTTAR PRADESH police. The desk's 5 uses may be slips; check the profile before ever promoting it."
       },
       {
         "handle": "@PratapgarhDm",

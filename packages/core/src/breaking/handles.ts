@@ -59,6 +59,12 @@ export interface DistrictHandleEntry {
   source?: string;
   /** How many published posts corroborated this handle for this district */
   evidence?: number;
+  /**
+   * A known second account of the same office (Changes #3 Q1, Q4: @DcDmBaran_ beside @DcDmBaran, @pratapgarhpol beside
+   * @PratapgrhPolice). Recognised like any handle of the file (`all`, `bound`, `types`: never a desk keyword's, never a
+   * reporter's suggestion) but NEVER picked: the preferred entry is the only one Socia chooses.
+   */
+  alternate?: boolean;
 }
 
 /** district-handles.json */
@@ -113,6 +119,7 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
       if (!e || typeof e.handle !== "string" || !HANDLE.test(e.handle)) fail(`${where}[${i}]: "${String(e?.handle)}" is not an X handle`);
       if (!ROLES.has(String(e!.role))) fail(`${where}[${i}]: role must be police, collector, govt or cm`);
       if (typeof e!.verified !== "boolean") fail(`${where}[${i}]: "verified" must be true or false`);
+      if (e!.alternate !== undefined && typeof e!.alternate !== "boolean") fail(`${where}[${i}]: "alternate" must be true or false`);
       return e as DistrictHandleEntry;
     });
   };
@@ -136,7 +143,7 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
     all.add(bare(e).toLowerCase());
     if (e.role === "police" || e.role === "collector") bound.add(bare(e).toLowerCase());
     if (!typed(e, `state[${i}]`)) continue;
-    if (!e.verified) continue;
+    if (!e.verified || e.alternate) continue;
     if (e.role === "govt") rules.state.government.push(bare(e));
     else if (e.role === "cm") rules.state.cm.push(bare(e));
     else if (e.role === "police") rules.state.police.push(bare(e));
@@ -156,7 +163,7 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
       all.add(bare(e).toLowerCase());
       if (e.role === "police" || e.role === "collector") bound.add(bare(e).toLowerCase());
       if (!typed(e, `districts.${name}[${i}]`)) continue;
-      if (e.verified && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) d[e.role].push(bare(e));
+      if (e.verified && !e.alternate && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) d[e.role].push(bare(e));
     }
     rules.districts[key] = d;
   }

@@ -344,6 +344,29 @@ function placeInText(book: PlaceBook, text: string, hint: string | null): { dist
   return nat ? { district: nat.entry.data.districts[0]!, national: true } : null;
 }
 
+/**
+ * A story no district was found for: is it national news (#FirstIndiaNews)? Files from the NWS desk are. The
+ * national flash (nat_flash_rj_..., owner 17 Nov 2026, rule b: "#RajasthanWithFirstIndia unless the story is about
+ * Delhi or another state"), checked on 16 Nov's 116 flash posts:
+ *   1. says राजस्थान: Rajasthan (also about Rajasthan, e.g. an RCA team playing another state);
+ *   2. names a place outside Rajasthan (Delhi, another state, abroad): national;
+ *   3. filed by a reporter whose districts are all outside Rajasthan (`reporterDistricts`, the composer's roster:
+ *      the Delhi correspondent's COP31 story names no place): national;
+ *   4. no reporter (the TV desk's national wire, e.g. a Delhi rally that never says दिल्ली): national;
+ *   5. otherwise (a Rajasthan reporter's flash): Rajasthan.
+ * parseBreaking (no roster) and the composer both read it.
+ */
+export function nationalWithoutPlace(tags: FileTags | null | undefined, text: string, book: PlaceBook, reporterDistricts?: readonly string[]): boolean {
+  if (!tags) return false;
+  if (isNationalFlash(tags)) {
+    if (/राजस्थान/u.test(text)) return false;
+    if (placeInText(book, text, null)?.national) return true;
+    if (reporterDistricts?.length && reporterDistricts.every((d) => book.district(d)?.rajasthan === false)) return true;
+    return !tags.reporter;
+  }
+  return fromNationalDesk(tags);
+}
+
 export function parseBreaking(text: string, fileName: string, book: PlaceBook): BreakingStory {
   const tags = fileTags(fileName, book.codes);
   const hint = tags.district;
@@ -466,25 +489,20 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
       national = true;
     }
   }
-  // National news with no place (NWS desk files, the national flash) is not missing a district
-  if (!district && !national && fromNationalDesk(tags)) national = true;
-  // The national flash is national news whatever place its text names (owner, 15 Nov 2026, L2): a Rajasthan
-  // district it mentions is not its place, so no Rajasthan district tag, police handle or brand
-  const flashDropped = isNationalFlash(tags) && !!district?.rajasthan;
-  if (isNationalFlash(tags)) {
-    national = true;
-    if (district?.rajasthan) district = null;
-  }
+  // National news with no place (NWS desk files; the national flash by rule b) is not missing a district. A flash
+  // with a Rajasthan place keeps it (owner 17 Nov 2026, replacing 15 Nov's L2 "always national")
+  if (!district && !national && nationalWithoutPlace(tags, [headline, ...points].join(" । "), book)) national = true;
   const leaderPost = LEADER_POST.test(headline);
-  // A leader's post and state-wide news (secretariat, a state decision) have no district and need none
-  if (!district && !national && !leaderPost && !STATEWIDE.test([headline, ...points].join(" "))) flag("no_district");
+  // A leader's post and state-wide news (secretariat, a state decision) have no district and need none; nor does a
+  // flash (a reporter's flash often has no place, and the reporter's own district rule fills it)
+  if (!district && !national && !leaderPost && !isNationalFlash(tags) && !STATEWIDE.test([headline, ...points].join(" "))) flag("no_district");
 
   if (!headline) flag("no_headline");
   if (!DEVANAGARI.test([headline, ...points].join(" "))) flag("no_hindi");
 
   // A town tag without its district reads oddly ("#सचिवालय:"): keep it only with a district, or when the desk wrote it
   // before the headline's colon ("आकोला: ..."); no_district still asks the desk to look
-  const town = !flashDropped && (district || (where?.town && where.town === loneTown)) && where?.town && where.town !== district?.hi ? where.town : null;
+  const town = (district || (where?.town && where.town === loneTown)) && where?.town && where.town !== district?.hi ? where.town : null;
   return {
     headline,
     rawHeadline,

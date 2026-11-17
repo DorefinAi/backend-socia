@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CATEGORY_SEED_RULES, EMPTY_HANDLE_RULES, LINKING_WORDS, PlaceBook, actingAgents, assemblePostText, composeBreaking, daysToScan, dayFolderName,
-  fileTags, fromNationalDesk, hashtagGazetteer, isBreakingFileName, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
+  fileTags, fromNationalDesk, nationalWithoutPlace, hashtagGazetteer, isBreakingFileName, matchDayFolder, matchMonthFolder, parseBreaking, parseHandleRules,
   parsePlacesData, parseSubjectHandles, phaseFeatures, phaseFrom, pickCategoryTags, pickHandles, xLen,
   breakingDots, crispPoints, plainHeadline, BREAKING_BODY_FLOOR, BREAKING_BODY_MAX, BREAKING_BODY_MIN, BREAKING_POST_MAX,
 } from "../src";
@@ -76,15 +76,36 @@ describe("breaking file names", () => {
     expect(s.rajasthan).toBe(false);
   });
 
-  it("keeps the national flash national even when it names a Rajasthan place (L2); a BTN file with it stays Rajasthan", () => {
+  it("rule b (owner 17 Nov): a national flash with a Rajasthan place keeps it and is Rajasthan news, like a BTN file", () => {
     const text = "जयपुर: केंद्रीय मंत्री का दौरा\nकई कार्यक्रमों में शामिल होंगे\n";
     const flash = parseBreaking(text, "nat_flash_rj_breaking_750_bps_15NOV_control_TV_BIG.txt", book);
-    expect(flash).toMatchObject({ district: null, districtFrom: null, town: null, rajasthan: false });
-    expect(flash.needsCheck).not.toContain("no_district");
+    expect(flash).toMatchObject({ district: "Jaipur", rajasthan: true });
     const btn = parseBreaking(text, "BTN_RJ_BREAKING_750_15NOV_US_CONTROL_big.txt", book);
     expect(btn).toMatchObject({ district: "Jaipur", rajasthan: true });
-    // A non-Rajasthan place (Delhi) stays on the flash: it is national anyway
+    // A non-Rajasthan place (Delhi): national
     expect(parseBreaking("दिल्ली: संसद का सत्र शुरू\nविपक्ष का हंगामा\n", "nat_flash_rj_breaking_751.txt", book)).toMatchObject({ rajasthan: false });
+  });
+
+  it("rule b with no place: राजस्थान, then another state, then a Delhi reporter, then no reporter decide; a Rajasthan reporter's flash is Rajasthan", () => {
+    const flash = (reporter: string | null) => fileTags(`nat_flash_rj_breaking_9940_yn_16NOV_control_${reporter ?? "TV"}_big.txt`, book.codes);
+    const nat = (text: string, reporter: string | null, districts?: string[]) => nationalWithoutPlace(flash(reporter), text, book, districts);
+    // A Jaipur reporter's flash with no place (16 Nov: the desk added #Jaipur and #RajasthanWithFirstIndia)
+    expect(nat("चाकसू थाना पुलिस की कार्रवाई । मादक पदार्थ तस्कर गिरफ्तार", "satya")).toBe(false);
+    // Another state named: national ("हरीश मीणा महाराष्ट्र दौरे पर")
+    expect(nat("कांग्रेस सांसद महाराष्ट्र दौरे पर", "naresh")).toBe(true);
+    // ...unless it says राजस्थान too (an RCA team playing Gujarat)
+    expect(nat("राजस्थान की टीम ने गुजरात को हराया", "dinesh_kasana")).toBe(false);
+    // The Delhi correspondent (roster districts ["Delhi"]), no place in the text (COP31): national
+    expect(nat("भूपेंद्र यादव ने COP31 में की मुलाकात", "ashvini", ["Delhi"])).toBe(true);
+    // A reporter with Jaipur in the roster: Rajasthan
+    expect(nat("सियासी गपशप", "yogesh", ["Jaipur"])).toBe(false);
+    // No reporter (the TV desk's wire): national, unless it says राजस्थान
+    expect(nat("सेना में बड़ा बदलाव", null)).toBe(true);
+    expect(nat("15 दिसंबर से शुरू हो सकता 'खेलो राजस्थान'", null)).toBe(false);
+    // A flash never asks for a district, and BTN / NWS files are unchanged
+    expect(parseBreaking("सियासी गपशप\nकई नेता नाराज\n", "nat_flash_rj_breaking_7963_yn_16NOV_control_yogesh_big.txt", book).needsCheck).not.toContain("no_district");
+    expect(nationalWithoutPlace(fileTags("BTN_RJ_BREAKING_6810_VG_02NOV_CONTROL_NWS_BIG.txt", book.codes), "सेना में बड़ा बदलाव", book)).toBe(true);
+    expect(nationalWithoutPlace(fileTags("BTN_RAJ_BREAKING_1303_29OCT_NDR_Reporter_BIG.txt", book.codes), "सेना में बड़ा बदलाव", book)).toBe(false);
   });
 });
 

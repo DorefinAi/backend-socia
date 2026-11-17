@@ -760,6 +760,70 @@ describe("BreakingShareSource (no database)", () => {
     expect((await story(D)).receivedAt.getTime()).toBe(clock);
   }, 60_000);
 
+  it("a file deleted from the share after it was taken: the newest 4 stories, posted or not, get file_deleted; back again, it goes", async () => {
+    const files = new Map<string, { bytes: Buffer; mtime: Date; addedAt: Date }>();
+    let listing: "all" | "empty" = "all";
+    const source: FileSource = {
+      list: async () => (listing === "empty" ? [] : [...files].map(([path, f]) => ({ path, name: path.split("/").pop()!, size: f.bytes.length, mtime: f.mtime, addedAt: f.addedAt }))),
+      read: async (p) => files.get(p)!.bytes,
+      close: async () => undefined,
+    };
+    const ingest = new Ingest({ db: h.db, storage: store, source, orgId, log, now: () => clock, layout: "breaking" });
+    const pipeline = async () => {
+      while (await convertNext(h.db, store, log, data));
+      while (await composeNext(h.db, new Dictionaries(h.db, orgId), log, { cardOnDemand: true, data, exploreRate: 0 }));
+    };
+    /** One scan; the clock moves on 1.5 s (the 2 s poll) */
+    const tick = async () => {
+      await ingest.scan();
+      clock += 1500;
+    };
+    /** Story number → whether it carries file_deleted */
+    const byNo = async () => {
+      const rows = await h.db.select({ path: ingestedFiles.sourcePath, needsCheck: stories.needsCheck }).from(stories).innerJoin(ingestedFiles, eq(ingestedFiles.id, stories.fileId));
+      return Object.fromEntries(rows.map((r) => [Number(/BREAKING_(\d+)_/.exec(r.path)![1]), r.needsCheck.includes("file_deleted")]));
+    };
+    const path = (n: number) => `OCTOBER_2026/29_OCTOBER_2026/BTN_RJ_BREAKING_${n}_29OCT_X.txt`;
+    const text = (n: number) => Buffer.from(`x\n\nजयपुर: खबर नंबर ${n}\nपुलिस मौके पर पहुंची\n`);
+    // Five stories added a minute apart: 1 is the oldest, 5 the newest; 1 is outside the newest 4
+    for (let n = 1; n <= 5; n++) files.set(path(n), { bytes: text(n), mtime: new Date(clock - (6 - n) * 60_000), addedAt: new Date(clock - (6 - n) * 60_000) });
+    await tick();
+    await tick();
+    await pipeline();
+    expect(await byNo()).toEqual({ 1: false, 2: false, 3: false, 4: false, 5: false });
+
+    // 5 (newest, waiting) and 3 (posted) are deleted from the share; 1 (outside the newest 4) too
+    const [s3] = await h.db.select({ id: stories.id }).from(stories).innerJoin(ingestedFiles, eq(ingestedFiles.id, stories.fileId)).where(eq(ingestedFiles.sourcePath, path(3)));
+    await h.db.update(postDrafts).set({ status: "published" }).where(eq(postDrafts.storyId, s3!.id));
+    const kept = new Map(files);
+    for (const n of [1, 3, 5]) files.delete(path(n));
+    // One scan that misses them is not enough (a share hiccup): nothing yet
+    await tick();
+    expect(await byNo()).toEqual({ 1: false, 2: false, 3: false, 4: false, 5: false });
+    // Missed again 1.5 s later: deleted. The posted story too; the oldest (not among the newest 4) is not checked
+    await tick();
+    expect(await byNo()).toEqual({ 1: false, 2: false, 3: true, 4: false, 5: true });
+    // The flag stays through more scans and the pipeline, and is written once (no duplicates)
+    await tick();
+    await pipeline();
+    const [row5] = await h.db.select({ needsCheck: stories.needsCheck }).from(stories).innerJoin(ingestedFiles, eq(ingestedFiles.id, stories.fileId)).where(eq(ingestedFiles.sourcePath, path(5)));
+    expect(row5!.needsCheck.filter((c) => c === "file_deleted")).toHaveLength(1);
+
+    // An empty listing (the share answered nothing) judges nothing: no flag is added or removed
+    listing = "empty";
+    await tick();
+    await tick();
+    expect(await byNo()).toEqual({ 1: false, 2: false, 3: true, 4: false, 5: true });
+    listing = "all";
+
+    // 5 is put back (the same file): its flag goes at once; 3 stays deleted
+    files.set(path(5), kept.get(path(5))!);
+    await tick();
+    expect(await byNo()).toEqual({ 1: false, 2: false, 3: true, 4: false, 5: false });
+    // The posted draft was never touched
+    expect((await h.db.select({ status: postDrafts.status }).from(postDrafts).where(eq(postDrafts.storyId, s3!.id)))[0]!.status).toBe("published");
+  }, 60_000);
+
   it("reads a Notepad Unicode (UTF-16) file into the queue, and rejects a file that is not text (no draft)", async () => {
     const ingest = ingestFor();
     expect(await settle(ingest)).toBe(0); // first start: nothing there

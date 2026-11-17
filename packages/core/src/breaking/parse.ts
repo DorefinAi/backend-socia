@@ -22,6 +22,8 @@ export const NEEDS_CHECK = [
   "update_of_posted",
   /** The headline's place tags ("#Kota:") name another district than the place line, or two districts; the first tag won */
   "place_conflict",
+  /** The file was taken, then deleted from the share (the desk removed it mid-edit or by mistake): check the FTP. Set and cleared by the ingest scan */
+  "file_deleted",
 ] as const;
 /** Set by the ingest stage, not the parser: they survive a re-parse */
 export const STICKY_CHECKS: readonly NeedsCheck[] = ["resaved", "update_of_posted"];

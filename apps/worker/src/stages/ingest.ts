@@ -29,6 +29,11 @@ export const STABLE_MS = 1000;
 const FUTURE_SLACK_MS = 10 * 60 * 1000;
 /** Draft states that went (or are going) out: a re-saved file makes a new draft instead of rewriting these */
 const SENT = ["published", "recalled", "queued", "publishing"];
+/** Breaking share: every scan checks that the files of this many newest stories are still on the share */
+export const DELETED_CHECK_FILES = 4;
+/** The needs-check code a story gets while its file is gone from the share (cleared when it is back) */
+export const FILE_DELETED = "file_deleted";
+const dirOf = (path: string) => path.replace(/[\\/][^\\/]*$/, "");
 
 const CONTENT_TYPES: Record<string, string> = {
   txt: "text/plain", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
@@ -61,6 +66,8 @@ const sigOf = (f: RemoteFile) => `${f.size}|${f.mtime?.getTime() ?? ""}`;
 export class Ingest {
   private readonly waiting = new Map<string, Seen>();
   private readonly handled = new Map<string, string>();
+  /** Breaking share: path of a newest story's file → when a scan first missed it (gone on two scans = deleted) */
+  private readonly missing = new Map<string, number>();
   private watermark: number | null | undefined;
   /** Breaking share: path → sig of what was there at the first start; null when there is no snapshot */
   private firstStart: Record<string, string> | null | undefined;
@@ -94,6 +101,10 @@ export class Ingest {
     for (const map of [this.handled, this.waiting]) for (const path of map.keys()) if (!listed.has(path)) map.delete(path);
 
     if (this.breaking && (await this.firstStartSnapshot(files))) return 0;
+    if (this.breaking) {
+      // A failed check never stops the scan: the files are still taken, and the next scan checks again
+      await this.checkDeleted(files, listed).catch((err) => log.warn({ err }, "could not check the newest files are still on the share"));
+    }
     const known = this.breaking ? await this.knownPaths(files) : new Map<string, string>();
 
     let ingested = 0;
@@ -165,6 +176,56 @@ export class Ingest {
       await setKv(db, FIRST_START_KEY, { at: new Date(this.now()).toISOString(), paths: {} });
     }
     return false;
+  }
+
+  /**
+   * Breaking share: the files of the DELETED_CHECK_FILES newest stories (by when they reached the share), posted or
+   * not, must still be listed. One gone from its day folder on two scans at least STABLE_MS apart gets
+   * "file_deleted" (the desk's warning icon: "File is deleted, please check FTP"); back on the share, the flag goes.
+   * Only stories whose day folder this listing read are judged (an older day's folder isn't scanned), and an empty
+   * listing judges nothing. The flag is added and removed in SQL, so a convert writing the same row can't undo it
+   * for long: the next scan sets it again.
+   */
+  private async checkDeleted(files: RemoteFile[], listed: ReadonlySet<string>): Promise<void> {
+    const { db, orgId, log } = this.deps;
+    if (!files.length) return;
+    const folders = new Set(files.map((f) => dirOf(f.path)));
+    const newest = await db
+      .select({ id: stories.id, needsCheck: stories.needsCheck, path: ingestedFiles.sourcePath })
+      .from(stories)
+      .innerJoin(ingestedFiles, eq(ingestedFiles.id, stories.fileId))
+      .where(and(eq(stories.orgId, orgId), eq(stories.layout, "breaking")))
+      .orderBy(desc(stories.receivedAt))
+      .limit(DELETED_CHECK_FILES);
+    const now = this.now();
+    const checked = new Set<string>();
+    for (const s of newest) {
+      if (!s.path || !folders.has(dirOf(s.path))) continue;
+      checked.add(s.path);
+      const flagged = s.needsCheck.includes(FILE_DELETED);
+      if (listed.has(s.path)) {
+        this.missing.delete(s.path);
+        if (flagged) {
+          await db.update(stories).set({ needsCheck: sql`array_remove(${stories.needsCheck}, ${FILE_DELETED})` }).where(eq(stories.id, s.id));
+          log.info({ storyId: s.id, path: s.path }, "breaking file is back on the share");
+        }
+        continue;
+      }
+      if (flagged) continue;
+      const since = this.missing.get(s.path);
+      if (since === undefined) {
+        this.missing.set(s.path, now);
+        continue;
+      }
+      if (now - since < STABLE_MS) continue;
+      await db
+        .update(stories)
+        .set({ needsCheck: sql`array_append(${stories.needsCheck}, ${FILE_DELETED})` })
+        .where(and(eq(stories.id, s.id), sql`NOT (${FILE_DELETED} = ANY(${stories.needsCheck}))`));
+      log.warn({ storyId: s.id, path: s.path }, "breaking file deleted from the share after it was taken");
+    }
+    // Paths no longer among the newest stop being tracked
+    for (const path of this.missing.keys()) if (!checked.has(path)) this.missing.delete(path);
   }
 
   /** Paths of this listing already in ingested_files, with the size|mtime they were taken at (newest row) */

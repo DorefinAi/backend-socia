@@ -21,6 +21,7 @@ const CHECK_NOTES: Record<string, string> = {
   empty: "The file has no text.",
   resaved: "The file was saved again with new text; the draft was rewritten from it. Check the text.",
   update_of_posted: "This file was saved again after its post went out: this is a new draft. Check what changed before posting.",
+  file_deleted: "File is deleted, please check FTP.",
   no_headline: "No headline line was found.",
   no_hindi: "The file has no Hindi text; check the encoding.",
   very_long: "The file is much longer than a breaking item.",

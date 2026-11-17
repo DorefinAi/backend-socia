@@ -85,7 +85,9 @@
       "keywords_hi": [
         "मुख्यमंत्री कार्यालय",
         "सीएमओ",
-        "मुख्यमंत्री कार्यालय राजस्थान"
+        "मुख्यमंत्री कार्यालय राजस्थान",
+        "संपर्क हेल्पलाइन",
+        "राजस्थान संपर्क"
       ],
       "keywords_en": [
         "CMO Rajasthan",
@@ -707,6 +709,26 @@
       "source": "https://api.fxtwitter.com/TikaRamJullyINC",
       "checkedAt": "2026-10-31",
       "note": "X profile with blue badge and matching bio (blue = paid; corroboration listed below) | X profile name 'Tika Ram Jully', bio: \"Leader of Opposition, Rajasthan Legislative Assembly, MLA from Alwar Rural, Ex Minister Social Justice & Jail Deptt.\", badge: blue badge"
+    },
+    {
+      "handle": "@rajendrarathore",
+      "handle_type": "person",
+      "kind": "person",
+      "title": "Former Leader of Opposition, Rajasthan Legislative Assembly (BJP)",
+      "names_hi": [
+        "राजेंद्र राठौड़",
+        "राजेन्द्र राठौड़",
+        "पूर्व नेता प्रतिपक्ष राजेंद्र राठौड़"
+      ],
+      "names_en": [
+        "Rajendra Rathore"
+      ],
+      "keywords_hi": [],
+      "keywords_en": [],
+      "verified": true,
+      "source": "Desk, 16 Nov 2026: @rajendrarathore typed by hand on 'संविधान दिवस को लेकर बोले पूर्व नेता प्रतिपक्ष राजेंद्र राठौड़' (owner approved the mapping, 17 Nov)",
+      "evidence": 1,
+      "note": "Taken from the desk's own published output, corroborated by 1 post. Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
     },
     {
       "handle": "@madanrrathore",
@@ -2390,11 +2412,13 @@
         "टाइगर",
         "वन्यजीव",
         "लेपर्ड",
-        "तेंदुआ"
+        "तेंदुआ",
+        "सरिस्का",
+        "बाघ परियोजना"
       ],
       "keywords_en": [],
       "verified": true,
-      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026)",
+      "source": "@1stIndiaNews timeline (1,002 published posts, 30 Oct and 9–10 Nov 2026); सरिस्का / बाघ परियोजना from the desk's 16 Nov post (owner, 17 Nov)",
       "evidence": 11,
       "note": "Taken from the desk's own published output, corroborated by 11 post(s). Not yet checked against an official source the way the rest of this file is — upgrade the source line when it is."
     },

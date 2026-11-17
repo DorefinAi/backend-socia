@@ -207,7 +207,7 @@ describe("R3 / test 5: exactly the firing table, on the seed data (institution h
     });
   }
   // Satya and Bhanwar: their only signals were district police, blocked by R2. The rest: nothing measured fires
-  for (const who of ["satyatv99_news", "bhanwar_83", "vyaskamalkant", "ashvinigokul", "kunwarraghav", "gssjodhpur"]) {
+  for (const who of ["satyatv99", "bhanwar_83", "vyaskamalkant", "ashvinigokul", "kunwarraghav", "gssjodhpur"]) {
     it(`${who} is silent`, () => expect(priorOf(who).handles).toEqual([]));
   }
   // Under 20 posts: no measured prior
@@ -464,9 +464,10 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.districtSource).toBeNull();
   });
-  it("the policy is opt-in per reporter: rituraj and the four desk-stated reporters of Changes #3 §2.2 carry one", () => {
+  it("the policy is opt-in per reporter: rituraj, the four desk-stated reporters of Changes #3 §2.2, and the three of 17 Nov carry one", () => {
     const policies = Object.fromEntries([...reporters.profiles!.values()].filter((p) => p.districtWhenMissing).map((p) => [p.handle, p.districtWhenMissing]));
-    expect(policies).toEqual({ rituraj9999: "Jaipur", parmarshivendra: "Jaipur", vyaskamalkant: "Jaipur", yogesh2727sh1: "Jaipur", bhanwar_83: "Kota" });
+    // 17 Nov 2026 (owner, from 16 Nov's hand-added #Jaipur): Dinesh Dangi, Aishwarya, Satya. Dinesh Kasana stays without (15 Nov Q2)
+    expect(policies).toEqual({ rituraj9999: "Jaipur", parmarshivendra: "Jaipur", vyaskamalkant: "Jaipur", yogesh2727sh1: "Jaipur", bhanwar_83: "Kota", dineshdangi84: "Jaipur", aishwaryam99: "Jaipur", satyatv99: "Jaipur" });
     expect(reporterProfile(reporters, reporters.byToken.get("RITURAJ"))?.districtWhenMissing).toBe("Jaipur");
   });
 });

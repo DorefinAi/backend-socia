@@ -59,7 +59,7 @@ describe("R2: every directory entry carries a valid handle_type", () => {
     // Police forces that are not one district's (P3), and the central armed police forces (D2), 15 Nov 2026
     for (const h of ["PoliceRajasthan", "RajPoliceHelp", "AcbRajasthan", "DelhiPolice", "crpfindia", "BSF_India"]) expect(t(h), h).toBe("police");
     // People: the CM, the Chief Secretary, ministers, MLAs, reporters
-    for (const h of ["BhajanlalBjp", "svoruganti1466", "KumariDiya", "officialkharra", "BMacharyaBJP", "rituraj9999", "satyatv99_news", "bhanwar_83"]) expect(t(h), h).toBe("person");
+    for (const h of ["BhajanlalBjp", "svoruganti1466", "KumariDiya", "officialkharra", "BMacharyaBJP", "rituraj9999", "satyatv99", "bhanwar_83"]) expect(t(h), h).toBe("person");
     // District accounts: every district police and collector, and the commissionerates in subject-handles.json
     for (const h of ["jaipur_police", "KotaPolice", "DcDmJaipur", "CP_Jodhpur"]) expect(t(h), h).toBe("district");
     for (const d of Object.values(rules.districts)) for (const h of [...d.police, ...d.collector]) expect(t(h), h).toBe("district");

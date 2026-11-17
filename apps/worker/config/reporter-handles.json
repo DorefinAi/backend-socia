@@ -15,7 +15,7 @@
   },
   "_prior_r3_note": "R3 (2026-11-13): the seed table recomputed on 2,669 posts, institution handles only, m = 20, min_score 0.25, min_n 20. Each prior lists exactly the handles R3 fires (raw rate k/n, k the whole count that gives R3's smoothed value). Dangi and Naresh now get @INCRajasthan (both 2 of 2 on 12 Nov); Satya and Bhanwar get nothing (their only signals were district police, blocked by R2); vyaskamalkant, ashvinigokul, kunwarraghav and gssjodhpur nothing. Under 20 posts, no measured prior: BharatD1988 18, patrakarsandeep 12, jawaharbedam 10, omsharma8888 10, navinsharmabki 9, i_dimplesharma 5, viren_choudhary 2.",
   "_handle_type_note": "Every entry is a person's account: \"handle_type\": \"person\" (reporter directory changes v2, R2). An entry without a valid handle_type is rejected.",
-  "_policy_candidates": "Only rituraj has a desk-stated policy. The corpus shows other Jaipur-desk reporters would qualify for district_when_missing Jaipur (Nirmal 52/52 posts resolve to Jaipur, ml_vikas 35/36, Aishwarya 56/58, Kasana 34/36) — NOT added: the desk has not stated them (brief §4.3).",
+  "_policy_candidates": "17 Nov 2026: Dinesh Dangi, Aishwarya and Satya got district_when_missing Jaipur (owner, from 16 Nov's hand-added #Jaipur); Dinesh Kasana stays without one (owner's 15 Nov Q2). Before that: only rituraj has a desk-stated policy. The corpus shows other Jaipur-desk reporters would qualify for district_when_missing Jaipur (Nirmal 52/52 posts resolve to Jaipur, ml_vikas 35/36, Aishwarya 56/58, Kasana 34/36) — NOT added: the desk has not stated them (brief §4.3).",
   "_todo_for_desk": [
     "Nirmal Tiwari's second minister ('Hari...', mining portfolio): not available (owner, 14 Nov); built without it, no guessed handle. The handle, when the desk has it, before a 'mining' beat can offer anything (brief §5.2)",
     "An RCA handle for Dinesh Kasana's cricket beat ('rca-cricket'): not available (owner, 14 Nov); 'rca-cricket' stays display-only with no handles (brief §5.2)",
@@ -79,6 +79,8 @@
       "names_hi": [],
       "names_en": ["aishwarya", "ashwarya", "aishwariya"],
       "districts": ["Jaipur", "Delhi"],
+      "policy": { "district_when_missing": "Jaipur" },
+      "_policy_note": "Owner, 17 Nov 2026 (directory update from 16 Nov's posts): the desk added #Jaipur by hand on her flash stories with no district. Same guards as rituraj's: only when no district resolves from the post; out-of-state tags and #XNews block it.",
       "beats": ["chief-minister", "visiting-ministers"],
       "beats_source": "desk",
       "prior": { "computed_at": "2026-11-13", "source": "corpus-2669, 7 days incl. 12 Nov (institution handles only; tagged-reporter sample, upper bound). k 29/69 and 22/69: smoothed 0.34 and 0.27", "n": 69, "handles": { "BJP4Rajasthan": 0.4203, "RajGovOfficial": 0.3188 }, "hashtags": {} },
@@ -217,6 +219,8 @@
       "names_hi": [],
       "names_en": ["dinesh_dangi"],
       "districts": ["Jaipur", "Delhi"],
+      "policy": { "district_when_missing": "Jaipur" },
+      "_policy_note": "Owner, 17 Nov 2026 (directory update from 16 Nov's posts): the desk added #Jaipur by hand on 15 of his flash stories with no district. Same guards as rituraj's: only when no district resolves from the post; out-of-state tags and #XNews block it.",
       "beats": ["politics"],
       "prior": { "computed_at": "2026-11-13", "source": "corpus-2669, 7 days incl. 12 Nov (institution handles only; tagged-reporter sample, upper bound). k 47/62: smoothed (47 + 20*0.055) / 82 = 0.59", "n": 62, "handles": { "INCRajasthan": 0.7581 }, "hashtags": {} },
       "verified": true,
@@ -292,7 +296,7 @@
       "handle_type": "person",
       "name": "Om Sharma",
       "names_hi": [],
-      "names_en": ["om_sharma", "omsharma"],
+      "names_en": ["om_sharma", "omsharma", "om"],
       "districts": ["Jaipur"],
       "beats": ["court"],
       "beats_source": "observed",
@@ -300,7 +304,7 @@
       "verified": true,
       "source": "@1stIndiaNews timeline, 3 posts",
       "evidence": 3,
-      "note": "The files carry a bare OM (27 of them). It is NOT claimed here: a one-word first name is exactly the case where the wrong colleague gets the byline. Confirm with the desk and add 'om' if it is him."
+      "note": "The files carry a bare OM (27 of them, 'om_court' included). Claimed 17 Nov 2026: the desk tagged @omsharma8888 on an om_court file on 16 Nov and the owner confirmed the mapping."
     },
     {
       "handle": "@viren_choudhary",
@@ -315,16 +319,18 @@
       "note": "Handle seen once. The token has not appeared in a file name yet."
     },
     {
-      "handle": "@satyatv99_news",
+      "handle": "@satyatv99",
       "handle_type": "person",
-      "name": "",
+      "name": "Satya",
       "names_hi": [],
-      "names_en": [],
+      "names_en": ["satya"],
       "districts": ["Jaipur"],
-      "verified": false,
-      "source": "@1stIndiaNews timeline, 29 posts",
-      "evidence": 29,
-      "note": "29 published posts, all Jaipur, co-tagged ONLY with police. The files carry SATYA on 102 names, which is very likely this byline — but the handle reads like a separate outlet rather than a 1st India staffer, so it is left unverified and tags nobody. CONFIRM with the desk, then set verified true and add 'satya'."
+      "policy": { "district_when_missing": "Jaipur" },
+      "_policy_note": "Owner, 17 Nov 2026: the desk added #Jaipur by hand on 3 of 3 of his stories on 16 Nov. Same guards as rituraj's.",
+      "verified": true,
+      "source": "Desk, 16 Nov 2026: @satyatv99 typed by hand on 3 posts of SATYA files (owner confirmed 17 Nov)",
+      "evidence": 3,
+      "note": "Was @satyatv99_news, unverified (29 timeline posts, all Jaipur, co-tagged only with police). The desk's own posts use @satyatv99 on SATYA files, so the token is his (owner, 17 Nov 2026)."
     },
     {
       "handle": "@gssjodhpur",

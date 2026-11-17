@@ -208,11 +208,11 @@ describe("12 Nov NSUI file: the organisation named outranks the one adjacent to 
     expect(d.mentions).not.toContain("@UniRajOfficial");
     expect(d.handleSuggestions.map((h) => h.handle)).toEqual(expect.arrayContaining(["NSUIRajasthan", "UniRajOfficial"]));
   });
-  it("without a district anywhere, the reporter's single district is offered, never put in line 1 (§2.8)", () => {
+  it("without a district tag anywhere, Dinesh Dangi's desk rule leads with #Jaipur (owner, 17 Nov 2026)", () => {
     const { d } = draft(NSUI_TEXT, NSUI_FILE);
-    expect(d.bodyText.startsWith("#")).toBe(false);
-    // Dinesh Dangi files for Jaipur and Delhi: two districts infer nothing
-    expect(d.hashtagSuggestions.some((t) => t === "#Jaipur")).toBe(false);
+    // Was: two districts (Jaipur, Delhi) infer nothing (§2.8). Since 17 Nov his policy is district_when_missing
+    // Jaipur (the desk added #Jaipur by hand on 15 of his 16 Nov flash stories): line 1, as for rituraj
+    expect(d.bodyText.startsWith("#Jaipur")).toBe(true);
   });
 });
 

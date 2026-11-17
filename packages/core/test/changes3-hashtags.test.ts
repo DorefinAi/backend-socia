@@ -27,8 +27,8 @@ const NEW = [...KEYWORDS, ...Object.keys(CAMPAIGNS)];
 const entry = (t: string) => campaigns.entries.find((e) => e.tag === t)!;
 
 describe("Changes #3 step 5: the sheet's hashtags as suggest-only rules", () => {
-  it("campaigns.json loads whole, with the 16 new rules beside the 2 it had", () => {
-    expect(suggestRules.rules).toHaveLength(18);
+  it("campaigns.json loads whole, with the 16 new rules beside the 2 it had (and #RCA, #Delhi of 17 Nov)", () => {
+    expect(suggestRules.rules).toHaveLength(20);
     for (const t of NEW) expect(entry(t), t).toBeDefined();
   });
 

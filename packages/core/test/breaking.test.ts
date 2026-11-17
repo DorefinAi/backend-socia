@@ -130,12 +130,14 @@ describe("day folders", () => {
 });
 
 describe("parseBreaking", () => {
-  it("drops a byline place line and keeps the reporter's district", () => {
+  it("keeps a byline as the headline, as the desk posts it, and reads its place for the district (owner, 17 Nov 2026)", () => {
     const s = parse("BTN_RJ_BREAKING_29OCT_2702_AM_CONTROL_REPORTER_KRO_BIG_KARARI_.txt");
     expect(s.district).toBe("Karauli");
     expect(s.districtFrom).toBe("place_line");
-    expect(s.headline).toBe("मासलपुर पंचायत समिति की ग्राम पंचायतों में उम्मीदवारों की संख्या ने पोलिंग पार्टी को डाला चिंता में");
-    expect(s.points).toHaveLength(3);
+    expect(s.headline).toBe("करौली से रिपोर्टर नाम की एक्सक्लूसिव रिपोर्ट");
+    expect(s.points[0]).toBe("मासलपुर पंचायत समिति की ग्राम पंचायतों में उम्मीदवारों की संख्या ने पोलिंग पार्टी को डाला चिंता में");
+    expect(s.points).toHaveLength(4);
+    expect(s.needsCheck).not.toContain("text_changed");
   });
 
   it("reads district and town from 'X के Y से खबर'", () => {

@@ -104,12 +104,13 @@ describe("R3: a place the desk wrote before the colon blocks the #Jaipur desk ru
     expect(d.bodyText).not.toContain("#Jaipur");
     expect(policyFired(d)).toBe(false);
   });
-  it("the parser still drops the unknown two-word prefix from the headline, for every reporter (unchanged, fixed later)", () => {
+  it("the parser keeps the unknown two-word prefix in the headline, for every reporter (owner, 17 Nov 2026: no words dropped)", () => {
     for (const name of [RITURAJ, NARESH]) {
       const p = parseBreaking(fileText(name, ["रामपुरा खुर्द: ग्रामीणों का प्रदर्शन", "पानी की समस्या"]), name, book);
-      expect([p.headline, p.town, p.district]).toEqual(["ग्रामीणों का प्रदर्शन", null, null]);
+      expect([p.headline, p.town, p.district]).toEqual(["रामपुरा खुर्द: ग्रामीणों का प्रदर्शन", null, null]);
+      expect(p.needsCheck).not.toContain("text_changed");
     }
-    expect(draft(NARESH, ["रामपुरा खुर्द: ग्रामीणों का प्रदर्शन", "पानी की समस्या"]).bodyText.startsWith("ग्रामीणों का प्रदर्शन")).toBe(true);
+    expect(draft(NARESH, ["रामपुरा खुर्द: ग्रामीणों का प्रदर्शन", "पानी की समस्या"]).bodyText.startsWith("रामपुरा खुर्द: ग्रामीणों का प्रदर्शन")).toBe(true);
   });
   it("composeBreaking without the parser (no rawHeadline) reads the headline's own prefix", () => {
     const d = composeBreaking({ headline: "रामपुरा खुर्द: ग्रामीणों का प्रदर्शन", points: ["पानी की समस्या"], district: null, town: null, rajasthan: true, leaderPost: false, reporterToken: "RITURAJ" }, rules, book, { subjects, reporters, parties });

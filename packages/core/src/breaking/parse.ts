@@ -24,12 +24,14 @@ export const NEEDS_CHECK = [
   "place_conflict",
   /** The file was taken, then deleted from the share (the desk removed it mid-edit or by mistake): check the FTP. Set and cleared by the ingest scan */
   "file_deleted",
+  /** A word or number of the file is missing from the story (a rule changed the desk's text): check against the file before posting */
+  "text_changed",
 ] as const;
 /** Set by the ingest stage, not the parser: they survive a re-parse */
 export const STICKY_CHECKS: readonly NeedsCheck[] = ["resaved", "update_of_posted"];
 export type NeedsCheck = (typeof NEEDS_CHECK)[number];
 /** These make the queue's "needs review" flag; the others are worth a look but usually fine */
-export const SERIOUS_CHECKS: readonly NeedsCheck[] = ["empty", "no_headline", "no_hindi", "very_long"];
+export const SERIOUS_CHECKS: readonly NeedsCheck[] = ["empty", "no_headline", "no_hindi", "very_long", "text_changed"];
 
 /** More lines than this is not a breaking item (the 109-line file) */
 export const MAX_BREAKING_LINES = 25;
@@ -75,11 +77,65 @@ const DEVANAGARI = /[ऀ-ॿ]/;
 /** Leftovers from Word/Notepad: zero-width spaces, word joiners, BOM. ZWJ/ZWNJ stay: they shape Devanagari conjuncts */
 const INVISIBLE = /[\u200B\u2060\uFEFF]/g;
 
-/** "नोट-:", "नोट :-", "NOTE :", and any "फुलस्क्रीन करावें" instruction. "नोट और दारू" (bank notes) is news. */
-const DESK_NOTE = /^(?:नोट|note)\s*[-:–—]+|फुल\s*स्क्रीन\s*(?:करावें|कराएं|करें|कराये|चलावें|चलाएं)|full\s*screen\s+(?:only|karayen)/iu;
-/** A line that does not finish its sentence: the next line continues it */
-const CONTINUES = /(?:,|，|\s(?:और|एवं|तथा|व))$/u;
-const BULLET = /^(?:[-–—•●▪■◆➤►>*]+|\d{1,2}[.)])\s*/u;
+/** "नोट-:", "नोट :-", "NOTE :": a desk note always starts this way (all 340 in the 10,564 stored files). "नोट और दारू" (bank notes) is news. */
+const NOTE_START = /^(?:नोट|note)\s*[-:–—ः]+/iu;
+/** The marker followed by a space ("नोट :- ...", "नोटः ...") */
+const NOTE_START_SPACED = /^(?:नोट|note)\s*[-:–—ः]+(?:\s|$)/iu;
+/** What every desk note asks for (all 340 stored ones); "नोट-बंदी के बाद बाजार में रौनक" asks for nothing: news */
+const DESK_INSTRUCTION = /फोटो|फुल\s*स्क्रीन|full\s*screen|विजुअल|visual|करावें|कराएं|करवाएं|चलाएं|चलावें/iu;
+/**
+ * A section label line above the headline that the desk never posts: "बर्थ-डे" (birthday files; their posts lead with
+ * "<name> का जन्मदिन आज"). Taken off on purpose. Labels the desk DOES post ("सियासी गपशप !") stay as the headline.
+ */
+const SECTION_LABEL = /^(?:बर्थ\s*-?\s*डे|बर्थडे|birth\s*-?\s*day)[\s!।.]*$/iu;
+/** A line that is nothing but a fullscreen instruction ("फोटो के साथ फुलस्क्रीन करावें"): never a news line that only mentions it */
+const FULLSCREEN_ONLY = /(?:फुल\s*स्क्रीन\s*(?:करावें|कराएं|करें|कराये|चलावें|चलाएं)|full\s*screen\s+(?:only|karayen))[\s।.!]*$/iu;
+/**
+ * A desk instruction, taken out of the post (owner, 17 Nov 2026: a news line is never taken out because it MENTIONS
+ * fullscreen): a line starting "नोट :-" / "NOTE :" (marker then a space), or "नोट---हाईकोर्ट की फोटो ..." (marker
+ * glued to the word) when it asks for a photo or fullscreen; or a line of at most 20 words that ENDS in the instruction.
+ */
+export const isDeskNote = (line: string): boolean =>
+  NOTE_START_SPACED.test(line) || (NOTE_START.test(line) && DESK_INSTRUCTION.test(line)) || (FULLSCREEN_ONLY.test(line) && words(line) <= 20);
+/**
+ * A line that does not finish its sentence: the next line continues it. A comma or a conjunction; or a stub of at most
+ * two words ending in a postposition ("जयपुर के" / "बिरला ऑडिटोरियम में ...", one line broken in two: owner, 17 Nov
+ * 2026). A longer line ending in के / की / का is a whole line in the desk's style ("... की मांग की", "बिना हेलमेट के").
+ */
+const CONTINUES = /(?:,|，|\s(?:और|एवं|तथा|व))$|^\S+\s+(?:के|की|का|में|से)$/u;
+/**
+ * A list marker before a line's text, taken off: a symbol bullet, or a dash / ">" that is not a number's sign.
+ * Never a number: "1.", "85.59", "1.11.2026", "-2.5 डिग्री", ">50 लोग" stay exactly as the desk wrote them (owner,
+ * 17 Nov 2026: "85.59 प्रतिशत" had become "59 प्रतिशत" when "85." was taken for a list number).
+ */
+// The whole run of dashes / ">" is one marker or none (no backtracking: "--5 लोग" stays as written)
+const BULLET = /^(?:[•●▪■◆➤►*]+|[-–—]+(?![-–—])(?!\s*\p{N})|>+(?!>)(?!\s*\p{N}))\s*/u;
+/**
+ * A word of a line, for the text-kept check: a run of letters with their marks, or a number with its decimals, date
+ * dots or time colon ("85.59", "1.11.2026", "3:30"). "आकोला:100" is two words, as the parser splits it.
+ */
+const TOKEN = /[\p{L}\p{M}]+|\p{N}+(?:[.,:]\p{N}+)*/gu;
+const tokensOf = (text: string): string[] => [...text.normalize("NFC").matchAll(TOKEN)].map((m) => m[0]);
+/**
+ * The words of `fileLines` that the story does not have, counted (a word the file has twice must appear twice):
+ * file minus what was taken off on purpose (`removed`: whole lines and the place words before the headline) minus the
+ * story's own text. Empty when every word arrived. Exported for the tests of the safety net itself.
+ */
+export function lostWords(fileLines: readonly string[], removed: readonly string[], story: readonly string[]): string[] {
+  const count = new Map<string, number>();
+  const add = (text: string, by: number) => {
+    for (const t of tokensOf(text)) count.set(t, (count.get(t) ?? 0) + by);
+  };
+  for (const l of fileLines) add(l, 1);
+  for (const l of removed) add(l, -1);
+  for (const l of story) add(l, -1);
+  return [...count].filter(([, n]) => n > 0).map(([t]) => t);
+}
+/**
+ * A line with nothing to say: no letter or number at all ("----", "****", "."), or a stray keystroke ("ब्", a lone "x").
+ * A one-letter Hindi word ("ॐ", "है") is text. (In the 10,564 stored files the only such line is ".".)
+ */
+const isSeparator = (line: string): boolean => !/[\p{L}\p{N}]/u.test(line) || /^\p{L}्$/u.test(line) || /^[A-Za-z]$/.test(line);
 /** "<leader> की पोस्ट" / "... ने दी शुभकामनाएं": the headline is a leader's own post */
 export const LEADER_POST = /(?:की|का)\s+(?:पोस्ट|ट्वीट|ट्विट|बयान)$|ने\s+(?:दी|दीं)\s+(?:शुभकामनाएं|शुभकामनाएँ|बधाई|श्रद्धांजलि)$|ने\s+कहा$/u;
 
@@ -87,7 +143,10 @@ export const LEADER_POST = /(?:की|का)\s+(?:पोस्ट|ट्वी�
 const STATEWIDE = /राजस्थान|प्रदेश|राज्य|सचिवालय|मुख्यमंत्री|सीएम|मुख्य\s*सचिव|(?<![A-Za-z])(?:IAS|ACS|RAS)(?![A-Za-z])|विधानसभा|मंत्रिमंडल|कैबिनेट/u;
 
 /** "<place> से (बड़ी) खबर" / "<place> में खबर" */
-const PLACE_NEWS = /^(.+?)\s+(?:से|में)\s+(?:बड़ी\s+|ताजा\s+|ताज़ा\s+|अहम\s+|खास\s+)?ख़?ख?बर$/u;
+// Also the desk's slips "चूरू के खबर", "अजमेर के केकड़ी खबर" (no से) and "बीकानेर से दुखद खबर" (17 Nov 2026)
+const PLACE_NEWS = /^(.+?)\s+(?:(?:से|में|के)\s+)?(?:(?:इस\s+वक्त|अभी)(?:\s+की)?\s+)?(?:(?:बड़ी|ताजा|ताज़ा|अहम|खास|दुखद|दर्दनाक|सनसनीखेज|अच्छी|राहत\s+भरी)\s+)?ख़?ख?बर$/u;
+/** A postposition inside a phrase: such a phrase is a sentence fragment, never a town's name ("उदयपुरवाटी से दर्दनाक") */
+const HAS_POSTPOSITION = /(?:^|\s)(?:से|में|की|का|के|को|पर|ने)(?:\s|$)/u;
 /** "<place> से <reporter> की (एक्सक्लूसिव) रिपोर्ट/खबर" */
 const PLACE_BYLINE = /^(.+?)\s+से\s+.+?\s+की\s+(?:एक्सक्लूसिव\s+|खास\s+|विशेष\s+)?(?:रिपोर्ट|खबर)$/u;
 /** "<reporter> की (एक्सक्लूसिव) रिपोर्ट": a byline with no place */
@@ -103,6 +162,11 @@ const NOT_A_PLACE_WORDS: ReadonlySet<string> = new Set(
     "बड़ा", "बड़ी", "बड़े", "खबर", "खबरें", "हादसा", "हादसे", "कार्रवाई", "खुलासा", "मामला", "मामले", "सनसनी", "अपडेट", "ब्रेकिंग",
     "एक्सक्लूसिव", "विज्ञापन", "सूचना", "अलर्ट", "लाइव", "दौरा", "दौरे", "बयान", "चुनाव", "चुनावी", "चुनावों", "बैठक", "बैठकें", "हत्या",
     "हत्याकांड", "मौत", "आग", "आगजनी", "फैसला", "फैसले", "नियुक्ति", "तबादला", "तबादले", "पोस्ट", "भाजपा", "बीजेपी", "कांग्रेस", "न्यूज",
+    // Labels the desk writes before a colon (owner, 17 Nov 2026: "आरोप: ..." had become a town tag "#आरोप")
+    "आरोप", "मांग", "अपील", "चेतावनी", "निर्देश", "दावा", "सवाल", "जवाब", "राहत", "झटका", "गपशप", "सियासी", "सियासत", "प्रदर्शन",
+    "विरोध", "धरना", "हड़ताल", "घोषणा", "परिणाम", "नतीजे", "रिपोर्ट", "वारदात", "प्रतिक्रिया", "श्रद्धांजलि", "बधाई", "सम्मान",
+    "कार्यक्रम", "आयोजन", "अभियान", "उपलब्धि", "जानकारी", "आदेश", "कार्रवाई", "बड़ीखबर", "ब्रेकिंगन्यूज",
+    "भूकंप", "सावधान", "नतीजा", "सनसनीखेज", "खुशखबरी", "दुखद", "शर्मनाक", "चौंकाने",
   ].map(fold),
 );
 /** A word made only of NOT_A_PLACE_WORDS, joined as in a hashtag ("बड़ीखबर", "ब्रेकिंगन्यूज़"); never a part of a word */
@@ -236,11 +300,26 @@ function resolvePlace(book: PlaceBook, phrase: string, hint: string | null, allo
   const whole = book.lookup(p);
   if (whole) return located(whole, null, hint);
 
+  // "शाहबाद बारां", "मंडावा, झुंझुनूं": a town the places file knows (or, where an unknown town is allowed, one Hindi
+  // word) then its district
+  const townThenDistrict = /^(.+?)[,\s]+([^\s,]+)$/u.exec(p);
+  if (townThenDistrict && words(townThenDistrict[1]!) <= 2) {
+    const d = book.lookup(townThenDistrict[2]!);
+    const t = book.lookup(townThenDistrict[1]!);
+    const unknownOk = allowUnknownTown && words(townThenDistrict[1]!) === 1 && DEVANAGARI.test(townThenDistrict[1]!) && !notAPlace(townThenDistrict[1]!);
+    if (d && d.kind === "district" && (t?.kind === "town" || unknownOk)) return { district: d.districts[0]!, town: t?.hi ?? townThenDistrict[1]!.trim() };
+  }
   const pair = /^(.+?)\s+(?:जिले\s+)?(?:के|से|का|की)\s+(.+)$/u.exec(p) ?? swap(TOWN_IN_BRACKETS.exec(p));
   if (pair) {
     const outer = book.lookup(pair[1]!.replace(/\s+जिले?$/u, ""));
     const inner = book.lookup(pair[2]!);
+    // "आबूरोड से रेलवे की", "जयपुर से इस वक्त": a second half that is not a place we know and reads as words (a label,
+    // a postposition inside) means this is no dateline: the line stays as the desk wrote it, no word lost
+    if (!inner && (notAPlace(pair[2]!) || HAS_POSTPOSITION.test(pair[2]!) || /(?:^|\s)(?:इस|अभी|वक्त)(?:\s|$)/u.test(pair[2]!))) return null;
     if (outer && outer.kind !== "town") {
+      // "दौसा से सियासी गपशप", "उत्तर प्रदेश की सियासत": the second half is a label, not a town, so this is no dateline
+      // and the line stays as the desk wrote it (owner, 17 Nov 2026; the desk posts "जालोर से सियासी गपशप" as the headline)
+      if (!inner && (notAPlace(pair[2]!) || HAS_POSTPOSITION.test(pair[2]!))) return null;
       const town = inner?.hi ?? (words(pair[2]!) <= 3 && DEVANAGARI.test(pair[2]!) ? pair[2]! : null);
       return { district: outer.districts[0]!, town: town && town !== outer.hi ? town : null };
     }
@@ -265,14 +344,26 @@ function located(place: Place, town: string | null, hint: string | null): Locate
 /** The place line, when line 0 is one; null when it is already the headline. */
 function placeLine(book: PlaceBook, line: string, hint: string | null): Located | "byline" | null {
   if (words(line) > 9 || /[:।?!]/.test(line)) return null;
-  const byline = PLACE_BYLINE.exec(line);
-  if (byline) return resolvePlace(book, byline[1]!, hint, true) ?? "byline";
-  if (BYLINE.test(line) && words(line) <= 7) return "byline";
+  // Owner, 17 Nov 2026: a line is taken off the top only when it is a dateline (a place). Anything else stays in
+  // the story as the desk wrote it, so no words of the file are lost. A byline is not taken off: the desk posts it
+  // as the headline ("#Jaipur: ACB से नवीन शर्मा की रिपोर्ट", "जोधपुर से राजीव गौड़ की रिपोर्ट"); bylinePlace reads
+  // its place for the tags and the line stays.
+  if (PLACE_BYLINE.test(line) || BYLINE.test(line)) return null;
   const news = PLACE_NEWS.exec(line);
   // "परिवहन विभाग से बड़ी खबर" is a headline in the house style; only a place (or one unknown word) is a place line
   if (news) return resolvePlace(book, news[1]!, hint, words(news[1]!) === 1);
-  if (words(line) <= 4) return resolvePlace(book, line, hint, words(line) <= 2);
+  // A bare place line: a known place, or ONE unknown word ("मासलपुर"); two unknown words ("सियासी गपशप") are text
+  if (words(line) <= 4) return resolvePlace(book, line, hint, words(line) === 1);
   return null;
+}
+
+/**
+ * "<place> से <name> की रिपोर्ट": the place a byline names, read for the district and town; the byline itself stays
+ * as the headline (the desk posts it). A name only, or a place we cannot read: null.
+ */
+function bylinePlace(book: PlaceBook, line: string, hint: string | null): Located | null {
+  const m = PLACE_BYLINE.exec(line);
+  return m && words(line) <= 9 ? resolvePlace(book, m[1]!, hint, false) : null;
 }
 
 /** "मेड़तासिटी : पंच व सरपंच के चुनाव कल" → the place, and the headline without it */
@@ -281,7 +372,10 @@ function headlinePrefix(book: PlaceBook, headline: string, hint: string | null):
   // Hashtags are hashtagPrefix()'s; ones it turned down ("#BJP #Kota", "#Kota #भाजपा") are not glued into a town
   // A party is not a place: "भाजपा: ...", "BJP: ..." stay in the headline, and the party check sees them
   if (!m || words(m[1]!) > 3 || m[1]!.includes("#") || PARTY.test(m[1]!)) return null;
-  const place = resolvePlace(book, m[1]!, hint, words(m[1]!) <= 2 && DEVANAGARI.test(m[1]!));
+  // A known place, or ONE unknown Hindi word made of letters only ("आकोला:"), is the desk's place; anything else
+  // ("विधायक बोले:", "आरोप:", "‘बिलॉन्गिंग:") stays in the headline (owner, 17 Nov 2026: no words dropped)
+  const oneWord = words(m[1]!) === 1 && /^[\p{Script=Devanagari}\p{M}]+$/u.test(m[1]!);
+  const place = resolvePlace(book, m[1]!, hint, oneWord);
   return place ? { place, rest: m[2]! } : null;
 }
 
@@ -293,8 +387,12 @@ function headlinePrefix(book: PlaceBook, headline: string, hint: string | null):
  */
 export function deskPlacePrefix(book: PlaceBook, headline: string): string | null {
   const h = clean(headline.normalize("NFC"));
-  if (!headlinePrefix(book, h, null)) return null;
-  return /^([^:：]{2,30}?)\s*[:：]/u.exec(h)?.[1]?.trim() ?? null;
+  // Place-SHAPED, as before 17 Nov: a known place or one or two unknown Hindi words ("रामपुरा खुर्द:"). The parser now
+  // keeps such words in the headline (it removes only a known place or one word), but they still tell the composer
+  // the desk named a place there, so a reporter's "#Jaipur:" is not put in front of them.
+  const m = /^([^:：]{2,30}?)\s*[:：]\s*[-–]?\s*(.+)$/u.exec(h);
+  if (!m || words(m[1]!) > 3 || m[1]!.includes("#") || PARTY.test(m[1]!)) return null;
+  return resolvePlace(book, m[1]!, null, words(m[1]!) <= 2 && DEVANAGARI.test(m[1]!)) ? m[1]!.trim() : null;
 }
 
 /** "#Jhalawar #डग: ...", "#Alwar: ...": one to three hashtags, then the colon */
@@ -375,16 +473,25 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
     if (!needsCheck.includes(c)) needsCheck.push(c);
   };
 
-  let lines = text.normalize("NFC").replace(/\r\n?/g, "\n").split("\n").map(clean).filter(Boolean);
+  const fileLines = text.normalize("NFC").replace(/\r\n?/g, "\n").split("\n").map(clean).filter(Boolean);
+  let lines = fileLines;
+  /**
+   * The text taken off on purpose, for the text-kept check below: the file-name line, separator rows, desk notes,
+   * datelines, the "बर्थ-डे" label and the place words before the headline. Every other word must reach the story.
+   */
+  const removed: string[] = [];
   // Line 1 repeats the file name (Latin, underscores); a name typed with a stray Hindi letter still counts
   if (lines[0] && !DEVANAGARI.test(lines[0].replace(/^[ऀ-ॿ]\s*/u, "")) && /_/.test(lines[0]) && /btn|breaking|nat_|_rj_|_raj_/i.test(lines[0])) {
+    removed.push(lines[0]);
     lines = lines.slice(1);
   }
-  // Separator rows (----, ****) and stray keystrokes ("ब्") carry nothing
-  lines = lines.filter((l) => /\p{L}.*\p{L}|\p{N}/u.test(l));
+  // Separator rows (----, ****) and stray keystrokes ("ब्") carry nothing; a one-letter word ("है", "ॐ") is text
+  for (const l of lines) if (isSeparator(l)) removed.push(l);
+  lines = lines.filter((l) => !isSeparator(l));
 
-  const notes = lines.filter((l) => DESK_NOTE.test(l));
-  lines = lines.filter((l) => !DESK_NOTE.test(l));
+  const notes = lines.filter(isDeskNote);
+  for (const l of notes) removed.push(l);
+  lines = lines.filter((l) => !isDeskNote(l));
   if (notes.length) flag("desk_note");
 
   // A line ending in a comma or "और / एवं / तथा / व" goes on with the next one
@@ -404,12 +511,24 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
 
   let where = null as Located | null;
   let from = null as DistrictFrom | null;
-  // Up to three place / byline lines before the headline ("करौली से <reporter> की रिपोर्ट", then "मासलपुर")
+  // Up to three dateline / label lines before the headline ("जयपुर", "करौली से खबर", "बर्थ-डे"). A byline stops the
+  // scan: it is the headline, and the place it names ("जोधपुर से राजीव गौड़ की रिपोर्ट") is read for the tags.
   for (let n = 0; n < 3 && lines.length > 1; n++) {
+    if (SECTION_LABEL.test(lines[0]!)) {
+      removed.push(lines[0]!);
+      lines = lines.slice(1);
+      continue;
+    }
+    const by = bylinePlace(book, lines[0]!, hint);
+    if (by) {
+      if (!where?.district && by.district) from = "place_line";
+      where = { district: where?.district ?? by.district, town: where?.town ?? by.town };
+      break;
+    }
     const p = placeLine(book, lines[0]!, hint);
-    if (!p) break;
+    if (!p || p === "byline") break;
+    removed.push(lines[0]!);
     lines = lines.slice(1);
-    if (p === "byline") continue;
     if (!where?.district && p.district) from = "place_line";
     where = { district: where?.district ?? p.district, town: where?.town ?? p.town };
   }
@@ -419,7 +538,9 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   const tagged = hashtagPrefix(book, headline, hint);
   if (tagged) {
     if (tagged.conflict) flag("place_conflict");
-    // The desk tagged the place itself: its district wins over a place line, the file code and the text
+    // The desk tagged the place itself: its district wins over a place line, the file code and the text. Its words
+    // ("#Kota #डग:") become line 1's tags
+    removed.push(headline.slice(0, headline.length - tagged.rest.length));
     headline = tagged.rest;
     // "#Jhalawar #डग:" on a line of its own: the headline is the next line
     if (!headline && lines.length > 1) {
@@ -436,12 +557,11 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
       if (!sameDistrict) from = "headline_prefix";
     }
   }
+  // "टोंक: ...", "आकोला: ..." (a known place, or one unknown Hindi word, which stays as the town)
   const prefix = tagged ? null : headlinePrefix(book, headline, hint);
-  /** "आकोला: ..." — one unknown Hindi word before the colon: the desk named the place, so it stays as the town */
-  let loneTown: string | null = null;
   if (prefix) {
+    removed.push(headline.slice(0, headline.length - prefix.rest.length));
     headline = prefix.rest;
-    if (!prefix.place.district && prefix.place.town && words(prefix.place.town) === 1) loneTown = prefix.place.town;
     if (!where?.district) {
       where = { district: prefix.place.district ?? where?.district ?? null, town: where?.town ?? prefix.place.town };
       from = "headline_prefix";
@@ -500,9 +620,16 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   if (!headline) flag("no_headline");
   if (!DEVANAGARI.test([headline, ...points].join(" "))) flag("no_hindi");
 
-  // A town tag without its district reads oddly ("#सचिवालय:"): keep it only with a district, or when the desk wrote it
-  // before the headline's colon ("आकोला: ..."); no_district still asks the desk to look
-  const town = (district || (where?.town && where.town === loneTown)) && where?.town && where.town !== district?.hi ? where.town : null;
+  // The town the desk wrote (dateline or headline prefix) is kept, with or without a district (owner, 17 Nov 2026: a word
+  // of the file is never dropped; before, "मासलपुर" with no district went nowhere). no_district still asks the desk to look
+  const town = where?.town && where.town !== district?.hi ? where.town : null;
+
+  // Safety net (owner, 17 Nov 2026): every word and number of the file reaches the story, except the lines taken off
+  // on purpose (file name, separators, desk notes, datelines, bylines) and the place words before the headline that
+  // became its tags. Anything else missing means a rule changed the desk's text: the story says so before posting.
+  // Counted, not looked up: a "20" dropped from one line is not hidden by a "20" in another, and no district name is
+  // credited unless the desk's own dateline or prefix (in `removed`) carried it.
+  if (lostWords(fileLines, removed, [headline, ...points]).length) flag("text_changed");
   return {
     headline,
     rawHeadline,

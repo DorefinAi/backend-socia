@@ -17,6 +17,7 @@ import { jpegSize, pngSize } from "../image-size";
 import type { AppDeps } from "../app";
 import { ReporterHandles } from "../handle-keywords";
 import { NOT_A_CHECK, breakingFields, cardUrl, draftView, shownReceivedAt, storyLabels } from "../views";
+import { etagOnSend } from "../etag";
 
 const actor = (u: SessionUser): Actor => ({ id: u.id, orgId: u.orgId, name: u.name, role: u.role });
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
@@ -145,6 +146,9 @@ function filterWhere(q: { district?: string; big?: boolean; update?: boolean; de
   ];
 }
 
+/** A queue row's post text and its X length */
+const postTextFields = (text: string) => ({ postText: text, length: xLen(text) });
+
 export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage, config }) => {
   /** The desk's own reporters (apps/worker/config/reporter-handles.json), re-read when the file changes */
   const reporters = new ReporterHandles(app.log);
@@ -187,9 +191,15 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           days: Type.Optional(Type.Integer({ minimum: 1, maximum: 30 })),
           /** Only stories received (stories.received_at: on the share, for a breaking file) on this India calendar day, "YYYY-MM-DD"; checked in the handler (400 bad_day) */
           day: Type.Optional(Type.String({ maxLength: 40 })),
+          /**
+           * "list": the New (inbox) list's light rows, without postText, bodyText, storyBody, cardUrl and length (the
+           * desk opens the draft for those). Ignored on every other view; absent = full rows, as older desks expect.
+           */
+          fields: Type.Optional(Type.Literal("list")),
           ...QueueFilters,
         }),
       },
+      onSend: etagOnSend,
     },
     async (req) => {
       const { user } = guard(req);
@@ -200,12 +210,15 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const sortCol = viewName === "rejected" || viewName === "posted" ? postDrafts.updatedAt : stories.receivedAt;
       const cursor = parseQueueCursor(req.query.before);
       const limit = req.query.limit ?? 100;
+      // The New list polls often: its light rows skip the story and post text (the bulk of each row) and the card link
+      const slim = req.query.fields === "list" && viewName === "inbox";
       const rows = await db
         .select({
           id: postDrafts.id,
           status: postDrafts.status,
           version: postDrafts.version,
-          bodyText: postDrafts.bodyText,
+          // Not read for light rows: NULL in its place
+          bodyText: slim ? sql<string>`NULL` : postDrafts.bodyText,
           hashtags: postDrafts.hashtags,
           mentions: postDrafts.mentions,
           cardRev: postDrafts.cardRev,
@@ -235,7 +248,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           videos: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'video')`,
           headline: stories.headline,
           /** The story's points, one per line: the card text (bodyText is the tweet) */
-          storyBody: stories.body,
+          storyBody: slim ? sql<string | null>`NULL` : stories.body,
           receivedAt: stories.receivedAt,
           /** The story link's time: always created_at, so links made before 0030 keep working */
           linkAt: stories.createdAt,
@@ -278,7 +291,6 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
             // A posted story can be held too: someone is correcting it (it stays published)
             const held = (r.status === "claimed" || r.status === "published") && !!r.claimedBy && !!r.claimExpiresAt && r.claimExpiresAt > now;
             const post = posted.get(r.id) ?? null;
-            const text = assemblePostText(r.bodyText, r.hashtags, r.mentions);
             return {
               id: r.id,
               status: held || r.status !== "claimed" ? r.status : "ready",
@@ -287,8 +299,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               /** The story's name for the editor link (?story=) and downloaded files, instead of the draft id */
               ...storyLinkName({ district: r.district, headline: r.headline, receivedAt: r.linkAt }),
               headline: r.headline,
-              bodyText: r.bodyText,
-              storyBody: r.storyBody ?? "",
+              ...(!slim && { bodyText: r.bodyText, storyBody: r.storyBody ?? "" }),
               // On the share's clock, which can run a few seconds ahead: never shown in the future
               receivedAt: shownReceivedAt(r.receivedAt, now),
               createdAt: r.createdAt,
@@ -298,15 +309,14 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               district: r.district,
               ...storyLabels(r.external),
               media: { images: r.images, videos: r.videos, state: r.mediaState },
-              cardUrl: await cardUrl(storage, r.cardKey),
+              ...(!slim && { cardUrl: await cardUrl(storage, r.cardKey) }),
               claim: held ? { userId: r.claimedBy, name: r.holder, until: r.claimExpiresAt, mine: r.claimedBy === user.id } : null,
               rejectReason: r.rejectReason,
               rejectNote: r.rejectNote,
               flags: { lowConfidence: r.lowConfidence, needsReview: r.needsReview },
               ...breakingFields({ town: r.town, fileTags: r.fileTags, needsCheck: r.needsCheck, deskNote: r.deskNote }),
               /** Exactly what Copy & Posted copies, and its X length */
-              postText: text,
-              length: xLen(text),
+              ...(!slim && postTextFields(assemblePostText(r.bodyText, r.hashtags, r.mentions))),
               card: { state: cardState({ cardRev: r.cardRev, cardRenderedRev: r.cardRenderedRev, cardKey: r.renderedKey, customCardKey: r.customCardKey, renderError: r.renderError }) },
               posted: post,
               /** A file saved again after its post went out: the posted draft this one updates */
@@ -396,7 +406,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
   }
 
   /** Numbers for the filter dropdowns over a whole view (no paging); the posted view counts today (IST) only */
-  app.get("/x/queue/facets", { schema: { querystring: Type.Object({ view: Type.Optional(ViewName) }) } }, async (req) => {
+  app.get("/x/queue/facets", { schema: { querystring: Type.Object({ view: Type.Optional(ViewName) }) }, onSend: etagOnSend }, async (req) => {
     const { user } = guard(req);
     const viewName = (req.query.view ?? "inbox") as QueueViewName;
     const scope = and(
@@ -701,7 +711,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
   app.get("/caps", async (req) => ({ x: await capUsage(db, guard(req).user.orgId) }));
 
   /** Tab badges and dashboard tiles: drafts per status and per queue view, posts today, the cap. */
-  app.get("/x/counts", async (req) => {
+  app.get("/x/counts", { onSend: etagOnSend }, async (req) => {
     const { user } = guard(req);
     const rows = await db
       .select({
@@ -725,7 +735,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.get(
     "/posts",
-    { schema: { querystring: Type.Object({ before: Type.Optional(Type.String({ format: "date-time" })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })) }) } },
+    // ETag/304 like the queue: the desk polls this list, and an unchanged answer then costs no body
+    { schema: { querystring: Type.Object({ before: Type.Optional(Type.String({ format: "date-time" })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })) }) }, onSend: etagOnSend },
     async (req) => {
       const { user } = guard(req);
       const rows = await db

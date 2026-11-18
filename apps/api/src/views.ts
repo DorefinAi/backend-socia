@@ -57,8 +57,31 @@ export function breakingFields(s: { town: string | null; fileTags: unknown; need
   };
 }
 
-export async function cardUrl(storage: Storage, key: string | null): Promise<string | null> {
-  return key ? storage.url(key, 600) : null;
+/** A card link lives this long; one is handed out again while it has at least half of that left */
+const CARD_URL_SECONDS = 600;
+const CARD_URL_REUSE_MS = 300_000;
+/** Links kept per storage; the oldest minted goes first */
+export const CARD_URL_CACHE_MAX = 2_000;
+/** Minted card links per storage (a test's storage never shares one with another) */
+const cardUrls = new WeakMap<Storage, Map<string, { url: string; at: number }>>();
+
+/**
+ * A short-lived link to a card. A signed link differs every time it is minted, so the same key gets the same link
+ * for up to 5 minutes: identical queue polls then return identical bodies (and the ETag can answer 304), and the
+ * link still has 5 minutes or more to load. A local /dev-files link is the same every time anyway.
+ */
+export async function cardUrl(storage: Storage, key: string | null, now = Date.now()): Promise<string | null> {
+  if (!key) return null;
+  let cache = cardUrls.get(storage);
+  if (!cache) cardUrls.set(storage, (cache = new Map()));
+  const hit = cache.get(key);
+  if (hit && now - hit.at >= 0 && now - hit.at < CARD_URL_REUSE_MS) return hit.url;
+  const url = await storage.url(key, CARD_URL_SECONDS);
+  // Re-inserted so the Map's order stays oldest-minted first
+  cache.delete(key);
+  cache.set(key, { url, at: now });
+  if (cache.size > CARD_URL_CACHE_MAX) cache.delete(cache.keys().next().value!);
+  return url;
 }
 
 /** A story's photos and videos: copied ones get a short-lived URL; recorded-only ones say why not. */

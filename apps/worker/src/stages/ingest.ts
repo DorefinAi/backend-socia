@@ -286,14 +286,16 @@ export class Ingest {
   }
 
   /**
-   * When a new breaking story reached the share, for the queue's order (stories.received_at): the time the file was
-   * added there, or for an update of a posted story the time of that save (the file itself is older). A re-saved
-   * story is not given a new one (breakingStory keeps the row), so it never jumps in the queue. A time missing, or
-   * further ahead of this clock than FUTURE_SLACK_MS, is not believed: now.
+   * When a new breaking story reached the share, for the queue's order (stories.received_at): the file's last save
+   * when it was taken, the "Date modified" the desk sees in Explorer (owner, 19 Nov 2026: the queue must match the
+   * desk's folder exactly; a copy made at 15:56 and written until 16:04 sorts at 16:04, not 15:56). An update of a
+   * posted story takes the time of that save too. A re-saved story is not given a new one (breakingStory keeps the
+   * row), so it never jumps in the queue. With no save time, the creation time; a time missing, or further ahead of
+   * this clock than FUTURE_SLACK_MS, is not believed: now.
    */
-  private receivedAt(file: RemoteFile, update: boolean): Date {
+  private receivedAt(file: RemoteFile, _update: boolean): Date {
     const now = this.now();
-    const at = (update ? file.mtime : (file.addedAt ?? file.mtime))?.getTime();
+    const at = (file.mtime ?? file.addedAt)?.getTime();
     return new Date(at !== undefined && Number.isFinite(at) && at <= now + FUTURE_SLACK_MS ? at : now);
   }
 

@@ -702,7 +702,7 @@ describe("BreakingShareSource (no database)", () => {
   const ingestFor = () =>
     new Ingest({ db: h.db, storage: store, source: new BreakingShareSource(join(dir, "share"), { now: () => new Date(clock) }), orgId, log, now: () => clock, layout: "breaking", startFromNow: true });
 
-  it("received_at is when the file was added to the share; a re-save keeps it; an update of a posted story takes its save time", async () => {
+  it("received_at is the file's last save when taken; a re-save keeps it; an update of a posted story takes its save time", async () => {
     const files = new Map<string, { bytes: Buffer; mtime: Date; addedAt: Date | null }>();
     const source: FileSource = {
       list: async () => [...files].map(([path, f]) => ({ path, name: path.split("/").pop()!, size: f.bytes.length, mtime: f.mtime, addedAt: f.addedAt })),
@@ -724,15 +724,16 @@ describe("BreakingShareSource (no database)", () => {
     const story = async (path: string) =>
       (await h.db.select().from(stories).innerJoin(ingestedFiles, eq(ingestedFiles.id, stories.fileId)).where(eq(ingestedFiles.sourcePath, path)).orderBy(sql`${stories.createdAt} DESC`))[0]!.stories;
 
-    // Added to the share in the order A, B; taken in together: each keeps its own time on the share
+    // Saved on the share in the order A, B; taken in together: each sorts at its own last save (Explorer's "Date
+    // modified", owner 19 Nov 2026), not its creation: a copy made earlier and written later sorts at the writing
     const A = "OCTOBER_2026/29_OCTOBER_2026/BTN_RJ_BREAKING_1_29OCT_A.txt";
     const B = "OCTOBER_2026/29_OCTOBER_2026/BTN_RJ_BREAKING_2_29OCT_B.txt";
     files.set(A, { bytes: text("पहली खबर"), mtime: at(-60_000), addedAt: at(-90_000) });
     files.set(B, { bytes: text("दूसरी खबर"), mtime: at(-30_000), addedAt: at(-40_000) });
     expect(await run()).toBe(2);
     const a = await story(A);
-    expect(a.receivedAt.getTime()).toBe(clock - 1500 - 90_000);
-    expect((await story(B)).receivedAt.getTime()).toBe(clock - 1500 - 40_000);
+    expect(a.receivedAt.getTime()).toBe(clock - 1500 - 60_000);
+    expect((await story(B)).receivedAt.getTime()).toBe(clock - 1500 - 30_000);
 
     // Saved again with new text (its creation time is unchanged, its mtime new): the story keeps its place
     files.set(A, { bytes: text("पहली खबर, नया अपडेट"), mtime: at(0), addedAt: files.get(A)!.addedAt });

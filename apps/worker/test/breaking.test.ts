@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  LOGIC_VERSION, createDb, ingestedFiles, orgs, postDecisions, postDrafts, publishedPosts, readIngestStatus, recordIngestPoll, runMigrations, stories, users, type DbHandle,
+  EVENTS_CHANNEL, LOGIC_VERSION, createDb, ingestedFiles, orgs, postDecisions, postDrafts, publishedPosts, readIngestStatus, recordIngestPoll, runMigrations, stories, users, type DbHandle,
 } from "@socia/db";
 import { LocalStorage, type FileSource } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
@@ -1060,6 +1060,52 @@ describe("BreakingShareSource (no database)", () => {
     await put("29_OCTOBER_2026", other, "");
     await settle(ingest);
     expect((await h.db.select().from(postDrafts).where(eq(postDrafts.id, posted!.post_drafts.id)))[0]).toMatchObject({ status: "published" });
+  }, 60_000);
+
+  it("announces queue.changed (tiny, id only) when a draft lands, a re-save rewrites it, a bad re-save withdraws it and a good one brings it back", async () => {
+    // A pool connection of its own, LISTENing like the API's event feed (destroyed at the end, not reused)
+    const listener = await h.pool.connect();
+    const got: { raw: string; event: { type: string; orgId: string; platform?: string; draftId?: string; reason?: string } }[] = [];
+    listener.on("notification", (n) => got.push({ raw: n.payload!, event: JSON.parse(n.payload!) }));
+    await listener.query(`LISTEN ${EVENTS_CHANNEL}`);
+    const queueEvents = async () => {
+      await new Promise((r) => setTimeout(r, 100));
+      return got.filter((g) => g.event.type === "queue.changed");
+    };
+    try {
+      const ingest = ingestFor();
+      await settle(ingest);
+      const name = "btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt";
+      await put("29_OCTOBER_2026", name, fixture(name));
+      expect(await settle(ingest)).toBe(1);
+      const [first] = await h.db.select().from(postDrafts);
+      const arrived = await queueEvents();
+      expect(arrived.map((g) => g.event)).toEqual([{ type: "queue.changed", draftId: first!.id, reason: "arrived", orgId, platform: "x" }]);
+      // Next to story.arrived, in the same transaction
+      expect(got.some((g) => g.event.type === "story.arrived")).toBe(true);
+      // No row data: far under pg_notify's 8000-byte limit
+      expect(arrived[0]!.raw.length).toBeLessThan(200);
+
+      clock += 60_000;
+      await put("29_OCTOBER_2026", name, `${name}\n\nकोटा में हिस्ट्रीशीटर के घर में तोड़फोड़, दो गिरफ्तार\nपुलिस ने दो आरोपियों को पकड़ा\n`);
+      await settle(ingest);
+      clock += 60_000;
+      await put("29_OCTOBER_2026", name, "\u0089PNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR\u0000\u0000\u0001\u0000");
+      await settle(ingest);
+      clock += 60_000;
+      await put("29_OCTOBER_2026", name, `${name}\n\nकोटा में हिस्ट्रीशीटर के घर में तोड़फोड़, तीन गिरफ्तार\nपुलिस ने आरोपियों को पकड़ा\n`);
+      await settle(ingest);
+      const all = await queueEvents();
+      expect(all.map((g) => [g.event.draftId, g.event.reason])).toEqual([
+        [first!.id, "arrived"],
+        [first!.id, "resaved"],
+        [first!.id, "withdrawn"],
+        [first!.id, "resaved"],
+      ]);
+      expect(all.every((g) => g.event.orgId === orgId && g.event.platform === "x")).toBe(true);
+    } finally {
+      listener.release(true);
+    }
   }, 60_000);
 
   it("one story that throws is marked failed and the next one goes through", async () => {

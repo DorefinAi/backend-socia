@@ -2,7 +2,7 @@
 // until the converter passes the regression set with the control room's real font (doc §11 step 0).
 
 import { SERIOUS_CHECKS, STICKY_CHECKS, conversionConfidence, decodeBreakingFile, decodeBytes, detectEncoding, krutiToUnicode, parseBreaking, parseStory, type BreakingStory } from "@socia/core";
-import { ingestedFiles, postDrafts, stories, type Db, type Tx } from "@socia/db";
+import { ingestedFiles, notifyQueueChanged, postDrafts, stories, type Db, type Tx } from "@socia/db";
 import type { Storage } from "@socia/providers";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Logger } from "pino";
@@ -66,7 +66,9 @@ async function withdrawUnsentDraft(tx: Tx, storyId: string, reason: string): Pro
     .update(postDrafts)
     .set({ status: "failed", renderError: `${WITHDRAWN_NOTE}${reason}`, claimedBy: null, claimExpiresAt: null, version: sql`${postDrafts.version} + 1`, updatedAt: sql`now()` })
     .where(and(eq(postDrafts.storyId, storyId), inArray(postDrafts.status, UNSENT)))
-    .returning({ id: postDrafts.id });
+    .returning({ id: postDrafts.id, orgId: postDrafts.orgId, platform: postDrafts.platform });
+  // Off the queue: connected desks refetch at once instead of showing it until their next poll
+  if (draft) await notifyQueueChanged(tx, draft.orgId, draft.id, "withdrawn", draft.platform);
   return draft?.id ?? null;
 }
 

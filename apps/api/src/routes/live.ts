@@ -5,6 +5,9 @@
 // GET /live/stream?platform=x   text/event-stream; first event "hello" { clientId }, then presence.list, presence's
 //                               own events, the org's queue events for that platform (draft.claimed, story.arrived,
 //                               …) and "resync" after the event listener reconnects. ": ping" every 15 s.
+//                               "queue.changed" { platform }: the queue changed (a new draft, a re-saved file); no
+//                               ids, the desk refetches its list and counts. At most one per QUEUE_COALESCE_MS per
+//                               stream: the first goes at once, a burst after it collapses into one at the window's end.
 //                               "replaced" {} just before the server closes it for a newer stream of the same user
 //                               (the browser should not reconnect). Headers: private, no-store, no-transform;
 //                               X-Accel-Buffering: no; sent at once.
@@ -37,6 +40,8 @@ import { PresenceHub, type LiveClient, type PresenceResult } from "../presence";
 export const PING_MS = 15_000;
 export const MAX_STREAMS_PER_USER = 8;
 export const STREAM_RECHECK_MS = 60_000;
+/** queue.changed goes to a stream at most this often (a burst of files is one refetch, not dozens) */
+export const QUEUE_COALESCE_MS = 1000;
 /** A stream whose unsent output passes this is too slow to keep up: closed, the browser reconnects */
 const MAX_BUFFERED = 1 << 20;
 /** Past this much unsent output a stream is skipped for live text (edit.state) */
@@ -54,6 +59,8 @@ export interface LiveOptions {
   maxStreamsPerUser?: number;
   /** presence.ts: stream opens per person per minute */
   streamOpensPerMin?: number;
+  /** The shortest gap between two queue.changed on one stream */
+  queueCoalesceMs?: number;
 }
 
 const STATUS: Record<string, number> = {
@@ -94,6 +101,8 @@ const STREAM_HEADERS = {
 interface Stream {
   client: LiveClient;
   ping(): void;
+  /** The queue changed: forwards queue.changed now, or once at the end of the coalescing window */
+  queueChanged(): void;
   /** permissionHash of the user's permissions when the stream opened */
   permHash: string;
 }
@@ -127,6 +136,7 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
   });
   const streams = new Map<string, Stream>();
   const maxStreams = opts.maxStreamsPerUser ?? MAX_STREAMS_PER_USER;
+  const queueGap = opts.queueCoalesceMs ?? QUEUE_COALESCE_MS;
 
   // The process's shared LISTEN connection (index.ts); tests without one get a feed of their own, opened with the
   // first stream and closed with the app
@@ -147,6 +157,12 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
       for (const s of [...streams.values()]) {
         const c = s.client;
         if (c.user.orgId === orgId && (ids.has(c.user.id) || sessionIds.has(c.sessionId))) c.close();
+      }
+      return;
+    }
+    if (rest.type === "queue.changed") {
+      for (const s of streams.values()) {
+        if (s.client.user.orgId === orgId && s.client.platform === platform) s.queueChanged();
       }
       return;
     }
@@ -228,9 +244,14 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
     raw.flushHeaders();
 
     let open = true;
+    // queue.changed coalescing: when the last one went, and the one waiting for the window to end
+    let queueSentAt = -Infinity;
+    let queueTimer: NodeJS.Timeout | null = null;
     const finish = () => {
       if (!open) return;
       open = false;
+      if (queueTimer) clearTimeout(queueTimer);
+      queueTimer = null;
       streams.delete(id);
       hub.disconnect(id);
       raw.end();
@@ -252,7 +273,21 @@ export const liveRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, deps) 
       lagging: () => raw.writableLength > LAGGING_BUFFERED,
       close: finish,
     };
-    streams.set(id, { client, ping: () => write(": ping\n\n"), permHash: permissionHash(user.permissions) });
+    const sendQueueChanged = () => {
+      queueTimer = null;
+      queueSentAt = Date.now();
+      client.send("queue.changed", { platform });
+    };
+    const queueChanged = () => {
+      if (!open || queueTimer) return;
+      const wait = queueSentAt + queueGap - Date.now();
+      if (wait <= 0) sendQueueChanged();
+      else {
+        queueTimer = setTimeout(sendQueueChanged, wait);
+        queueTimer.unref();
+      }
+    };
+    streams.set(id, { client, ping: () => write(": ping\n\n"), queueChanged, permHash: permissionHash(user.permissions) });
     req.raw.on("close", finish);
     raw.on("error", finish);
 

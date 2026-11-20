@@ -7,7 +7,7 @@ import { and, asc, count, desc, eq, ilike, inArray, isNotNull, lt, ne, or, sql }
 import { audit } from "./audit";
 import type { Db } from "./client";
 import type { Actor } from "./desk";
-import { notify } from "./events";
+import { notify, notifyQueueChanged } from "./events";
 import { getKv, setKv } from "./kv";
 import { postDrafts, stories, trendItems, trendRuns, trendWatches, type DraftRewrite, type TREND_RUN_TRIGGERS, type TrendSourceHealth } from "./schema";
 
@@ -310,7 +310,10 @@ export async function createTrendDraft(
       },
     });
     // With no card to wait for, the draft is in the queue now (otherwise the render worker announces it)
-    if (opts.cardOnDemand) await notify(tx, actor.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft!.id] });
+    if (opts.cardOnDemand) {
+      await notify(tx, actor.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft!.id] });
+      await notifyQueueChanged(tx, actor.orgId, draft!.id, "arrived");
+    }
     return { draftId: draft!.id, created: true, rewrite, rewriteError };
   });
 }

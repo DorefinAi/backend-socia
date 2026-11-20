@@ -23,14 +23,26 @@ export type SociaEvent =
   | { type: "media.attached"; storyId: string; draftIds: string[]; count: number }
   /** A poll that ingested something or failed; the dashboard refetches /ingest/status */
   | { type: "ingest.status"; ok: boolean; at: string }
+  /** The desk queue changed under the desk's feet (a new draft landed, a re-saved file rewrote or withdrew one).
+   *  /live/stream forwards it coalesced (at most about once a second per stream) and without the id: the desk
+   *  refetches its queue list and counts, also in a background tab whose polling has stopped. */
+  | { type: "queue.changed"; draftId: string; reason: QueueChangeReason }
   /** A user's access changed (role, platforms, deactivation, their role's permissions, sessions revoked): their
    *  sockets (or only those of `sessionIds`, e.g. a sign-out) are disconnected so they reconnect, re-authenticate
    *  and join the right rooms. Never sent to browsers. */
   | { type: "access.changed"; userIds: string[]; sessionIds?: string[] };
+
+/** Why the queue changed: a new draft arrived, a re-saved file rewrote one, or a bad re-save took one off */
+export type QueueChangeReason = "arrived" | "resaved" | "withdrawn";
 
 export type SociaEventEnvelope = SociaEvent & { orgId: string; platform?: string };
 
 export async function notify(db: Executor, orgId: string, event: SociaEvent, platform = "x"): Promise<void> {
   const payload: SociaEventEnvelope = { ...event, orgId, platform };
   await db.execute(sql`select pg_notify(${EVENTS_CHANNEL}, ${JSON.stringify(payload)})`);
+}
+
+/** queue.changed for one draft (inside the transaction that changed it, like every event): a tiny payload */
+export async function notifyQueueChanged(db: Executor, orgId: string, draftId: string, reason: QueueChangeReason, platform = "x"): Promise<void> {
+  await notify(db, orgId, { type: "queue.changed", draftId, reason }, platform);
 }

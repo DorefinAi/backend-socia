@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDb, notify, orgs, postDrafts, releaseExpiredClaims, runMigrations, sessions, stories, userPermissionOverrides, users, type Db, type DbHandle } from "@socia/db";
+import { createDb, notify, notifyQueueChanged, orgs, postDrafts, releaseExpiredClaims, runMigrations, sessions, stories, userPermissionOverrides, users, type Db, type DbHandle } from "@socia/db";
 import { LocalStorage } from "@socia/providers";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -187,7 +187,7 @@ describe("presence colour and initials", () => {
     await h.db.insert(userPermissionOverrides).values({ userId: uid.noundo!, permission: "post.undo", allowed: false });
 
     const store = new LocalStorage(await mkdtemp(join(tmpdir(), "socia-presence-")), "http://localhost/dev-files");
-    app = await buildApp({ db: h.db, storage: store, config, live: { pingMs: 100, throttleMs: 20, takeoverCooldownMs: 2500, recheckMs: 200, streamOpensPerMin: 10_000 } }, false);
+    app = await buildApp({ db: h.db, storage: store, config, live: { pingMs: 100, throttleMs: 20, takeoverCooldownMs: 2500, recheckMs: 200, streamOpensPerMin: 10_000, queueCoalesceMs: 400 } }, false);
     // (This suite opens far more streams per person than a browser would: the open limit has its own app in N9)
     await app.listen({ port: 0, host: "127.0.0.1" });
     base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
@@ -483,6 +483,62 @@ describe("presence colour and initials", () => {
     expect(outsider.log.filter((l) => !["hello", "presence.list", "resync"].includes(l.event))).toEqual([]);
     for (const l of outsider.log.filter((x) => x.event === "presence.list")) expect(l.data).toEqual({ stories: {} });
     expect(holder.log.some((l) => l.event === "takeover.requested")).toBe(false);
+  });
+
+  it("forwards queue.changed without ids, coalesced per stream (first at once, a burst as one at the window's end), to the org's platform only", async () => {
+    const [otherOrg] = await h.db.select({ orgId: users.orgId }).from(users).where(eq(users.id, uid.outsider!));
+    const desk = await stream(who.watcher);
+    const second = await stream(who.second);
+    const outsider = await stream(who.outsider);
+    const count = (c: Client) => c.log.filter((l) => l.event === "queue.changed").length;
+    const draftId = "00000000-0000-4000-8000-0000000000aa";
+
+    // One arrival: forwarded at once, with the platform only (the desk refetches; no row data, no id)
+    const t0 = Date.now();
+    await notifyQueueChanged(h.db, orgId, draftId, "arrived");
+    expect(await waitFor(desk, "queue.changed")).toEqual({ platform: "x" });
+    expect(Date.now() - t0).toBeLessThan(400);
+    await waitFor(second, "queue.changed");
+
+    // A burst of ten inside the window: one more, at the window's end, not ten
+    for (let i = 0; i < 10; i++) await notifyQueueChanged(h.db, orgId, draftId, "resaved");
+    await sleep(150);
+    expect(count(desk)).toBe(1);
+    await waitFor(desk, "queue.changed", () => true, desk.log.findIndex((l) => l.event === "queue.changed") + 1, 2000);
+    await sleep(600);
+    expect(count(desk)).toBe(2);
+    expect(count(second)).toBe(2);
+
+    // Quiet for a window: the next one goes at once again
+    const from = desk.log.length;
+    const t1 = Date.now();
+    await notifyQueueChanged(h.db, orgId, draftId, "withdrawn");
+    await waitFor(desk, "queue.changed", () => true, from);
+    expect(Date.now() - t1).toBeLessThan(300);
+
+    // Another platform's queue and another org's queue reach nobody here; the other org's own desk gets its own
+    await notifyQueueChanged(h.db, orgId, draftId, "arrived", "instagram");
+    await notifyQueueChanged(h.db, otherOrg!.orgId, draftId, "arrived");
+    expect(await waitFor(outsider, "queue.changed")).toEqual({ platform: "x" });
+    await sleep(600);
+    expect(count(desk)).toBe(3);
+    expect(count(outsider)).toBe(1);
+    // Presence ignores it (no holder refresh, no error), and it never arrives under its own draft id
+    expect(desk.log.some((l) => l.event === "queue.changed" && "draftId" in (l.data ?? {}))).toBe(false);
+  });
+
+  it("drops a pending queue.changed when its stream closes", async () => {
+    const desk = await stream(who.watcher);
+    const draftId = "00000000-0000-4000-8000-0000000000ab";
+    await notifyQueueChanged(h.db, orgId, draftId, "arrived");
+    await waitFor(desk, "queue.changed");
+    await notifyQueueChanged(h.db, orgId, draftId, "arrived");
+    await sleep(50);
+    desk.close();
+    await desk.ended;
+    // The trailing send finds the stream gone: nothing is written, nothing throws
+    await sleep(600);
+    expect(desk.log.filter((l) => l.event === "queue.changed")).toHaveLength(1);
   });
 
   it("keeps at most 8 streams per user, closing the oldest", async () => {

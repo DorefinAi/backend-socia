@@ -13,7 +13,7 @@ import {
   type TagSuggestion,
 } from "@socia/core";
 import {
-  EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, handlePostedUses, ingestedFiles, loadRuleComposer, notify, postDrafts, recordProposal,
+  EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, handlePostedUses, ingestedFiles, loadRuleComposer, notify, notifyQueueChanged, postDrafts, recordProposal,
   stories, type Db, type LoggedProposal, type Tx,
 } from "@socia/db";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
@@ -376,6 +376,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
         .where(eq(postDrafts.id, existing.id))
         .returning({ status: postDrafts.status, version: postDrafts.version });
       await notify(tx, story.orgId, { type: "draft.updated", draftId: existing.id, status: row!.status, version: row!.version });
+      // The queue row changed (or came back from Failed): connected desks refetch at once, hidden tabs too
+      await notifyQueueChanged(tx, story.orgId, existing.id, "resaved");
       await logProposal(existing.id);
       log.info({ storyId: story.id, draftId: existing.id }, "re-saved file: draft rewritten in place");
     }
@@ -392,7 +394,10 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   await tx.update(stories).set({ status: "composed", needsCheck, updatedAt: sql`now()` }).where(eq(stories.id, story.id));
   if (draft) await logProposal(draft.id);
   // With no card to wait for the draft is in the queue now; otherwise the render worker announces it
-  if (draft && ready) await notify(tx, story.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft.id] });
+  if (draft && ready) {
+    await notify(tx, story.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft.id] });
+    await notifyQueueChanged(tx, story.orgId, draft.id, "arrived");
+  }
   // A reporter the list does not carry yet is routine — it is true of about 45% of files today and the
   // name is on the draft for the desk to see — so it goes in at info and does not fill the ops log with
   // warnings. Anything else (an unknown district code, a reporter filing from another district) is rarer
@@ -431,7 +436,10 @@ export async function composeNext(db: Db, dictionaries: Dictionaries, stageLog: 
       .onConflictDoNothing()
       .returning({ id: postDrafts.id });
     await tx.update(stories).set({ status: "composed", updatedAt: sql`now()` }).where(eq(stories.id, story.id));
-    if (draft && opts.cardOnDemand) await notify(tx, story.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft.id] });
+    if (draft && opts.cardOnDemand) {
+      await notify(tx, story.orgId, { type: "story.arrived", storyId: story.id, draftIds: [draft.id] });
+      await notifyQueueChanged(tx, story.orgId, draft.id, "arrived");
+    }
     log.info({ storyId: story.id, draftId: draft?.id, hashtags: content.hashtags, suggestions: content.mentionSuggestions.length }, "draft composed");
   });
 }

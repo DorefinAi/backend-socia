@@ -1,7 +1,7 @@
 // Render: eager, before an operator opens the draft. The card is already waiting in the queue,
 // which is the point of the product. An edit to the card text bumps card_rev and lands back here.
 
-import { claimRender, notify, postDrafts, type Db } from "@socia/db";
+import { claimRender, notify, notifyQueueChanged, postDrafts, type Db } from "@socia/db";
 import type { Storage } from "@socia/providers";
 import { and, eq, sql } from "drizzle-orm";
 import type { Logger } from "pino";
@@ -45,6 +45,8 @@ export async function renderNext(db: Db, storage: Storage, renderer: CardRendere
       }
       if (claim.status === "rendering") {
         await notify(tx, claim.orgId, { type: "story.arrived", storyId: claim.storyId, draftIds: [claim.id] });
+        // First time on the queue (its card is drawn)
+        await notifyQueueChanged(tx, claim.orgId, claim.id, "arrived");
       } else {
         await notify(tx, claim.orgId, { type: "draft.updated", draftId: claim.id, status: row.status, version: row.version });
       }

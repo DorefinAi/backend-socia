@@ -1,10 +1,10 @@
 import { PERMISSIONS, PERMISSION_KEYS, matchTotpStep, newTotpSecret, phaseFeatures, totpUri } from "@socia/core";
-import { audit, sessions, users } from "@socia/db";
+import { audit, recordLoginEvent, sessions, users, type LoginResult } from "@socia/db";
 import { decryptSecret, encryptSecret } from "@socia/providers";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { randomBytes } from "node:crypto";
 import { and, eq, isNull, lt, ne, or, sql } from "drizzle-orm";
-import type { FastifyReply } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { accessChanged } from "../access";
 import { COOKIE, HttpError, checkPassword, createSession, guard, hashPassword, legacyAccess, setSessionCookie, type SessionInfo } from "../auth";
 import type { AppDeps } from "../app";
@@ -94,6 +94,13 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
   // Unknown and inactive emails still pay for one argon2 verify, so the response time does not tell them apart
   const dummyHash = await hashPassword(randomBytes(24).toString("base64url"));
 
+  /**
+   * One sign-in attempt into login_event (dev-docs/ops-status-contract.md §5). Never fails the sign-in; the answer
+   * the client gets does not change (an unknown email still looks like a wrong password).
+   */
+  const recordAttempt = (req: FastifyRequest, username: string, result: LoginResult, userId: string | null = null) =>
+    recordLoginEvent(db, { username, userId, result, ip: req.ip, userAgent: req.headers["user-agent"] ?? null }, req.log);
+
   const rateLimited = (reply: FastifyReply, seconds: number, message = "Too many failed sign-in attempts. Wait a while and try again.") => {
     reply.header("retry-after", String(seconds));
     return new HttpError(429, "rate_limited", message);
@@ -109,18 +116,25 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     async (req, reply) => {
       const email = req.body.email.trim().toLowerCase();
       const wait = loginGate.retryAfter(req.ip, email);
-      if (wait) throw rateLimited(reply, wait);
+      if (wait) {
+        await recordAttempt(req, req.body.email, "locked");
+        throw rateLimited(reply, wait);
+      }
       const [user] = await db.select().from(users).where(eq(users.email, email));
       const passwordOk = await checkPassword(user?.passwordHash ?? dummyHash, req.body.password);
       // Same answer (and the same work) for an unknown email, an inactive or deleted user and a wrong password
       if (!user || !user.active || user.deletedAt || !passwordOk) {
         loginGate.fail(req.ip, email);
+        // Told apart in the record only: an inactive or deleted user's account counts as "locked"
+        await recordAttempt(req, req.body.email, !user ? "unknown_user" : !user.active || user.deletedAt ? "locked" : "bad_password", user?.id ?? null);
         throw new HttpError(401, "bad_login", "That email and password do not match.");
       }
       await db.update(users).set({ lastLoginAt: sql`now()` }).where(eq(users.id, user.id));
       const verified = !user.totpEnabled && !config.requireTotp;
       const { token, session } = await createSession(db, user.id, verified, config.sessionHours);
       setSessionCookie(reply, token, config.cookieSecure, config.sessionHours);
+      // With two-step sign-in pending, the attempt is recorded when the code is checked (/auth/totp, /auth/totp/enable)
+      if (verified) await recordAttempt(req, req.body.email, "success", user.id);
       return {
         csrfToken: session.csrfToken,
         next: verified ? "done" : user.totpEnabled ? "totp" : "totp_setup",
@@ -146,8 +160,13 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.post("/auth/totp", { schema: { body: Type.Object({ code: Type.String({ pattern: "^\\s*\\d{6}\\s*$" }) }, { additionalProperties: false }) } }, async (req, reply) => {
     const s = guard(req);
+    // Only the second step of a sign-in is a sign-in attempt (a signed-in session calling this is not)
+    const record = (result: LoginResult) => (s.verified ? Promise.resolve() : recordAttempt(req, s.user.email, result, s.user.id));
     const wait = totpGate.retryAfter(req.ip, s.user.id);
-    if (wait) throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
+    if (wait) {
+      await record("locked");
+      throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
+    }
     const [user] = await db.select().from(users).where(eq(users.id, s.user.id));
     if (!user?.totpEnabled || !user.totpSecretEnc) throw new HttpError(409, "totp_not_set_up", "Set up two-step sign-in first.");
     // A replayed code (its step already used) counts as a wrong one
@@ -157,16 +176,19 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const n = (totpFailures.get(s.id)?.n ?? 0) + 1;
       if (n >= limits.totpFailuresPerSession) {
         // Locked: this half-signed-in session is gone; more tries need a new password sign-in
+        await record("locked");
         totpFailures.delete(s.id);
         await db.delete(sessions).where(eq(sessions.id, s.id));
         reply.clearCookie(COOKIE, { path: "/" });
         throw rateLimited(reply, 0, "Too many wrong codes. Sign in again with your password.");
       }
       totpFailures.set(s.id, { n, at: now });
+      await record("totp_failed");
       throw new HttpError(401, "bad_code", "That code is wrong or has expired. Try the current one.");
     }
     totpFailures.delete(s.id);
     await db.update(sessions).set({ verified: true }).where(eq(sessions.id, s.id));
+    await record("success");
     return { ok: true };
   });
 
@@ -182,16 +204,23 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   app.post("/auth/totp/enable", { schema: { body: Type.Object({ code: Type.String({ pattern: "^\\s*\\d{6}\\s*$" }) }, { additionalProperties: false }) } }, async (req, reply) => {
     const s = guard(req);
+    // Finishing setup completes a sign-in only for a half-signed-in session
+    const record = (result: LoginResult) => (s.verified ? Promise.resolve() : recordAttempt(req, s.user.email, result, s.user.id));
     const wait = totpGate.retryAfter(req.ip, s.user.id);
-    if (wait) throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
+    if (wait) {
+      await record("locked");
+      throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
+    }
     const [user] = await db.select().from(users).where(eq(users.id, s.user.id));
     if (!user?.totpSecretEnc) throw new HttpError(409, "totp_not_set_up", "Start setup first.");
     // Turns two-step on in the same UPDATE that claims the code's step; a replayed code counts as a wrong one
     if (!(await acceptCode(user.id, user.totpSecretEnc, req.body.code, { totpEnabled: true }))) {
       totpGate.fail(req.ip, s.user.id);
+      await record("totp_failed");
       throw new HttpError(401, "bad_code", "That code is wrong. Check the time on your phone and try again.");
     }
     await db.update(sessions).set({ verified: true }).where(eq(sessions.id, s.id));
+    await record("success");
     return { ok: true };
   });
 

@@ -218,6 +218,13 @@
       "when": 1794735850080,
       "tag": "0030_received_at",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1795155114261,
+      "tag": "0031_login_event",
+      "breakpoints": true
     }
   ]
 }

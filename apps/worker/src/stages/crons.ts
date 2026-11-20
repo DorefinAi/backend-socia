@@ -2,7 +2,7 @@
 // handles nightly.
 
 import {
-  SEARCH_SWEEP_BATCH, SEARCH_SWEEP_RECENT_MINUTES, expireMediaWaits, getKv, handleDirectoryStaging, istDate, pruneOps, releaseExpiredClaims, reviveExpiredJobs, setKv, snapshotReporterFeatures, syncStorySearch, type Db,
+  SEARCH_SWEEP_BATCH, SEARCH_SWEEP_RECENT_MINUTES, expireMediaWaits, getKv, handleDirectoryStaging, istDate, pruneLoginEvents, pruneOps, releaseExpiredClaims, reviveExpiredJobs, setKv, snapshotReporterFeatures, syncStorySearch, type Db,
 } from "@socia/db";
 import { WIKIDATA_QUERIES, fetchWikidataHandles } from "@socia/providers";
 import { sql } from "drizzle-orm";
@@ -24,6 +24,9 @@ export async function housekeeping(db: Db, log: Logger, now = Date.now()): Promi
     lastOpsPrune = now;
     const pruned = await pruneOps(db).catch((err) => (log.warn({ err }, "could not prune the ops log"), null));
     if (pruned && (pruned.lines || pruned.heartbeats)) log.info(pruned, "ops log pruned");
+    // Sign-in attempts after 90 days (dev-docs/ops-status-contract.md §5), on the same hourly turn, failing on its own
+    const logins = await pruneLoginEvents(db).catch((err) => (log.warn({ err }, "could not prune the sign-in attempts"), 0));
+    if (logins) log.info({ loginEvents: logins }, "sign-in attempts pruned");
   }
   return false;
 }

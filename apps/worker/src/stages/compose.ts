@@ -404,8 +404,10 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   log.info({ storyId: story.id, draftId: draft?.id, district: story.district, districtFrom: story.districtFrom, cls: out.cls, hashtags: out.hashtags, handles: out.mentions }, "breaking draft composed");
 }
 
-export async function composeNext(db: Db, dictionaries: Dictionaries, log: Logger, opts: ComposeOptions = {}): Promise<boolean> {
-  return nextStoryIsolated(db, "converted", log, "compose", async (tx, story) => {
+export async function composeNext(db: Db, dictionaries: Dictionaries, stageLog: Logger, opts: ComposeOptions = {}): Promise<boolean> {
+  return nextStoryIsolated(db, "converted", stageLog, "compose", async (tx, story) => {
+    // Every line about this story carries its slug (dev-docs/ops-status-contract.md §6); storyId becomes item_id
+    const log = stageLog.child({ slug: story.slug });
     if (story.layout === "breaking") return composeBreakingStory(tx, story, dictionaries, log, opts);
 
     const { composer } = await dictionaries.composer();

@@ -30,7 +30,10 @@ export async function withNextStory(db: Db, status: "ingested" | "converted", wo
   });
 }
 
-export type RenderClaim = Pick<typeof postDrafts.$inferSelect, "id" | "orgId" | "status" | "cardRev" | "cardHeadline" | "storyId">;
+export type RenderClaim = Pick<typeof postDrafts.$inferSelect, "id" | "orgId" | "status" | "cardRev" | "cardHeadline" | "storyId"> & {
+  /** The story's slug, for the render log lines (dev-docs/ops-status-contract.md §6) */
+  slug: string | null;
+};
 
 /** Claim one draft whose card is behind its text, for leaseSeconds. Rendering happens outside any transaction. */
 export async function claimRender(db: Db, leaseSeconds = 60): Promise<RenderClaim | null> {
@@ -52,7 +55,10 @@ export async function claimRender(db: Db, leaseSeconds = 60): Promise<RenderClai
     .update(postDrafts)
     .set({ renderLeaseUntil: sql`now() + make_interval(secs => ${leaseSeconds})` })
     .where(inArray(postDrafts.id, due))
-    .returning({ id: postDrafts.id, orgId: postDrafts.orgId, status: postDrafts.status, cardRev: postDrafts.cardRev, cardHeadline: postDrafts.cardHeadline, storyId: postDrafts.storyId });
+    .returning({
+      id: postDrafts.id, orgId: postDrafts.orgId, status: postDrafts.status, cardRev: postDrafts.cardRev, cardHeadline: postDrafts.cardHeadline, storyId: postDrafts.storyId,
+      slug: sql<string | null>`(SELECT ${stories.slug} FROM ${stories} WHERE ${stories.id} = ${postDrafts.storyId})`,
+    });
   return row ?? null;
 }
 

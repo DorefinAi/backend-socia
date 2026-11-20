@@ -17,3 +17,4 @@ export * from "./trends";
 export * from "./ops-log";
 export * from "./decisions";
 export * from "./search";
+export * from "./login-events";

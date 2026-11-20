@@ -874,6 +874,37 @@ export const opsHeartbeat = pgTable("ops_heartbeat", {
   info: jsonb("info"),
 });
 
+/** How a sign-in attempt ended (dev-docs/ops-status-contract.md §4) */
+export const LOGIN_RESULTS = ["success", "bad_password", "totp_failed", "locked", "unknown_user"] as const;
+export type LoginResult = (typeof LOGIN_RESULTS)[number];
+
+/**
+ * Every sign-in attempt on the desk (dev-docs/ops-status-contract.md §5, migration 0031): append-only, written by the
+ * login handlers right after the attempt (never failing it), kept 90 days. The Sentry control centre reads it through
+ * GET /owner/ops/logins. No password, code or token is ever stored.
+ */
+export const loginEvent = pgTable(
+  "login_event",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    /** "digital-desk" */
+    app: text("app").notNull(),
+    /** As typed (trimmed, at most 200 characters): Socia signs in by email */
+    username: text("username").notNull(),
+    /** The user it matched; null for an unknown name */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    ip: text("ip"),
+    /** At most 200 characters */
+    userAgent: text("user_agent"),
+    result: text("result").$type<LoginResult>().notNull(),
+  },
+  (t) => [
+    index("login_event_at_idx").on(t.at.desc()),
+    check("login_event_result_check", sql`${t.result} IN ('success', 'bad_password', 'totp_failed', 'locked', 'unknown_user')`),
+  ],
+);
+
 // ─── Decision log (reporter-prior brief §2, §7; migration 0024) ──────────────
 
 /** One item's fate once the desk decided (brief §2.4) */

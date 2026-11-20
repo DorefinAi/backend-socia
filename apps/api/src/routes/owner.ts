@@ -17,10 +17,11 @@ import { audit, auditLog, readOpsHeartbeats, readOpsLog, roles, sessions, userPe
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import { and, asc, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { accessChanged, assertAdminRemains, getRole, lockAccess, replaceOverrides, softDeleteUser, userPermissionView, type ChangeBy } from "../access";
 import { HttpError } from "../auth";
 import type { AppDeps } from "../app";
+import { STORIES_MAX_LIMIT, opsDay, opsLogins, opsStories, opsStory, opsSummary } from "../ops-status";
 import { SlidingLimiter } from "../limiter";
 
 export interface OwnerLimits {
@@ -42,7 +43,7 @@ const uuid = (id: string) => id.toLowerCase();
 
 const catalogue = PERMISSIONS.map(({ key, group, label, description }) => ({ key, group, label, description }));
 
-export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string }> = async (app, { db, ownerKey, ownerLimits, opsLog }) => {
+export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string }> = async (app, { db, ownerKey, ownerLimits, opsLog, config }) => {
   const limits = { ...OWNER_LIMITS, ...ownerLimits };
   const failures = new SlidingLimiter(limits.failuresPerIp, limits.windowMs);
   app.addHook("onClose", async () => failures.close());
@@ -304,6 +305,52 @@ export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string
       const [entries, heartbeats] = await Promise.all([readOpsLog(db, after, req.query.limit ?? LOGS_DEFAULT_LIMIT), readOpsHeartbeats(db)]);
       return { system: "socia" as const, entries, next: entries.at(-1)?.id ?? null, heartbeats, dropped: opsLog?.dropped ?? 0 };
     },
+  );
+
+  // ─── Ops status (dev-docs/ops-status-contract.md, pipeline "digital") ────
+  // Read-only, no audit, never cached. logLevel warn as for /owner/logs: Sentry polls these. A missing date is today
+  // in IST; a date that is not a real YYYY-MM-DD is 400 invalid. The data behind each number: ops-status.ts.
+  const phase = config.phase ?? 2;
+  const DateParam = Type.String({ pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", maxLength: 10 });
+  // Errors (400, 404) are not cached either
+  const noStore = {
+    logLevel: "warn" as const,
+    onSend: async (_req: FastifyRequest, reply: FastifyReply, payload: unknown) => {
+      reply.header("cache-control", "no-store");
+      return payload;
+    },
+  };
+
+  app.get("/owner/ops/summary", { ...noStore, schema: { querystring: Type.Object({ date: Type.Optional(DateParam) }, { additionalProperties: false }) } }, async (req) =>
+    opsSummary(db, opsDay(req.query.date), { phase }),
+  );
+
+  app.get(
+    "/owner/ops/stories",
+    {
+      ...noStore,
+      schema: {
+        querystring: Type.Object(
+          {
+            q: Type.Optional(Type.String({ maxLength: 200 })),
+            date: Type.Optional(DateParam),
+            limit: Type.Optional(Type.Integer({ minimum: 1, maximum: STORIES_MAX_LIMIT })),
+          },
+          { additionalProperties: false },
+        ),
+      },
+    },
+    async (req) => opsStories(db, { q: req.query.q, day: req.query.date === undefined ? undefined : opsDay(req.query.date), limit: req.query.limit }),
+  );
+
+  app.get(
+    "/owner/ops/story/:slug",
+    { ...noStore, schema: { params: Type.Object({ slug: Type.String({ minLength: 1, maxLength: 200 }) }, { additionalProperties: false }) } },
+    async (req) => opsStory(db, req.params.slug, { phase }),
+  );
+
+  app.get("/owner/ops/logins", { ...noStore, schema: { querystring: Type.Object({ date: Type.Optional(DateParam) }, { additionalProperties: false }) } }, async (req) =>
+    opsLogins(db, opsDay(req.query.date)),
   );
 };
 

@@ -28,7 +28,7 @@ export async function nextStoryIsolated(
       .update(stories)
       .set({ status: "failed", lastError: message, updatedAt: sql`now()` })
       .where(and(eq(stories.id, current.id), eq(stories.status, status)));
-    log.error({ err, storyId: current.id, stage }, "breaking story failed; marked failed, pipeline goes on");
+    log.error({ err, storyId: current.id, slug: current.slug, stage }, "breaking story failed; marked failed, pipeline goes on");
     return true;
   }
 }

@@ -49,9 +49,9 @@ export async function renderNext(db: Db, storage: Storage, renderer: CardRendere
         await notify(tx, claim.orgId, { type: "draft.updated", draftId: claim.id, status: row.status, version: row.version });
       }
     });
-    log.info({ draftId: claim.id, rev: claim.cardRev, fontPx }, "card rendered");
+    log.info({ storyId: claim.storyId, slug: claim.slug, draftId: claim.id, rev: claim.cardRev, fontPx }, "card rendered");
   } catch (err) {
-    log.error({ err, draftId: claim.id }, "card render failed");
+    log.error({ err, storyId: claim.storyId, slug: claim.slug, draftId: claim.id }, "card render failed");
     await db.transaction(async (tx) => {
       const [row] = await tx
         .update(postDrafts)
@@ -71,7 +71,7 @@ export async function renderNext(db: Db, storage: Storage, renderer: CardRendere
         .where(and(eq(postDrafts.id, claim.id), eq(postDrafts.status, "rendering")))
         .returning({ status: postDrafts.status, version: postDrafts.version });
       if (failed) await notify(tx, claim.orgId, { type: "draft.updated", draftId: claim.id, status: failed.status, version: failed.version });
-      log.warn({ draftId: claim.id, attempts: row?.attempts }, "card render gave up; draft moved to render_failed");
+      log.warn({ storyId: claim.storyId, slug: claim.slug, draftId: claim.id, attempts: row?.attempts }, "card render gave up; draft moved to render_failed");
     });
   }
   return true;

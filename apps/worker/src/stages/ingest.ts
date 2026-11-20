@@ -137,7 +137,7 @@ export class Ingest {
         this.handled.set(file.path, sig);
         newest = Math.max(newest, file.mtime?.getTime() ?? 0);
       } catch (err) {
-        log.error({ err, path: file.path }, "could not ingest file; will try again next scan");
+        log.error({ err, path: file.path, slug: slugParts(file.name).slug }, "could not ingest file; will try again next scan");
       }
     }
 
@@ -191,7 +191,7 @@ export class Ingest {
     if (!files.length) return;
     const folders = new Set(files.map((f) => dirOf(f.path)));
     const newest = await db
-      .select({ id: stories.id, needsCheck: stories.needsCheck, path: ingestedFiles.sourcePath })
+      .select({ id: stories.id, slug: stories.slug, needsCheck: stories.needsCheck, path: ingestedFiles.sourcePath })
       .from(stories)
       .innerJoin(ingestedFiles, eq(ingestedFiles.id, stories.fileId))
       .where(and(eq(stories.orgId, orgId), eq(stories.layout, "breaking")))
@@ -207,7 +207,7 @@ export class Ingest {
         this.missing.delete(s.path);
         if (flagged) {
           await db.update(stories).set({ needsCheck: sql`array_remove(${stories.needsCheck}, ${FILE_DELETED})` }).where(eq(stories.id, s.id));
-          log.info({ storyId: s.id, path: s.path }, "breaking file is back on the share");
+          log.info({ storyId: s.id, slug: s.slug, path: s.path }, "breaking file is back on the share");
         }
         continue;
       }
@@ -222,7 +222,7 @@ export class Ingest {
         .update(stories)
         .set({ needsCheck: sql`array_append(${stories.needsCheck}, ${FILE_DELETED})` })
         .where(and(eq(stories.id, s.id), sql`NOT (${FILE_DELETED} = ANY(${stories.needsCheck}))`));
-      log.warn({ storyId: s.id, path: s.path }, "breaking file deleted from the share after it was taken");
+      log.warn({ storyId: s.id, slug: s.slug, path: s.path }, "breaking file deleted from the share after it was taken");
     }
     // Paths no longer among the newest stop being tracked
     for (const path of this.missing.keys()) if (!checked.has(path)) this.missing.delete(path);
@@ -319,7 +319,7 @@ export class Ingest {
     if (prev && !(draft && SENT.includes(draft.status))) {
       const needsCheck = [...new Set([...prev.needsCheck.filter((c) => c === "update_of_posted"), "resaved"])];
       await tx.update(stories).set({ fileId, status: "ingested", needsCheck, lastError: null, updatedAt: sql`now()` }).where(eq(stories.id, prev.id));
-      log.info({ storyId: prev.id, draftId: draft?.id ?? null, path: file.path }, "breaking file saved again: its story is re-read");
+      log.info({ storyId: prev.id, slug, draftId: draft?.id ?? null, path: file.path }, "breaking file saved again: its story is re-read");
       return;
     }
     const [story] = await tx
@@ -330,6 +330,6 @@ export class Ingest {
         ...(draft && { needsCheck: ["update_of_posted"], updateOfDraftId: draft.id }),
       })
       .returning({ id: stories.id });
-    log.info({ storyId: story!.id, path: file.path, updateOf: draft?.id ?? null }, draft ? "breaking file saved again after posting: new story" : "breaking story ingested");
+    log.info({ storyId: story!.id, slug, path: file.path, updateOf: draft?.id ?? null }, draft ? "breaking file saved again after posting: new story" : "breaking story ingested");
   }
 }

@@ -203,7 +203,7 @@ export class SamvadiaIngest {
         taken += await this.mediaFor(story);
       } catch (err) {
         itemErrors.push({ at: new Date(this.now()).toISOString(), message: `Footage for ${story.slug}: ${String((err as Error)?.message ?? err).slice(0, 300)}`, storyId: story.id });
-        this.deps.log.warn({ err, storyId: story.id, path: story.external?.footagePath }, "could not read footage; will try again");
+        this.deps.log.warn({ err, storyId: story.id, slug: story.slug, path: story.external?.footagePath }, "could not read footage; will try again");
       }
     }
     return taken;
@@ -292,7 +292,7 @@ export class SamvadiaIngest {
           .onConflictDoNothing();
       }
       taken += 1;
-      log.info({ storyId: story.id, path: f.path, kind: parts.kind, bytes: f.size, copied: !!storageKey, skipReason }, "footage taken");
+      log.info({ storyId: story.id, slug: story.slug, path: f.path, kind: parts.kind, bytes: f.size, copied: !!storageKey, skipReason }, "footage taken");
     }
 
     if (taken) await this.markAttached(story, taken);

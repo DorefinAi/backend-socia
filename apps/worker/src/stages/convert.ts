@@ -70,8 +70,10 @@ async function withdrawUnsentDraft(tx: Tx, storyId: string, reason: string): Pro
   return draft?.id ?? null;
 }
 
-export async function convertNext(db: Db, storage: Storage, log: Logger, data?: PhaseOneData): Promise<boolean> {
-  return nextStoryIsolated(db, "ingested", log, "convert", async (tx, story) => {
+export async function convertNext(db: Db, storage: Storage, stageLog: Logger, data?: PhaseOneData): Promise<boolean> {
+  return nextStoryIsolated(db, "ingested", stageLog, "convert", async (tx, story) => {
+    // Every line about this story carries its slug (dev-docs/ops-status-contract.md §6); storyId becomes item_id
+    const log = stageLog.child({ slug: story.slug });
     // Samvadia stories arrive as Unicode text and skip this stage (status "converted"); a story with no
     // file here is a bug, so park it where the desk can see it rather than loop on it.
     if (!story.fileId) {

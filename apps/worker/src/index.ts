@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   const once = onceIndex >= 0 ? args[onceIndex + 1] : null;
   const cfg = loadConfig(once ? [once] : args.filter((a) => !a.startsWith("--")));
   // A dropped idle connection (Postgres restarted) is logged and replaced, not fatal
-  const { db, pool, close } = createDb(cfg.databaseUrl, 5, { log });
+  const { db, pool, close } = createDb(cfg.databaseUrl, 12, { log });
   // A decision-log write that fails is dropped and never holds up a draft; it is logged here
   setDecisionLogger(log);
 

@@ -46,7 +46,9 @@ export function priorGate(data: DirectoryFiles, log: Logger): string | null {
   if (last.key !== names || reminder) {
     priorOffLogged.set(data, { key: names, at: now });
     if (broken.length) {
-      log.error({ files: broken }, `reporter prior and declared beats are OFF${reminder ? " (still)" : ""}: the directory file${broken.length === 1 ? "" : "s"} ${broken.map((b) => `${b.file} (${b.path})`).join(", ")} did not load; drafts keep their normal tags from the last good copies. Fix the file${broken.length === 1 ? "" : "s"} to turn them back on`);
+      // fields.tmpl: the message without the file names and paths, so Sentry groups repeats (ops-status-contract §6)
+      const tmpl = `reporter prior and declared beats are OFF${reminder ? " (still)" : ""}: the directory files {files} did not load; drafts keep their normal tags from the last good copies. Fix the files to turn them back on`;
+      log.error({ files: broken, tmpl: tmpl.slice(0, 200) }, `reporter prior and declared beats are OFF${reminder ? " (still)" : ""}: the directory file${broken.length === 1 ? "" : "s"} ${broken.map((b) => `${b.file} (${b.path})`).join(", ")} did not load; drafts keep their normal tags from the last good copies. Fix the file${broken.length === 1 ? "" : "s"} to turn them back on`);
     } else log.info("reporter prior and declared beats are back on: every directory file loaded");
   }
   // The desk sees the file's name, never its path on the server (like /ingest/status)

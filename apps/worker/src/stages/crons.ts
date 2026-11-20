@@ -171,7 +171,7 @@ export class NightlyFeatures {
     const failedBefore = this.lastError;
     if (this.lastDay && daysBetween(this.lastDay, today) > 1) {
       const missed = { lastDay: this.lastDay, today, missedDays: daysBetween(this.lastDay, today) - 1 };
-      if (failedBefore) this.log.warn({ ...missed, failedOn: failedBefore.day, failures: this.failures }, `reporter features: days with no snapshot — previous run failed: ${failedBefore.message}`);
+      if (failedBefore) this.log.warn({ ...missed, failedOn: failedBefore.day, failures: this.failures, tmpl: "reporter features: days with no snapshot — previous run failed: {error}" }, `reporter features: days with no snapshot — previous run failed: ${failedBefore.message}`);
       else this.log.warn(missed, "reporter features: days with no snapshot (the worker was not running)");
     }
     this.lastDay = today;

@@ -94,13 +94,14 @@ export class JsonDataFile<T> {
   }
 
   /** R7: an error is logged when it differs from the last one, and as a reminder once an hour while it stays */
-  private logFailure(key: string, fields: Record<string, unknown>, message: string): void {
+  private logFailure(key: string, fields: Record<string, unknown>, message: string, tmpl: string): void {
     const now = Date.now();
     const same = key === this.errorKey;
     if (same && now - this.errorLoggedAt < BROKEN_REMINDER_MS) return;
     this.errorKey = key;
     this.errorLoggedAt = now;
-    this.log.error({ ...fields, file: this.name, path: this.path }, same ? `${message} (still broken)` : message);
+    // fields.tmpl: the message without its filled-in values, so Sentry groups repeats (ops-status-contract §6)
+    this.log.error({ ...fields, file: this.name, path: this.path, tmpl: same ? `${tmpl} (still broken)` : tmpl }, same ? `${message} (still broken)` : message);
   }
 
   /** The value last loaded (a good read or the fallback), without reading the file; null before the first get() */
@@ -169,7 +170,7 @@ export class JsonDataFile<T> {
         this.mtimeMs = mtimeMs;
         if (problems.length) this.log.warn({ file: this.name, problems }, "data file entries skipped");
         this.log.info({ file: this.name, path: this.path }, "data file loaded");
-        if (broken) this.log.info({ file: this.name, path: this.path }, `back on: ${this.name}`);
+        if (broken) this.log.info({ file: this.name, path: this.path, tmpl: "back on: {file}" }, `back on: ${this.name}`);
         this.errorKey = null;
         await this.report(true, undefined, problems.length);
       }
@@ -178,11 +179,11 @@ export class JsonDataFile<T> {
       if (err instanceof DataFileRejected) {
         // A file that fails its checks is refused WHOLE, loudly (b6 fix brief P5): every problem in the log and
         // in /ingest/status, never a quiet skip of the bad entry. Logged when the problems change, and hourly (R7).
-        this.logFailure(`rejected:${JSON.stringify(err.problems)}`, { problems: err.problems }, `data file rejected; ${keeping}`);
+        this.logFailure(`rejected:${JSON.stringify(err.problems)}`, { problems: err.problems }, `data file rejected; ${keeping}`, "data file rejected; {keeping}");
         await this.report(false, `The ${this.name} file was rejected (${err.problems.length} problem${err.problems.length === 1 ? "" : "s"}: ${err.problems.slice(0, 3).join("; ")}${err.problems.length > 3 ? "; ..." : ""}); ${keeping}. Fix the file; nothing in it is used until it passes.`);
       } else {
         const e = err as { code?: unknown; message?: unknown };
-        this.logFailure(`unreadable:${String(e?.code ?? "")}:${String(e?.message ?? err)}`, { err }, `data file could not be read; ${keeping}`);
+        this.logFailure(`unreadable:${String(e?.code ?? "")}:${String(e?.message ?? err)}`, { err }, `data file could not be read; ${keeping}`, "data file could not be read; {keeping}");
         await this.report(false, `The ${this.name} file could not be read; ${keeping}.`);
       }
       if (!this.cached && this.fallback !== undefined) this.cached = { value: this.fallback, version: FALLBACK_VERSION };

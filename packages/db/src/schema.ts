@@ -334,6 +334,9 @@ export const stories = pgTable(
     index("stories_org_created_idx").on(t.orgId, t.createdAt),
     // The story search sweep: stories edited in the last minutes (migration 0025)
     index("stories_updated_idx").on(t.updatedAt.desc()),
+    // GET /owner/ops/summary, polled every 30 s across orgs (migration 0032): a day's stories, a day's desk queue
+    index("stories_created_idx").on(t.createdAt),
+    index("stories_received_idx").on(t.receivedAt),
   ],
 );
 
@@ -458,6 +461,10 @@ export const postDrafts = pgTable(
     // The rejected and posted views page by last change, newest first, keyset (updated_at, id)
     index("post_drafts_queue_updated_idx").on(t.orgId, t.platform, t.status, t.updatedAt.desc(), t.id.desc()),
     index("post_drafts_render_idx").on(t.cardRenderedRev, t.cardRev),
+    // GET /owner/ops/summary (migration 0032): a day's drafts, drafts moving through publish, cards waiting to be drawn
+    index("post_drafts_created_idx").on(t.createdAt),
+    index("post_drafts_moving_idx").on(t.status).where(sql`${t.status} IN ('rendering', 'queued', 'publishing')`),
+    index("post_drafts_card_due_idx").on(t.storyId).where(sql`${t.cardRenderedRev} < ${t.cardRev}`),
   ],
 );
 
@@ -518,6 +525,8 @@ export const publishedPosts = pgTable(
     index("published_posts_draft_idx").on(t.draftId, t.publishedAt),
     // At most one live Copy & Posted record per draft, whatever two clicks race
     uniqueIndex("published_posts_copied_draft_key").on(t.draftId).where(sql`${t.permalink} IS NULL AND ${t.recalledAt} IS NULL`),
+    // GET /owner/ops/summary (migration 0032): a day's recalls
+    index("published_posts_recalled_idx").on(t.recalledAt).where(sql`${t.recalledAt} IS NOT NULL`),
   ],
 );
 

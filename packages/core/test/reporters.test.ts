@@ -137,12 +137,12 @@ describe("where the byline goes on the post", () => {
     expect(pick({ headline: "हाईकोर्ट में सुनवाई टली" })).toEqual(["reporter:omsharma8888"]);
   });
 
-  it("keeps the byline off an incident, an administration story and a leader's own post", () => {
-    // A reporter rode along on 14.6% of police tags and 6.0% of collector tags, against 54–67% elsewhere
-    expect(pick({ headline: "जयपुर में हत्या का आरोपी गिरफ्तार" })).toEqual(["police:jaipur_police"]);
-    expect(pick({ headline: "जिला कलेक्टर ने ली बैठक" })).toEqual(["collector:DcDmJaipur"]);
+  it("puts our reporter on every story they file, last, and keeps a leader's own post bare (owner, 20 Nov 2026)", () => {
+    // Before 20 Nov the byline stayed off incidents (a reporter rode along on 14.6% of police tags), administration and soft copy
+    expect(pick({ headline: "जयपुर में हत्या का आरोपी गिरफ्तार" })).toEqual(["police:jaipur_police", "reporter:omsharma8888"]);
+    expect(pick({ headline: "जिला कलेक्टर ने ली बैठक" })).toEqual(["collector:DcDmJaipur", "reporter:omsharma8888"]);
     expect(pick({ leaderPost: true })).toEqual([]);
-    expect(pick({ headline: "गोवर्धन पूजा में उमड़े श्रद्धालु" })).toEqual([]);
+    expect(pick({ headline: "गोवर्धन पूजा में उमड़े श्रद्धालु" })).toEqual(["reporter:omsharma8888"]);
   });
 
   it("rides on copy from outside Rajasthan, where no state institution may be tagged", () => {
@@ -165,8 +165,10 @@ describe("where the byline goes on the post", () => {
   });
 
   it("reports a missing byline only where the post would have carried one", () => {
-    // A crime story in Rajasthan has no byline slot at all — the district force takes the post
-    expect(pickHandlesExplained(story({ headline: "जयपुर में हत्या का आरोपी गिरफ्तार", reporterToken: "PK AGARWAL" }), rules, { reporters: one }).unmatchedReporter).toBeNull();
+    // Every story has a byline slot now (owner, 20 Nov 2026): a crime story in Rajasthan reports the unknown name too
+    expect(pickHandlesExplained(story({ headline: "जयपुर में हत्या का आरोपी गिरफ्तार", reporterToken: "PK AGARWAL" }), rules, { reporters: one }).unmatchedReporter).toBe("PK_AGARWAL");
+    // ...and a leader's own post has none
+    expect(pickHandlesExplained(story({ leaderPost: true, reporterToken: "PK AGARWAL" }), rules, { reporters: one }).unmatchedReporter).toBeNull();
     // ...but the same story from outside Rajasthan is the byline's alone
     const delhi = pickHandlesExplained(
       story({ headline: "दिल्ली में हत्या का आरोपी गिरफ्तार", rajasthan: false, district: "Delhi", reporterToken: "PK AGARWAL" }),

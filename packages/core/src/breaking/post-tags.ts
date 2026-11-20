@@ -403,6 +403,13 @@ export interface SuggestRuleEntry {
   start?: string;
   end?: string;
   note?: string;
+  /**
+   * Election mode (owner, 20 Nov 2026): a "campaign" with `"election": true` is an election. Inside its window a story
+   * its pattern matches is an ELECTION STORY: the tag goes on the post by itself (not offered), and the handle picker
+   * tags the district collector, every party the copy names and the filing reporters (handles.ts, election branch),
+   * where a result bulletin used to tag nobody. Only a dated campaign can be one, so it always ends.
+   */
+  election?: boolean;
 }
 
 export interface SuggestRule {
@@ -410,6 +417,8 @@ export interface SuggestRule {
   pattern: RegExp;
   start: string | null;
   end: string | null;
+  /** An election campaign (SuggestRuleEntry.election): emitted, and it turns on the election handles */
+  election?: boolean;
 }
 
 export interface SuggestRules {
@@ -485,7 +494,10 @@ export function parseSuggestRules(json: unknown, problem: (message: string) => v
       return fail(`${where} (${e.tag}): a campaign needs "start" and "end" as YYYY-MM-DD`);
     }
     if (kind === "campaign" && e.start! > e.end!) return fail(`${where} (${e.tag}): "start" is after "end", so it would never be offered`);
-    rules.push({ tag: bareTag(e.tag), pattern, start: kind === "campaign" ? e.start! : null, end: kind === "campaign" ? e.end! : null });
+    if (e.election !== undefined && typeof e.election !== "boolean") return fail(`${where} (${e.tag}): "election" must be true or false`);
+    // An election tag goes on posts by itself: an evergreen one would never stop
+    if (e.election && kind !== "campaign") return fail(`${where} (${e.tag}): only a dated "campaign" can be an election`);
+    rules.push({ tag: bareTag(e.tag), pattern, start: kind === "campaign" ? e.start! : null, end: kind === "campaign" ? e.end! : null, ...(e.election && { election: true }) });
   });
   if (problems.length) throw new DataFileRejected("campaigns", problems);
   return { rules };
@@ -499,6 +511,17 @@ export function suggestTags(text: string, rules: SuggestRules, at: Date): string
   const day = istDate(at);
   const clean = stripLinks(text).normalize("NFC");
   return rules.rules.filter((r) => (!r.start || (day >= r.start && day <= r.end!)) && r.pattern.test(clean)).map((r) => r.tag);
+}
+
+/**
+ * The election a story belongs to on that day, or null: the first `election` campaign whose window holds the day and
+ * whose pattern matches the text. Its tag is emitted and the election handles apply (compose.ts, handles.ts).
+ */
+export function electionOf(text: string, rules: SuggestRules, at: Date | undefined): string | null {
+  if (!at) return null;
+  const day = istDate(at);
+  const clean = stripLinks(text).normalize("NFC");
+  return rules.rules.find((r) => r.election && r.start && day >= r.start && day <= r.end! && r.pattern.test(clean))?.tag ?? null;
 }
 
 // ─── the reference composer ──────────────────────────────────────────────────

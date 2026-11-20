@@ -90,6 +90,11 @@ export interface ReporterHandlesData {
    * resolved as "collision", tagging nobody — the wrong colleague is worse than none.
    */
   ambiguous_tokens?: string[];
+  /**
+   * Names in a file name that are NOBODY on the roster although a word of them is one reporter's alias: "OM PRAKASH"
+   * is not Om Sharma (alias "OM"). Read as one unit and skipped, never tagged (owner, 20 Nov 2026).
+   */
+  not_reporters?: string[];
   /** The smoothing and threshold of the prior (§3.4) */
   prior_settings?: { m?: number; min_score?: number; min_n?: number };
   /** The share of ALL posts carrying each handle (no @) or "#Tag": what a small sample is pulled towards */
@@ -150,6 +155,8 @@ export interface ReporterRules {
   profiles?: ReadonlyMap<string, ReporterProfile>;
   /** The file's ambiguous_tokens, as keys: always "collision" */
   ambiguous?: ReadonlySet<string>;
+  /** The file's not_reporters, as keys ("OM_PRAKASH"): skipped as one unit, tag nobody */
+  notReporters?: ReadonlySet<string>;
   prior?: PriorSettings;
   /** Each entry's handle_type, lower-cased handle without the @; a rejected entry has none */
   types?: ReadonlyMap<string, HandleType>;
@@ -324,8 +331,12 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
   }
   // Ambiguous tokens are conflicts from the start, so no entry can claim them (§5.1: DINESH is Dangi and Kasana)
   const ambiguous = new Set(strings(root.ambiguous_tokens).map(reporterKey).filter(Boolean));
+  if (root.not_reporters !== undefined && (!Array.isArray(root.not_reporters) || root.not_reporters.some((t) => typeof t !== "string" || !t.trim()))) {
+    reject(`not_reporters: must be a list of names, ["OM PRAKASH", ...]`);
+  }
+  const notReporters = new Set(strings(root.not_reporters).map(reporterKey).filter(Boolean));
   const rules: ReporterRules = {
-    byToken: new Map(), conflicts: new Set(ambiguous), count: 0, handles, verifiedHandles, profiles, ambiguous, prior: parsePriorSettings(root, (m) => settingsProblems.push(m)), types,
+    byToken: new Map(), conflicts: new Set(ambiguous), count: 0, handles, verifiedHandles, profiles, ambiguous, notReporters, prior: parsePriorSettings(root, (m) => settingsProblems.push(m)), types,
   };
   if (rejects.length) throw new DataFileRejected("reporter-handles", rejects);
   // This file's own handles (and their types) are part of the directory a prior may name
@@ -406,7 +417,7 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
 }
 
 /** Keys of the file's top level: inside an entry they are a misplaced edit, and reject that entry */
-const FILE_LEVEL_KEYS = ["prior_settings", "prior_base_rates", "ambiguous_tokens", "entries", "version"] as const;
+const FILE_LEVEL_KEYS = ["prior_settings", "prior_base_rates", "ambiguous_tokens", "not_reporters", "entries", "version"] as const;
 
 /** A token the desk taught us by hand, from handle_directory (source "reporter") */
 export interface LearnedReporterToken {
@@ -542,6 +553,59 @@ export function pickReporter(token: string | null | undefined, rules: ReporterRu
   // A token that names more than one reporter is not missing from the list: it is ambiguous, and tags nobody
   if (rules.conflicts.has(key)) return { match: null, unmatchedToken: null, collision: key };
   return { match: null, unmatchedToken: key };
+}
+
+export interface ReportersPick {
+  /** Every reporter the token names, in file-name order, each once */
+  matches: ReporterMatch[];
+  /** The whole token when NO reporter in it was found (the roster's to-do list); null when one was */
+  unmatchedToken: string | null;
+  /** A name in it that more than one reporter claims: that name tags nobody */
+  collision?: string;
+}
+
+/**
+ * Several reporters on one file (owner, 20 Nov 2026): the desk writes every reporter's name at the end of the file
+ * name ("..._CONTROL_NARESH_RITURAJ_BIG", "..._DINESH_DANGI_JPR_KARARI_BIG"), and each one the roster knows is
+ * tagged. The whole token decides first, exactly as pickReporter. Otherwise the words are read left to right, the
+ * longest run of up to three words the roster carries winning ("DINESH DANGI" before "DINESH"): each run found is a
+ * reporter, a word that is nobody's ("KARARI", a show name) is skipped. The same two rules still hold: a name the
+ * roster does not carry tags nobody and is never guessed at, and a name two reporters claim tags neither.
+ */
+export function pickReporters(token: string | null | undefined, rules: ReporterRules): ReportersPick {
+  const whole = pickReporter(token, rules);
+  if (whole.match) return { matches: [whole.match], unmatchedToken: null };
+  if (!token) return { matches: [], unmatchedToken: null };
+  const words = reporterKey(token).split("_").filter((w) => w && !HONORIFICS.has(w));
+  const matches: ReporterMatch[] = [];
+  let collision: string | undefined;
+  const nobody = rules.notReporters ?? new Set<string>();
+  for (let i = 0; i < words.length; ) {
+    // A name that is nobody's ("OM PRAKASH") is skipped whole, before any of its words can name a reporter ("OM")
+    const skip = [3, 2, 1].find((n) => i + n <= words.length && nobody.has(words.slice(i, i + n).join("_")));
+    if (skip) {
+      i += skip;
+      continue;
+    }
+    let step = 1;
+    for (let n = Math.min(3, words.length - i); n >= 1; n--) {
+      const key = words.slice(i, i + n).join("_");
+      const hit = rules.byToken.get(key);
+      if (hit) {
+        if (!matches.some((m) => m.handle.toLowerCase() === hit.handle.toLowerCase())) matches.push(hit);
+        step = n;
+        break;
+      }
+      if (rules.conflicts.has(key)) {
+        collision ??= key;
+        step = n;
+        break;
+      }
+    }
+    i += step;
+  }
+  if (matches.length) return { matches, unmatchedToken: null, ...(collision && { collision }) };
+  return { matches: [], unmatchedToken: whole.unmatchedToken, ...((whole.collision ?? collision) && { collision: whole.collision ?? collision }) };
 }
 
 /** Whether a reporter's known districts disagree with the story's. A warning for the draft, never a block. */

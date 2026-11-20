@@ -27,8 +27,10 @@ const NEW = [...KEYWORDS, ...Object.keys(CAMPAIGNS)];
 const entry = (t: string) => campaigns.entries.find((e) => e.tag === t)!;
 
 describe("Changes #3 step 5: the sheet's hashtags as suggest-only rules", () => {
-  it("campaigns.json loads whole, with the 16 new rules beside the 2 it had (and #RCA, #Delhi of 17 Nov)", () => {
-    expect(suggestRules.rules).toHaveLength(20);
+  it("campaigns.json loads whole, with the 16 new rules beside the 2 it had (and #RCA, #Delhi of 17 Nov, and the 2 election parts of 20 Nov)", () => {
+    expect(suggestRules.rules).toHaveLength(22);
+    // The 20 Nov election: one tag, three patterns (300 characters each at most), all election campaigns
+    expect(suggestRules.rules.filter((r) => r.tag === "RajasthanPanchayatElection2026").map((r) => r.election)).toEqual([true, true, true]);
     for (const t of NEW) expect(entry(t), t).toBeDefined();
   });
 

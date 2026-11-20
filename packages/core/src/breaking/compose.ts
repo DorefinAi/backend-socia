@@ -22,7 +22,7 @@ import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
 import { deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, type DistrictFrom } from "./parse";
 import {
-  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, isDevanagari, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand,
+  EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, isDevanagari, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand, electionOf,
   BRAND_RAJASTHAN, type PlaceKind, type PlaceKindLookup, type Sourced, type SuggestRules, type TagNormaliser,
 } from "./post-tags";
 import type { StoryClass } from "./storyclass";
@@ -535,7 +535,14 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   };
   // The picker sees the explicit district only, so an inferred one cannot choose a police force, a collector
   // or an administration handle however a later rule uses `district`
-  const picked = pickHandlesExplained({ ...story, district: place?.name ?? null, rajasthan, elsewhere }, rules, { subjects, desk, reporters, parties, max: 3, at });
+  // Election mode (owner, 20 Nov 2026): a Rajasthan story inside an election campaign's window that its pattern matches
+  const election = rajasthan ? electionOf([story.rawHeadline ?? story.headline, ...story.points].join("\n"), suggestRules, at) : null;
+  const picked = pickHandlesExplained({ ...story, district: place?.name ?? null, rajasthan, elsewhere }, rules, {
+    subjects, desk, reporters, parties, max: 3, at, election,
+    // An election story's DM comes from the district the STORY names when the copy states none (owner, 20 Nov 2026:
+    // "panchayat election based, not reporter based"): the headline's or the text's district, never the reporter's own
+    electionDistrict: election && district && district.from !== "reporter" ? district.value.name : null,
+  });
   const handles = picked.handles;
   // The headline's district tags (two districts: a conflict when none was taken as stated)
   const headlineTags = place ? [] : headlineDistrictTags(book, story.rawHeadline ?? story.headline);
@@ -580,6 +587,15 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // trailing run's precision from 92.5% to 55.8%. Only 2 of 19 active rules beat a coin flip. A wrong tag
   // costs the desk a deletion on a live post; a missing one costs a click.
   const hashtags = [footer];
+  // An election story carries the election's tag, then the hashtag of each party it tags (#Congress, #BJP)
+  if (election) {
+    hashtags.push(`#${election}`);
+    // In the order the parties are tagged, which is the order the copy names them
+    for (const h of picked.handles) {
+      const r = parties.rules.find((x) => x.handle.toLowerCase() === h.handle.toLowerCase());
+      if (r?.hashtag && !hashtags.some((t) => t.toLowerCase() === `#${r.hashtag}`.toLowerCase())) hashtags.push(`#${r.hashtag}`);
+    }
+  }
   const offered: TagSuggestion[] = [];
   // A video post's desk rule: offered first, never a leading tag
   if (policy?.layer === "suggest") offered.push({ tag: `#${policy.district.tag}`, source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}; a video post takes no leading tag` });
@@ -655,7 +671,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // headline or points (the same tag, any case, or the same place as "#<Place>News")
   const onPost = copyTagKeys(book, [headline, ...story.points]);
   for (const t of tags) for (const k of tagKeys(book, t)) onPost.add(k);
-  const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && o.tag.toLowerCase() !== footer.toLowerCase() && !tagKeys(book, o.tag).some((k) => onPost.has(k)));
+  const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && !hashtags.some((t) => t.toLowerCase() === o.tag.toLowerCase()) && !tagKeys(book, o.tag).some((k) => onPost.has(k)));
   const hashtagSuggestions = hashtagSuggestionItems.map((o) => o.tag);
   const prefix = tags.length && !deskRun ? `${tags.join(" ")}: ` : "";
   // Room for lines 1–2: the limit less the footer and its blank line
@@ -679,6 +695,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   if (prefix && policy?.layer === "emit") proposals.push({ item: `#${policy.district.tag}`, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.reporterPolicy, reason: policyReason });
   if (prefix && townTag) proposals.push({ item: townTag, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.town, reason: `the town on the place line (${story.town})` });
   proposals.push({ item: footer, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.brand, reason: rajasthan ? "a Rajasthan story" : "a story from outside Rajasthan" });
+  for (const t of hashtags.slice(1)) proposals.push({ item: t, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.campaign, reason: `an election story (#${election})` });
   for (const h of handles) proposals.push(handleProposal(h, "emit"));
   for (const t of hashtagSuggestionItems) proposals.push(tagProposal(t));
   for (const h of handleSuggestions) proposals.push(handleProposal(h, "suggest"));

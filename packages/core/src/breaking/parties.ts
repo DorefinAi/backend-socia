@@ -57,6 +57,11 @@ export interface PartyHandleEntry {
   leader_names?: string[];
   leader_first_for_reporters?: string[];
   leader_reason?: string;
+  /**
+   * The party's hashtag, without the # ("BJP", "Congress"). Put on the post beside the party's handle on an election
+   * story (owner, 20 Nov 2026). Only read on a "state" or "national" entry.
+   */
+  hashtag?: string;
 }
 
 /** A party offered because one of its leaders is on the draft (Changes #3 §2.1) */
@@ -95,6 +100,8 @@ export interface PartyRule {
   tokens: string[];
   /** Folded multi-word keywords ("भारतीय जनता पार्टी"), matched as phrases */
   phrases: string[];
+  /** The party's hashtag without the # (PartyHandleEntry.hashtag), or none */
+  hashtag?: string;
 }
 
 export interface PartyRules {
@@ -170,6 +177,9 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
     if (badKeywords(e.keywords_hi)) return problem(`${who}: "keywords_hi" must be a list of strings, entry rejected`);
     if (badKeywords(e.keywords_en)) return problem(`${who}: "keywords_en" must be a list of strings, entry rejected`);
     if (e.name !== undefined && typeof e.name !== "string") return problem(`${who}: "name" must be a string, entry rejected`);
+    if (e.hashtag !== undefined && !(typeof e.hashtag === "string" && /^#?[A-Za-z0-9_]+$/.test(e.hashtag.trim()))) {
+      return problem(`${who}: "hashtag" must be one hashtag such as "BJP", entry rejected`);
+    }
     const member = scope === "mla";
     // An MLA is only ever offered, so an unverified one is offered too; any other unverified entry is left out
     if (!e.verified && !member) return;
@@ -183,6 +193,7 @@ export function parsePartyHandles(json: unknown, problem: (message: string) => v
       scope,
       tokens: keys.filter((k) => !k.includes(" ")),
       phrases: keys.filter((k) => k.includes(" ")),
+      ...(e.hashtag && (scope === "state" || scope === "national") && { hashtag: e.hashtag.trim().replace(/^#/, "") }),
     };
     (member ? mla : rules).push(rule);
     const leader = parseLeaders(e, rule, (m) => problem(`${who}: ${m}; the leaders block is ignored, the entry still loads`));
@@ -284,6 +295,31 @@ export function pickMlaHandles(text: string, rules: PartyRules): PartyRule[] {
  */
 export function namesAnyParty(text: string, rules: PartyRules): boolean {
   return partyHits(text, rules).length > 0;
+}
+
+/**
+ * Election mode (owner, 20 Nov 2026): EVERY party the copy names, headline or points, one handle each — the state
+ * handle on a Rajasthan story, the national one elsewhere — in the order the copy first names them. Both parties
+ * named means both tagged: on a result story ("कांग्रेस 24, भाजपा 8") the desk tags both (Bikaner, 20 Nov:
+ * @INCRajasthan and BJP). Wings, media cells and MLAs are never among them.
+ */
+export function namedParties(text: string, rules: PartyRules, rajasthan: boolean): PartyRule[] {
+  if (!rules.count) return [];
+  const f = fold(text.normalize("NFC"));
+  const words = f.split(" ").filter(Boolean);
+  const firstAt = (r: PartyRule): number => {
+    const at = [...r.tokens.map((k) => words.indexOf(k)), ...r.phrases.map((p) => (f.includes(p) ? f.slice(0, f.indexOf(p)).split(" ").filter(Boolean).length : -1))].filter((i) => i >= 0);
+    return at.length ? Math.min(...at) : Number.MAX_SAFE_INTEGER;
+  };
+  const hits = partyHits(text, rules).filter((h) => h.scope === "state" || h.scope === "national");
+  const out: PartyRule[] = [];
+  for (const party of new Set(hits.map((h) => h.party))) {
+    const own = preferred(hits.filter((h) => h.party === party), rajasthan);
+    if (own) out.push(own);
+  }
+  // "First named" across all of a party's handles' keywords, so BJP named first stays first
+  const order = (r: PartyRule) => Math.min(...hits.filter((h) => h.party === r.party).map(firstAt));
+  return out.sort((a, b) => order(a) - order(b));
 }
 
 /**

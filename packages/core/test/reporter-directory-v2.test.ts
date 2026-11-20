@@ -59,7 +59,7 @@ describe("R2: every directory entry carries a valid handle_type", () => {
     // Police forces that are not one district's (P3), and the central armed police forces (D2), 15 Nov 2026
     for (const h of ["PoliceRajasthan", "RajPoliceHelp", "AcbRajasthan", "DelhiPolice", "crpfindia", "BSF_India"]) expect(t(h), h).toBe("police");
     // People: the CM, the Chief Secretary, ministers, MLAs, reporters
-    for (const h of ["BhajanlalBjp", "svoruganti1466", "KumariDiya", "officialkharra", "BMacharyaBJP", "rituraj9999", "satyatv99", "bhanwar_83"]) expect(t(h), h).toBe("person");
+    for (const h of ["BhajanlalBjp", "svoruganti1466", "KumariDiya", "officialkharra", "BMacharyaBJP", "rituraj9999", "satyatv99_news", "bhanwar_83"]) expect(t(h), h).toBe("person");
     // District accounts: every district police and collector, and the commissionerates in subject-handles.json
     for (const h of ["jaipur_police", "KotaPolice", "DcDmJaipur", "CP_Jodhpur"]) expect(t(h), h).toBe("district");
     for (const d of Object.values(rules.districts)) for (const h of [...d.police, ...d.collector]) expect(t(h), h).toBe("district");
@@ -383,11 +383,13 @@ describe("v4 B2: the reporter's byline is allowed on court stories (as the handl
     // Was: the reporter joined (v4 B2). The owner's rule (P2): "कोर्ट में पेश" is crime procedure, and any crime word
     // (आरोपी, पुलिस, गिरफ्तार...) makes it a crime story, so no reporter tag.
     const lines = ["जयपुर में चोरी का आरोपी गिरफ्तार", "आरोपी को आज कोर्ट में पेश किया जाएगा", "पुलिस कर रही पूछताछ"];
+    // Owner, 20 Nov 2026: our reporter is on every story they file, crime included; the court/crime test (P1/P2) now only
+    // decides the class (the district police stay on a crime story), no longer whether the byline goes on.
     const d = draft(fileFor("KAMALKANT", "JPR3"), lines);
     expect(d.cls).toBe("incident");
-    expect(d.mentions).toEqual(["@jaipur_police"]);
+    expect(d.mentions).toEqual(["@jaipur_police", "@vyaskamalkant"]);
     const later = draft(fileFor("KAMALKANT", "JPR3"), [lines[0]!, "पुलिस कर रही पूछताछ", "दूसरे साथी की तलाश जारी", "आरोपी को आज कोर्ट में पेश किया जाएगा"]);
-    expect(later.mentions).toEqual(["@jaipur_police"]);
+    expect(later.mentions).toEqual(["@jaipur_police", "@vyaskamalkant"]);
   });
   it("the reporter still comes from the file name only: no token, or the handle only in the copy, carries no byline", () => {
     const court = ["हाईकोर्ट ने याचिका पर सुनवाई की", "अगली सुनवाई 20 नवंबर को"];
@@ -408,13 +410,13 @@ describe("P1/P2: the owner's five court/crime sentences (filed by @vyaskamalkant
     const d = kamal("जयपुर में चोरी के आरोपी को कोर्ट में पेश किया");
     expect(isCourtStory("जयपुर में चोरी के आरोपी को कोर्ट में पेश किया", [])).toBe(false);
     expect(d.mentions).toContain("@jaipur_police");
-    expect(d.mentions).not.toContain("@vyaskamalkant");
+    expect(d.mentions).toContain("@vyaskamalkant"); // owner, 20 Nov 2026: the reporter rides on crime too
   });
   it("P1P2 test 2: 'जस्टिस … के घर चोरी, पुलिस ने आरोपी गिरफ्तार किया' → crime: police tag kept (P1)", () => {
     const d = kamal("जस्टिस शर्मा के घर चोरी, पुलिस ने आरोपी गिरफ्तार किया");
     expect(d.cls).toBe("incident");
     expect(d.mentions).toContain("@jaipur_police");
-    expect(d.mentions).not.toContain("@vyaskamalkant");
+    expect(d.mentions).toContain("@vyaskamalkant"); // owner, 20 Nov 2026: the reporter rides on crime too
   });
   it("P1P2 test 3: 'हाईकोर्ट में याचिका पर सुनवाई' → court: reporter tag allowed", () => {
     expect(isCourtStory("हाईकोर्ट में याचिका पर सुनवाई", [])).toBe(true);
@@ -428,7 +430,7 @@ describe("P1/P2: the owner's five court/crime sentences (filed by @vyaskamalkant
     expect(isCourtStory("जमानत पर रिहा आरोपी फिर गिरफ्तार", [])).toBe(false);
     const d = kamal("जमानत पर रिहा आरोपी फिर गिरफ्तार");
     expect(d.cls).toBe("incident");
-    expect(d.mentions).toEqual(["@jaipur_police"]);
+    expect(d.mentions).toEqual(["@jaipur_police", "@vyaskamalkant"]); // owner, 20 Nov 2026
   });
   it("court story test: a court story whose other words tag the police keeps them AND gets the reporter", () => {
     const d = kamal("हाईकोर्ट जा रहे वकील की कार की टक्कर, दो घायल");
@@ -449,7 +451,7 @@ describe("P1/P2: the owner's five court/crime sentences (filed by @vyaskamalkant
   it("a crime word anywhere in the story (not only the first lines) makes it crime: police kept, no court reporter", () => {
     const d = kamal("हाईकोर्ट परिसर के बाहर वकीलों में मारपीट", ["दोनों पक्षों में कहासुनी", "मौके पर भीड़ जुटी", "पुलिस ने दो लोगों को हिरासत में लिया"]);
     expect(d.cls).toBe("incident");
-    expect(d.mentions).toEqual(["@jaipur_police"]);
+    expect(d.mentions).toEqual(["@jaipur_police", "@vyaskamalkant"]); // owner, 20 Nov 2026
   });
 });
 });

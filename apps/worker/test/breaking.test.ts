@@ -872,9 +872,9 @@ describe("BreakingShareSource (no database)", () => {
     // so it resolves to no byline and is reported rather than guessed at.
     expect(draft!.handlePick).toMatchObject({ cls: "incident", handles: [], reporterToken: "REPORTER" });
     expect((draft!.handlePick as { why: string }).why).toMatch(/crime, fire or accident/);
-    // A crime story carries no byline anyway, so the unknown name is not raised as something to look at
-    // — but it is still stored, which is what lets an editor's own edit teach it.
-    expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).not.toMatch(/reporter list/);
+    // Every story carries our reporter now (owner, 20 Nov 2026), a crime story too, so the unknown name is raised
+    // for the desk; it is still stored, which is what lets an editor's own edit teach it.
+    expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).toMatch(/reporter list/);
     expect(draft!.composeVersion.startsWith("b8.")).toBe(true);
     // The footer is the only hashtag that goes on a post by itself; the inferred district is offered first.
     // This org has no topic rules, so nothing else is offered; packages/core covers the case where one matches.

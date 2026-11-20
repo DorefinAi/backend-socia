@@ -5,11 +5,14 @@
     {
       "tag": "RajasthanPanchayatElection2026",
       "kind": "campaign",
-      "pattern": "पंचायत चुनाव|पंचायती राज चुनाव|सरपंच|पंच पद|पंचायत समिति सदस्य|जिला परिषद सदस्य|मतदाता|मतदान केंद्र|मतदान की रफ्तार",
+      "pattern": "पंचायत चुनाव|पंचायती ?राज चुनाव|पंचायतीराज|सरपंच|पंच पद|पंचायत समिति सदस्य|जिला परिषद सदस्य|मतदाता|मतदान केंद्र|मतदान की रफ्तार|मतगणना|चुनाव परिणाम|चुनावी नतीज|चुनाव नतीज|जिला प्रमुख|परिषद चुनाव|पंस चुनाव|रुझान",
+      "election": true,
       "start": "2026-10-01",
       "end": "2026-11-30",
-      "note": "58 desk uses in the 30 Oct export, 8 in November. मतदाता / मतदान केंद्र / मतदान की रफ्तार: the desk's 16 Nov post 'मूलसागर गांव में मतदान की रफ्तार धीमी, मतदाता परेशान' (owner, 17 Nov)"
+      "note": "ELECTION (owner, 20 Nov 2026, counting day): put on the post by itself, with the collector, every party named and the reporters; it stops with the window. Three entries carry this tag because a pattern may be 300 characters at most (the next two: a body or a party with a result word). On the 530 breaking files of 20 Nov the three match 388 and miss 2 result stories (both open on a bare place name). Before: 58 desk uses in the 30 Oct export, 8 in November. मतदाता / मतदान केंद्र / मतदान की रफ्तार: the desk's 16 Nov post 'मूलसागर गांव में मतदान की रफ्तार धीमी, मतदाता परेशान' (owner, 17 Nov)"
     },
+    {"tag": "RajasthanPanchayatElection2026", "kind": "campaign", "election": true, "start": "2026-10-01", "end": "2026-11-30", "pattern": "(?:पंचायत समिति|समिति|जिला परिषद|जिले परिषद|जिप|वार्ड|सरपंच|प्रधान|प्रत्याशी|उम्मीदवार)[^।\\n]{0,80}?(?:जीत|विजयी|परिणाम|नतीजे|रिजल्ट|आगे|बढ़त|हार|मतों|वोटों|खाता|सीट|बहुमत|कब्जा)", "note": "Election, part 2 of 3: a ward, panchayat samiti, zila parishad, sarpanch, pradhan or candidate with a result word in the same sentence ('पंचायत समिति के वार्ड 1 से बीजेपी जीती')."},
+    {"tag": "RajasthanPanchayatElection2026", "kind": "campaign", "election": true, "start": "2026-10-01", "end": "2026-11-30", "pattern": "(?:कांग्रेस|भाजपा|बीजेपी|RLP|आरएलपी)[^।\\n]{0,60}?(?:जीत|जीती|जीते|विजयी|आगे|बढ़त|सीटों|बहुमत|खाता|बोर्ड)", "note": "Election, part 3 of 3: a party with a result word in the same sentence ('कांग्रेस 24 पर आगे', 'भाजपा का बोर्ड')."},
     {
       "tag": "ACB",
       "kind": "keyword",

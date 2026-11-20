@@ -6,6 +6,7 @@
   "entries": [
     {
       "handle": "@BJP4Rajasthan",
+      "hashtag": "BJP",
       "handle_type": "institution",
       "name": "BJP Rajasthan",
       "party": "bjp",
@@ -24,6 +25,7 @@
     },
     {
       "handle": "@INCRajasthan",
+      "hashtag": "Congress",
       "handle_type": "institution",
       "name": "Congress Rajasthan",
       "party": "congress",
@@ -48,6 +50,7 @@
     },
     {
       "handle": "@BJP4India",
+      "hashtag": "BJP",
       "handle_type": "institution",
       "name": "BJP",
       "party": "bjp",
@@ -65,6 +68,7 @@
     },
     {
       "handle": "@INCIndia",
+      "hashtag": "Congress",
       "handle_type": "institution",
       "name": "Congress",
       "party": "congress",

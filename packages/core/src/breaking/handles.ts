@@ -42,9 +42,9 @@ import { HANDLE } from "./syntax";
 import { addHandleType, handleTypeProblem, isHandleType, type HandleType } from "./handle-types";
 import type { PlainRuleId, PriorRuleId } from "./proposals";
 import { EMPTY_DESK_HANDLE_RULES, fileLookalike, type DeskHandleData, type DeskHandleRules } from "./desk-handles";
-import { EMPTY_PARTY_RULES, namesAnyParty, pickMlaHandles, pickPartyHandles, type PartyRules } from "./parties";
-import { districtMismatch, EMPTY_REPORTER_RULES, pickReporter, type ReporterRules } from "./reporters";
-import { classify, isCourtStory, type StoryClass } from "./storyclass";
+import { EMPTY_PARTY_RULES, namedParties, namesAnyParty, pickMlaHandles, pickPartyHandles, type PartyRules } from "./parties";
+import { districtMismatch, EMPTY_REPORTER_RULES, pickReporters, type ReporterMatch, type ReporterRules } from "./reporters";
+import { classify, type StoryClass } from "./storyclass";
 import type { GazetteerMatch } from "../gazetteer";
 import { EMPTY_SUBJECT_RULES, subjectEmits, subjectExcluded, type SubjectData, type SubjectRules } from "./subjects";
 
@@ -400,8 +400,6 @@ const ONLY_ACTING: ReadonlySet<string> = new Set(["police", "department"]);
 const VENUE = /(?<![\p{L}\p{M}])(?:(?:पुलिस\s*)?कमिश्नरेट|पुलिस\s*आयुक्तालय|थाने|थाना|पुलिस\s*चौकी|एसपी\s*(?:कार्यालय|ऑफिस)|कलेक्ट्रेट|कलेक्टरेट|कलक्ट्रेट|कलेक्टर\s*(?:कार्यालय|ऑफिस)|जिला\s*मुख्यालय|घेराव)(?![\p{L}\p{M}])/u;
 /** Classes where the district force or the collector stands alone: nothing of the desk's joins them */
 const EXCLUSIVE: ReadonlySet<StoryClass> = new Set<StoryClass>(["incident", "administration"]);
-/** Classes the desk puts our own reporter on (54–67% of posts), and never on an incident (14.6%) */
-const WANTS_REPORTER: ReadonlySet<StoryClass> = new Set<StoryClass>(["political", "government", "other"]);
 
 export interface HandlePickInput {
   headline: string;
@@ -509,6 +507,17 @@ export interface PickOptions {
   max?: number;
   /** When the story came in: a suggest_only subject's emit_window is read against it */
   at?: Date;
+  /**
+   * The election campaign tag this story belongs to (post-tags.ts electionOf), or none. On Rajasthan copy it replaces
+   * the class's handles with the election shape: collector, every named party, reporters (owner, 20 Nov 2026).
+   */
+  election?: string | null;
+  /**
+   * Election stories only: the district the composer worked out when the copy states none (the headline's
+   * "बीकानेर जिला परिषद", a town's district, the reporter's). Used for the collector and nothing else (owner, 20 Nov
+   * 2026: "चुनाव की हर खबर में DM"); the police and every other rule still see only the stated district.
+   */
+  electionDistrict?: string | null;
 }
 
 /** One entry per handle, first occurrence wins */
@@ -542,7 +551,7 @@ function ruleHandles(rules: HandleRules): Set<string> {
  */
 export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules, opts: PickOptions = {}): HandleResult {
   const {
-    subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES, reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, max = 3, at,
+    subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES, reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, max = 3, at, election = null, electionDistrict = null,
   } = opts;
   const warnings: string[] = [];
 
@@ -571,7 +580,9 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   const { cls, why } = classify({ headline: head, points: story.points, leaderPost: story.leaderPost, namedPolitical });
 
   // The reporter, resolved now and appended last. An unresolved name is reported, never guessed at.
-  const rep = pickReporter(story.reporterToken, reporters);
+  // Every reporter the file name names (pickReporters: one, or several written one after another)
+  const rep = pickReporters(story.reporterToken, reporters);
+  const byline = (m: ReporterMatch): HandlePick => ({ handle: m.handle, reason: "reporter", title: m.name });
   let unmatchedReporter: string | null = null;
   let noted = false;
   /**
@@ -584,8 +595,8 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     noted = true;
     unmatchedReporter = rep.unmatchedToken;
     if (rep.collision) warnings.push(`the file name's "${rep.collision}" names more than one reporter, so nobody was tagged; the full name in the file name decides`);
-    if (rep.match && districtMismatch(rep.match, district)) {
-      warnings.push(`@${rep.match.handle} usually files from ${rep.match.districts.join("/")}, not ${district}`);
+    for (const m of rep.matches) {
+      if (districtMismatch(m, district)) warnings.push(`@${m.handle} usually files from ${m.districts.join("/")}, not ${district}`);
     }
   };
 
@@ -633,11 +644,13 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   const onlyReporter = (): HandleResult => {
     // Outside Rajasthan there is no district force to take the post, so the byline is the whole tag
     noteByline();
-    return done(rep.match && max > 0 ? [{ handle: rep.match.handle, reason: "reporter", title: rep.match.name }] : []);
+    return done(rep.matches.slice(0, max).map((m) => byline(m)));
   };
 
   // ── a leader's own post: nobody at all, not even the desk's own handle ────
   if (cls === "leader_post") return done([]);
+
+
 
   // A seasonal institution (suggest_only, @CeoRajasthan) named anywhere in Rajasthan copy is offered whatever the
   // class — the collector alone on a roll-publication story is still right for the post, and the desk can add
@@ -688,10 +701,44 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     }
   }
 
+  // ── election mode (owner, 20 Nov 2026): the district collector, every party the copy names, the reporters ──
+  // What the desk typed by hand on result day: "@BikanerDm @INCRajasthan @BJP4Rajasthan", "@DmJaisalmer
+  // @INCRajasthan". It replaces the class's own shape, the soft "result bulletin tags nobody" included, for as long
+  // as the election campaign in campaigns.json runs. Four handles at most, a reporter's slot kept.
+  if (election && story.rajasthan) {
+    noteByline();
+    const own: HandlePick[] = [];
+    // The stated district's collector, else the one of the district the composer worked out (electionDistrict)
+    const dm = local ?? (electionDistrict ? rules.districts[districtKey(electionDistrict)] : undefined);
+    if (dm?.collector[0]) own.push({ handle: dm.collector[0], reason: "collector" });
+    for (const p of namedParties(all, parties, true)) own.push({ handle: p.handle, reason: "party", title: p.name });
+    // A leader or institution the headline names, then the desk's own keyword handles
+    namedSubjects(head, true);
+    for (const p of picks) own.push({ handle: p.handle, reason: p.reason, ...(p.title && { title: p.title }) });
+    own.push(...deskPicks);
+    const cap = Math.max(max, 4);
+    const bylines = rep.matches.filter((m) => !own.some((o) => o.handle.toLowerCase() === m.handle.toLowerCase())).slice(0, Math.min(2, cap)).map((m) => byline(m));
+    const result = done(dedupe(own).slice(0, cap - bylines.length).concat(bylines));
+    return { ...result, why: `an election story (#${election}): the collector, the parties named and the reporters` };
+  }
   // ── soft: no institution and no byline — the 19.9% the desk tags nobody on ─
   // The desk's own handles are not an institution: the org asked for that keyword, so a fair or a puja
   // still reaches the local handle it was added for.
-  if (cls === "soft") return done(dedupe(deskPicks).slice(0, max));
+  // Our reporters on every story they file, whatever its class (owner, 20 Nov 2026: "the handles I mentioned should be
+  // tagged"). Before, only political, government, other and court copy carried the byline (desk habit: 290 of 339).
+  // A leader's own post still carries nobody (returned above). Two reporters at most, last; a second one only while the
+  // story's own first handle keeps its slot.
+  const withBylines = (ranked: HandlePick[]): HandleResult => {
+    noteByline();
+    const mineAll = rep.matches.filter((m) => !ranked.some((o) => o.handle.toLowerCase() === m.handle.toLowerCase()));
+    let count = Math.min(mineAll.length, 2, Math.max(0, max));
+    if (count === 2 && max - 2 < Math.min(ranked.length, 1)) count = 1;
+    const mine = mineAll.slice(0, count);
+    const out = ranked.slice(0, Math.max(0, max - mine.length));
+    for (const m of mine) out.push(byline(m));
+    return done(out);
+  };
+  if (cls === "soft") return withBylines(dedupe(deskPicks));
 
   if (cls === "incident") {
     // ── incident: the district police, alone ────────────────────────────────
@@ -794,13 +841,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   // time, like political copy, not 17% like crime; @vyaskamalkant is the only handle on 29 of his 43 posts. Only
   // WHEN the reporter is allowed changes: who it is still comes from the file name alone, and the class (so the
   // police or the collector on an incident or administration story) is untouched.
-  const bylineAllowed = WANTS_REPORTER.has(cls) || isCourtStory(head, story.points);
-  if (bylineAllowed) noteByline();
-  const wants = bylineAllowed && rep.match && !ranked.some((o) => o.handle.toLowerCase() === rep.match!.handle.toLowerCase());
-  const mine = wants ? rep.match! : null;
-  const out = ranked.slice(0, mine ? Math.max(0, max - 1) : max);
-  if (mine && max > 0) out.push({ handle: mine.handle, reason: "reporter", title: mine.name });
-  return done(out);
+  return withBylines(ranked);
 }
 
 /** The handles only. `pickHandlesExplained` additionally returns the class, the reason and any warnings. */

@@ -274,7 +274,8 @@ const URL_ = process.env.TEST_DATABASE_URL;
 
     // A reporter the desk has left unverified is not a handle an editor may put on a post this way:
     // the reporter list only waives the directory check for entries the desk has decided about
-    const bad = await call(op, "PATCH", `/drafts/${draft!.id}`, { version: saved.body.version, mentions: ["@satyatv99_news"] });
+    // (@satyatv99_news was the example until the owner's 20 Nov list made it Satya's verified handle)
+    const bad = await call(op, "PATCH", `/drafts/${draft!.id}`, { version: saved.body.version, mentions: ["@shubhamjain8824"] });
     expect(bad.status).toBe(422);
     expect(bad.body.error).toBe("bad_mention");
   });

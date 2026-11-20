@@ -3,7 +3,7 @@
 
 import {
   BREAKING_POST_MAX, COPY_UNDO_SECONDS, LEASE_SECONDS, NATIONAL_FOOTER, RAJASTHAN_FOOTER, UNDO_SECONDS, assemblePostText, capLevel, checkXPost, istDayStart, nextDraftStatus, reporterKey,
-  type DraftAction, type DraftStatus, type RejectReason,
+  type DraftAction, type DraftStatus, type PostedLearner, type RejectReason,
 } from "@socia/core";
 import { randomUUID } from "node:crypto";
 import { and, count, eq, gte, inArray, isNull, sql } from "drizzle-orm";
@@ -11,6 +11,7 @@ import { audit } from "./audit";
 import { noteOutcome, recordOutcome, voidOutcome } from "./decisions";
 import type { Db, Executor } from "./client";
 import { notify } from "./events";
+import { learnFromPost, type LearnLogger } from "./learn";
 import { REPORTER_SOURCE, auditLog, handleDirectory, hashtagStaging, orgs, postDrafts, publishJobs, publishedPosts, users, type DraftHandlePick } from "./schema";
 
 export interface Actor {
@@ -19,6 +20,13 @@ export interface Actor {
   name: string;
   /** roles.key: a built-in role or a custom one */
   role: string;
+}
+
+/** What posting may also do: learn the desk's handles and hashtags from the post (learn.ts) */
+export interface PostOptions {
+  /** Built from the data files; absent or null, nothing is learned (the hashtags are still staged) */
+  learner?: PostedLearner | null;
+  log?: LearnLogger;
 }
 
 export type DeskErrorCode =
@@ -309,12 +317,11 @@ const HASHTAG_EXAMPLES = 5;
  * A breaking post carries the footer tag and nothing else automatically — the topic rules are offered,
  * not applied, because applying them was wrong far more often than right. So every other hashtag on a
  * published post was typed by an editor, and that is the most direct evidence there is of a rule the
- * desk wants and we do not have. Each one is counted here with a few example headlines, for the weekly
- * pass that decides whether it earns a rule and which keywords should fire it.
+ * desk wants and we do not have. Each one is counted here with a few example headlines.
  *
- * Nothing staged here is ever tagged automatically. A row is a question for a human: the tag the desk
- * reached for, how often, and on what kind of story. Accepting one of our own suggestions is not staged
- * — that is the rule working, not a gap.
+ * Since 20 Nov 2026 (owner decision: no human review) the same tag also becomes a topic rule straight away,
+ * OFFERED on later stories, never applied (learn.ts, called next to this); promoted_at marks the staged row it
+ * came from. Accepting one of our own suggestions is not staged — that is the rule working, not a gap.
  */
 async function stagePostedHashtags(tx: Executor, actor: Actor, draft: Draft): Promise<void> {
   // Only a post as it went out: the editor autosaves while typing, and a half-typed "#Rajas" is not a tag.
@@ -632,7 +639,7 @@ export function postText(draft: Pick<Draft, "bodyText" | "hashtags" | "mentions"
  * Approve & post. The publish job is written in the same transaction as the draft's change, and
  * waits UNDO_SECONDS before any worker may take it.
  */
-export async function approveDraft(db: Db, actor: Actor, draftId: string, version: number) {
+export async function approveDraft(db: Db, actor: Actor, draftId: string, version: number, opts: PostOptions = {}) {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
     if (draft.version !== version) throw new DeskError("stale_version", "Someone else saved this draft after you opened it.", { current: draft });
@@ -661,6 +668,7 @@ export async function approveDraft(db: Db, actor: Actor, draftId: string, versio
 
     // The decision log (never throws); a breaking draft (it has a handle_pick) that could not be logged is warned about
     await stagePostedHashtags(tx, actor, draft);
+    await learnFromPost(tx, { orgId: actor.orgId, actorId: actor.id }, draft, opts.learner, opts.log);
     noteOutcome(await recordOutcome(tx, { orgId: actor.orgId, draftId, decision: "approved", finalText: postText(draft), decidedBy: actor.id }), { orgId: actor.orgId, draftId: draftId, op: "approved", expectRow: draft.handlePick !== null });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.approve", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { status, jobId: job!.id, text: postText(draft) } });
     await notify(tx, actor.orgId, { type: "post.queued", draftId, jobId: job!.id, sendAt: job!.nextAttemptAt.toISOString() });
@@ -737,7 +745,7 @@ export async function restoreDraft(db: Db, actor: Actor, draftId: string): Promi
  * The operator posted on X by hand and records it here. The post already exists, so the daily cap
  * is not checked (it still counts); the post row is what makes it show as published.
  */
-export async function markPosted(db: Db, actor: Actor, draftId: string, version: number, post: { platformPostId: string; permalink: string }) {
+export async function markPosted(db: Db, actor: Actor, draftId: string, version: number, post: { platformPostId: string; permalink: string }, opts: PostOptions = {}) {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
     if (draft.version !== version) throw new DeskError("stale_version", "Someone else saved this draft after you opened it.", { current: draft });
@@ -759,6 +767,7 @@ export async function markPosted(db: Db, actor: Actor, draftId: string, version:
       .where(eq(postDrafts.id, draftId));
     // The decision log (never throws); a breaking draft (it has a handle_pick) that could not be logged is warned about
     await stagePostedHashtags(tx, actor, draft);
+    await learnFromPost(tx, { orgId: actor.orgId, actorId: actor.id }, draft, opts.learner, opts.log);
     noteOutcome(await recordOutcome(tx, { orgId: actor.orgId, draftId, decision: "mark_posted", finalText: row.text, decidedBy: actor.id }), { orgId: actor.orgId, draftId: draftId, op: "mark_posted", expectRow: draft.handlePick !== null });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.mark_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status }, after: { permalink: post.permalink, cardKey } });
     await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row.id, permalink: post.permalink });
@@ -827,7 +836,7 @@ export interface CopyPosted {
  * ready draft goes straight to published, unless someone else is holding it. The version is the one whose
  * text was copied, so a colleague's edit in between is caught (409) instead of recorded as posted.
  */
-export async function copyPosted(db: Db, actor: Actor, draftId: string, version: number): Promise<CopyPosted> {
+export async function copyPosted(db: Db, actor: Actor, draftId: string, version: number, opts: PostOptions = {}): Promise<CopyPosted> {
   return db.transaction(async (tx) => {
     const draft = await lockDraft(tx, actor, draftId);
     // Before the version check: a colleague's Copy & Posted bumps the version too, and "copy again" would be wrong
@@ -864,6 +873,7 @@ export async function copyPosted(db: Db, actor: Actor, draftId: string, version:
       .where(eq(postDrafts.id, draftId));
     // The decision log (never throws); a breaking draft (it has a handle_pick) that could not be logged is warned about
     await stagePostedHashtags(tx, actor, draft);
+    await learnFromPost(tx, { orgId: actor.orgId, actorId: actor.id }, draft, opts.learner, opts.log);
     noteOutcome(await recordOutcome(tx, { orgId: actor.orgId, draftId, decision: "copy_posted", finalText: text, decidedBy: actor.id }), { orgId: actor.orgId, draftId: draftId, op: "copy_posted", expectRow: draft.handlePick !== null });
     await audit(tx, { orgId: actor.orgId, actorId: actor.id, action: "draft.copy_posted", entityType: "post_draft", entityId: draftId, before: { status: draft.status, version }, after: { status, postId: row!.id, text } });
     await notify(tx, actor.orgId, { type: "post.sent", draftId, postId: row!.id, permalink: null });

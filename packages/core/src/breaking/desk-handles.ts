@@ -23,6 +23,7 @@
 //     unrelated handles, and three letters are too few to judge.
 // Towns are not candidates: the places file has their Hindi names only, and a handle is Latin.
 
+import { fold } from "../fold";
 import { Gazetteer, type GazetteerEntry } from "../gazetteer";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 import type { SubjectHandleEntry } from "./subjects";
@@ -303,12 +304,33 @@ export interface DeskHandleRow {
   handle: string;
   entityName: string;
   aliases: string[];
+  /**
+   * Learned keywords (learn.ts): for each keyword (keyed by fold()), how many posted stories carrying the handle name
+   * it. Given, a keyword is OFFERED only until DESK_LEARNED_POSTED_USES of them do (a keyword in `handleKeywords`
+   * excepted); absent (a row read without its posts), every keyword is added on its own, as before.
+   */
+  keywordUses?: ReadonlyMap<string, number>;
+  /** The keywords found inside the handle string itself (keywordsForHandle): added on their own from the start */
+  handleKeywords?: readonly string[];
+}
+
+/** A learned desk keyword is added on its own once this many posted stories carrying the handle name it (as SETTINGS_POSTED_USES) */
+export const DESK_LEARNED_POSTED_USES = 2;
+
+/** Whether a desk row's keyword is added on its own (true) or only offered (deskHandleRules' rule, see DeskHandleRow) */
+export function deskKeywordAuto(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords">, keyword: string): boolean {
+  if (!row.keywordUses) return true;
+  const k = fold(keyword.normalize("NFC"));
+  if (row.handleKeywords?.some((h) => fold(h.normalize("NFC")) === k)) return true;
+  return (row.keywordUses.get(k) ?? 0) >= DESK_LEARNED_POSTED_USES;
 }
 
 export interface DeskHandleData {
   /** Handle without the @ */
   handle: string;
   title: string;
+  /** A desk row matched on a learned keyword that is not yet added on its own: offered, never put on the post */
+  suggestOnly?: boolean;
   /** A Settings row (directoryHandleRules): its type, and whether it is still suggest-only. Absent: a desk-added row */
   settings?: { type: SettingsHandleType; suggestOnly: boolean };
 }
@@ -327,7 +349,8 @@ export const EMPTY_DESK_HANDLE_RULES: DeskHandleRules = { gazetteer: new Gazette
 /**
  * Desk-added handles ready to match. Left out, so never suggested: a row with no keywords, and (should its
  * keywords have been set some other way) a party's or an official's handle. pickHandles() also skips the files'
- * handles and their lookalikes.
+ * handles and their lookalikes. A row's keywords that are added on their own (deskKeywordAuto) and the ones only
+ * offered (learned, not yet on DESK_LEARNED_POSTED_USES posted stories) are two entries.
  */
 export function deskHandleRules(rows: readonly DeskHandleRow[]): DeskHandleRules {
   const entries = rows.flatMap((r, i): GazetteerEntry<DeskHandleData>[] => {
@@ -336,8 +359,15 @@ export function deskHandleRules(rows: readonly DeskHandleRow[]): DeskHandleRules
     if (!handle || !keywords.length) return [];
     const markers = handleMarkers(handle, keywords.map(compactLatin));
     if (markers.party || markers.official) return [];
-    const [name, ...aliases] = keywords;
-    return [{ id: `desk:${handle.toLowerCase()}#${i}`, name: name!, aliases, priority: 0, data: { handle, title: r.entityName || handle } }];
+    const title = r.entityName || handle;
+    const out: GazetteerEntry<DeskHandleData>[] = [];
+    for (const suggestOnly of [false, true]) {
+      const own = keywords.filter((k) => deskKeywordAuto(r, k) !== suggestOnly);
+      if (!own.length) continue;
+      const [name, ...aliases] = own;
+      out.push({ id: `desk:${handle.toLowerCase()}#${i}${suggestOnly ? ":suggest" : ""}`, name: name!, aliases, priority: 0, data: { handle, title, ...(suggestOnly && { suggestOnly }) } });
+    }
+    return out;
   });
   return { gazetteer: new Gazetteer(entries), count: entries.length, entries };
 }

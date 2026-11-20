@@ -2,10 +2,10 @@
 // The compose worker caches it (reloading when the tables change); the API builds one when a desk
 // action makes a story directly (a Web Scraper trend).
 
-import { RuleComposer, handleGazetteer, hashtagGazetteer, type HashtagRule, type MatchType } from "@socia/core";
+import { RuleComposer, handleGazetteer, hashtagGazetteer, type HashtagRule, type LearnStory, type MatchType } from "@socia/core";
 import { and, count, eq, isNotNull, max, notInArray, sql } from "drizzle-orm";
 import type { Db } from "./client";
-import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs, publishedPosts } from "./schema";
+import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs, postDrafts, publishedPosts, stories } from "./schema";
 
 /** A fingerprint of both dictionaries: any edit, add or delete changes it */
 export async function dictionaryFingerprint(db: Db, orgId: string): Promise<string> {
@@ -77,5 +77,28 @@ export async function handlePostedUses(db: Db, orgId: string, handles: readonly 
      AND p.text ~* ('(^|[^A-Za-z0-9_])@' || h.handle || '([^A-Za-z0-9_]|$)')
     GROUP BY h.handle`);
   for (const r of res.rows) out.set(r.handle, Number(r.n));
+  return out;
+}
+
+/**
+ * The stories the org's live published posts carrying each handle went out on (a whole "@handle", any case, as
+ * handlePostedUses counts), each story once per handle: what a desk handle's learned keywords are counted against
+ * (core learn.ts keywordPostedCounts). Keyed by the lower-cased bare handle; a handle that is not a plain X handle has none.
+ */
+export async function handlePostedStories(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, LearnStory[]>> {
+  const keys = [...new Set(handles.map((h) => h.trim().replace(/^@+/, "").toLowerCase()))];
+  const out = new Map<string, LearnStory[]>(keys.map((k) => [k, []]));
+  const plain = keys.filter((k) => PLAIN_HANDLE.test(k));
+  if (!plain.length) return out;
+  const res = await db.execute<{ handle: string; headline: string | null; body: string | null; district: string | null; town: string | null }>(sql`
+    SELECT DISTINCT ON (h.handle, s.id) h.handle, s.headline, s.body, s.district, s.town
+    FROM unnest(ARRAY[${sql.join(plain.map((k) => sql`${k}`), sql`, `)}]::text[]) AS h(handle)
+    JOIN ${publishedPosts} p
+      ON p.org_id = ${orgId} AND p.recalled_at IS NULL
+     AND strpos(lower(p.text), '@' || h.handle) > 0
+     AND p.text ~* ('(^|[^A-Za-z0-9_])@' || h.handle || '([^A-Za-z0-9_]|$)')
+    JOIN ${postDrafts} d ON d.id = p.draft_id
+    JOIN ${stories} s ON s.id = d.story_id`);
+  for (const r of res.rows) out.get(r.handle)?.push({ headline: r.headline, body: r.body, district: r.district, town: r.town });
   return out;
 }

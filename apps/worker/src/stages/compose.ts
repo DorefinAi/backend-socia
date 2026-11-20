@@ -9,11 +9,11 @@ import { createHash } from "node:crypto";
 import {
   LEADER_POST, asFileTags, assemblePostText, nationalWithoutPlace, pickReporter, composeBreaking, recoverDistrictFrom, directoryHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
   mergeReporterTokens, resolveReporterStatus, slotFromTags,
-  SETTINGS_POSTED_USES, isSettingsHandleType, type BreakingDraft, type Composer, type DeskHandleRow, type DeskHandleRules, type DirectoryHandleRow, type HandlePick, type HandleRules, type SubjectRules, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
+  SETTINGS_POSTED_USES, deskAutoKey, districtKeywordCandidates, isSettingsHandleType, withKeywordUses, type BreakingDraft, type LearnStory, type Composer, type DeskHandleRow, type DeskHandleRules, type DirectoryHandleRow, type HandlePick, type HandleRules, type SubjectRules, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
   type TagSuggestion,
 } from "@socia/core";
 import {
-  EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, handlePostedUses, ingestedFiles, loadRuleComposer, notify, notifyQueueChanged, postDrafts, recordProposal,
+  EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, handlePostedStories, handlePostedUses, ingestedFiles, loadRuleComposer, notify, notifyQueueChanged, postDrafts, recordProposal,
   stories, type Db, type LoggedProposal, type Tx,
 } from "@socia/db";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
@@ -77,6 +77,9 @@ export class Dictionaries {
   private deskRules: { key: string; value: DeskHandleRules } | null = null;
   /** Published posts carrying each Settings handle (lower-cased, no @), and which rows they were counted for */
   private posted: { rows: string; at: number; value: Map<string, number> } | null = null;
+  /** The stories behind each desk handle with keywords (learned keywords' posted counts, core learn.ts), and the rows built on them */
+  private deskStories: { rows: string; at: number; value: Map<string, LearnStory[]> } | null = null;
+  private learnedRows: { key: string; value: DeskHandleRow[] } | null = null;
 
   constructor(private readonly db: Db, private readonly orgId: string, private readonly log?: Logger) {}
 
@@ -124,7 +127,39 @@ export class Dictionaries {
     const { topics, deskRows, settingsRows, learnedReporters, version } = await this.load();
     const uses = await this.postedUses(settingsRows);
     const counted = settingsRows.map((r) => ({ ...r, postedUses: uses.get(r.handle.trim().replace(/^@+/, "").toLowerCase()) ?? 0 }));
-    return { topics, desk: this.desk(deskRows, counted, version, files), learnedReporters, version };
+    return { topics, desk: this.desk(await this.learnedDeskRows(deskRows, files), counted, version, files), learnedReporters, version };
+  }
+
+  /**
+   * The desk rows with their learned keywords' posted counts: a keyword is offered until DESK_LEARNED_POSTED_USES
+   * posted stories carrying the handle name it, then added on its own; a keyword inside the handle string is added
+   * from the start (it needs the subjects file; without it, none is). Read like the Settings counts: again when the
+   * rows change or after POSTED_USES_MS; a failed read keeps the last stories for the same rows, or none (every
+   * learned keyword offered only), and is tried again after POSTED_USES_RETRY_MS.
+   */
+  private async learnedDeskRows(rows: readonly DeskHandleRow[], files?: DeskRuleFiles): Promise<DeskHandleRow[]> {
+    const keyed = rows.filter((r) => r.aliases.length);
+    if (!keyed.length) return [...rows];
+    const key = keyed.map((r) => `${r.handle.toLowerCase()}:${r.aliases.length}`).sort().join(",");
+    if (!this.deskStories || this.deskStories.rows !== key || Date.now() - this.deskStories.at >= POSTED_USES_MS) {
+      try {
+        this.deskStories = { rows: key, at: Date.now(), value: await handlePostedStories(this.db, this.orgId, keyed.map((r) => r.handle)) };
+      } catch (err) {
+        this.log?.warn({ err }, "desk handles: posted stories not read; learned keywords stay offered only for now");
+        const value = this.deskStories?.rows === key ? this.deskStories.value : new Map<string, LearnStory[]>();
+        this.deskStories = { rows: key, at: Date.now() - POSTED_USES_MS + POSTED_USES_RETRY_MS, value };
+      }
+    }
+    const built = `${key}|${this.deskStories.at}|${files?.version ?? "-"}`;
+    if (this.learnedRows?.key !== built) {
+      const stories = this.deskStories.value;
+      const candidates = files ? [...districtKeywordCandidates(), ...(files.subjects.keywordCandidates ?? [])] : [];
+      this.learnedRows = {
+        key: built,
+        value: rows.map((r) => (r.aliases.length ? withKeywordUses(r, stories.get(r.handle.trim().replace(/^@+/, "").toLowerCase()) ?? [], candidates) : r)),
+      };
+    }
+    return this.learnedRows.value;
   }
 
   /**
@@ -156,7 +191,8 @@ export class Dictionaries {
   private desk(deskRows: DeskHandleRow[], settingsRows: DirectoryHandleRow[], version: string, files?: DeskRuleFiles): DeskHandleRules {
     // Which Settings rows have left suggest-only is part of the key: a second posted use rebuilds the rules
     const promoted = settingsRows.filter((r) => (r.postedUses ?? 0) >= SETTINGS_POSTED_USES).map((r) => r.handle.toLowerCase()).sort().join(",");
-    const key = `${version}|${files?.version ?? "-"}|${promoted}`;
+    // So is which desk keywords are added on their own (a learned keyword's second posted story rebuilds them)
+    const key = `${version}|${files?.version ?? "-"}|${promoted}|${deskAutoKey(deskRows)}`;
     if (this.deskRules?.key === key) return this.deskRules.value;
     const value = directoryHandleRules(deskRows, files ? settingsRows : [], {
       fileHandles: files ? [...(files.rules.all ?? []), ...(files.subjects.handles ?? [])] : [],

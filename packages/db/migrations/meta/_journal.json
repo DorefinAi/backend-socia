@@ -225,6 +225,13 @@
       "when": 1795155114261,
       "tag": "0031_login_event",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795194987633,
+      "tag": "0032_ops_status_indexes",
+      "breakpoints": true
     }
   ]
 }

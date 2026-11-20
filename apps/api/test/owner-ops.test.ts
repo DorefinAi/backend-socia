@@ -11,7 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { hashPassword } from "../src/auth";
 import type { ApiConfig } from "../src/config";
-import { DIGITAL_STAGES, STUCK_LIMIT_MINUTES, likePattern, opsDay, storyPosition, type StoryRow } from "../src/ops-status";
+import { DIGITAL_STAGES, STUCK_LIMIT_MINUTES, likePattern, opsDay, opsLogins, storyPosition, type StoryRow } from "../src/ops-status";
+import { LOCKOUTS_REMEMBERED, LockoutLog } from "../src/routes/auth";
 
 const KEY = "k".repeat(40);
 const URL = process.env.TEST_DATABASE_URL;
@@ -102,6 +103,26 @@ describe("recordLoginEvent", () => {
   });
 });
 
+describe("LockoutLog (flood safety, contract §5 v1.1)", () => {
+  it("records the first refusal of a lockout only, again once its window is over", () => {
+    const l = new LockoutLog();
+    expect(l.first("login|ip:1.2.3.4", 60_000, 1000)).toBe(true);
+    expect(l.first("login|ip:1.2.3.4", 60_000, 2000)).toBe(false);
+    expect(l.first("login|ip:1.2.3.4", 60_000, 60_999)).toBe(false);
+    // Another lockout is its own
+    expect(l.first("login|account:a@b", 60_000, 2000)).toBe(true);
+    expect(l.first("login|ip:1.2.3.4", 60_000, 61_000)).toBe(true);
+  });
+
+  it("remembers at most LOCKOUTS_REMEMBERED lockouts; past that a flood of new keys is not recorded", () => {
+    const l = new LockoutLog();
+    for (let i = 0; i < LOCKOUTS_REMEMBERED; i++) expect(l.first(`k${i}`, 60_000, 0)).toBe(true);
+    expect(l.first("one-more", 60_000, 1)).toBe(false);
+    // Once the old ones expire there is room again
+    expect(l.first("one-more", 60_000, 60_001)).toBe(true);
+  });
+});
+
 // ─── The routes on a stub database ───────────────────────────────────────────
 
 describe("owner ops routes (stub database)", () => {
@@ -130,7 +151,7 @@ describe("owner ops routes (stub database)", () => {
 
   it.each([
     "/owner/ops/summary?date=2026-02-30", "/owner/ops/summary?date=20261120", "/owner/ops/summary?date=", "/owner/ops/summary?other=1",
-    "/owner/ops/stories?limit=0", "/owner/ops/stories?limit=51", "/owner/ops/stories?limit=x", "/owner/ops/stories?date=2026-13-01",
+    "/owner/ops/stories?limit=0", "/owner/ops/stories?limit=51", "/owner/ops/stories?limit=x", "/owner/ops/stories?date=2026-13-01", "/owner/ops/stories?date=ALL",
     `/owner/ops/stories?q=${"a".repeat(201)}`, "/owner/ops/logins?date=2026-11-31", "/owner/ops/logins?date=yesterday",
   ])("400 invalid for %s", async (url) => {
     const res = await get(url);
@@ -177,6 +198,16 @@ describe("owner ops routes (stub database)", () => {
     expect(q.params).toEqual(expect.arrayContaining(["%ab\\%%", "2026-10-31T18:30:00.000Z", "2026-11-01T18:30:00.000Z", 7]));
   });
 
+  it("stories: no date is today in IST; date=all searches every day", async () => {
+    seen.length = 0;
+    await get("/owner/ops/stories");
+    const today = opsDay(undefined);
+    expect(seen.at(-1)!.params).toEqual(expect.arrayContaining([today.start.toISOString(), today.end.toISOString()]));
+    seen.length = 0;
+    await get("/owner/ops/stories?date=all");
+    expect(seen.at(-1)!.sql).not.toContain("received_at >=");
+  });
+
   it("story: 404 not_found for an unknown slug, not cached", async () => {
     const res = await get("/owner/ops/story/NO_SUCH_SLUG");
     expect(res.statusCode).toBe(404);
@@ -187,7 +218,7 @@ describe("owner ops routes (stub database)", () => {
   it("logins: empty lists", async () => {
     const res = await get("/owner/ops/logins?date=2026-11-20");
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ events: [], activeSessions: [] });
+    expect(res.json()).toEqual({ totals: { success: 0, failed: 0 }, truncated: false, events: [], activeSessions: [] });
   });
 });
 
@@ -356,7 +387,7 @@ describe("owner ops routes (stub database)", () => {
   });
 
   it("stories: search by slug or headline, newest first, the Web Scraper left out", async () => {
-    const { body } = await owner("/owner/ops/stories?q=ops_");
+    const { body } = await owner("/owner/ops/stories?q=ops_&date=all");
     expect(body.items.map((i: { slug: string }) => i.slug)).toEqual(["OPS_FAILED", "OPS_REJECTED", "OPS_POSTED", "OPS_READY", "OPS_COMPOSE_WAIT", "OPS_CONVERT_WAIT", "OPS_DUP", "OPS_DUP"]);
     const by = (slug: string) => body.items.find((i: { slug: string }) => i.slug === slug);
     expect(by("OPS_CONVERT_WAIT")).toEqual({ slug: "OPS_CONVERT_WAIT", headline: "Headline OPS_CONVERT_WAIT", receivedAt: ist(9).toISOString(), stage: "convert", state: "stuck" });
@@ -364,15 +395,18 @@ describe("owner ops routes (stub database)", () => {
     expect(by("OPS_REJECTED")).toMatchObject({ stage: "operator", state: "done" });
     expect(by("OPS_FAILED")).toMatchObject({ stage: "compose", state: "failed" });
     // A headline matches too, case-insensitively; % and _ are literal
-    expect((await owner("/owner/ops/stories?q=headline%20old_r")).body.items.map((i: { slug: string }) => i.slug)).toEqual(["OLD_READY", "OLD_RENDER"]);
-    expect((await owner("/owner/ops/stories?q=%25")).body.items).toEqual([]);
-    expect((await owner("/owner/ops/stories?q=OPS%5FTREND")).body.items).toEqual([]);
+    expect((await owner("/owner/ops/stories?q=headline%20old_r&date=all")).body.items.map((i: { slug: string }) => i.slug)).toEqual(["OLD_READY", "OLD_RENDER"]);
+    expect((await owner("/owner/ops/stories?q=%25&date=all")).body.items).toEqual([]);
+    expect((await owner("/owner/ops/stories?q=OPS%5FTREND&date=all")).body.items).toEqual([]);
   });
 
   it("stories: date and limit", async () => {
     expect((await owner("/owner/ops/stories?date=2026-10-25")).body.items.map((i: { slug: string }) => i.slug)).toEqual(["OLD_READY", "OLD_RENDER"]);
-    expect((await owner("/owner/ops/stories?limit=1")).body.items.map((i: { slug: string }) => i.slug)).toEqual(["OPS_FAILED"]);
-    expect((await owner("/owner/ops/stories")).body.items).toHaveLength(10);
+    expect((await owner("/owner/ops/stories?limit=1&date=all")).body.items.map((i: { slug: string }) => i.slug)).toEqual(["OPS_FAILED"]);
+    expect((await owner("/owner/ops/stories?date=all")).body.items).toHaveLength(10);
+    // No date: today in IST, and nothing in the fixtures arrived today
+    expect((await owner("/owner/ops/stories")).body.items).toEqual([]);
+    expect((await owner(`/owner/ops/stories?date=${D}`)).body.items).toHaveLength(6);
   });
 
   it("story: a posted story's whole trace", async () => {
@@ -433,8 +467,48 @@ describe("owner ops routes (stub database)", () => {
     // Nothing secret in the record
     expect(JSON.stringify(body)).not.toContain("correct horse");
     expect(body.activeSessions).toEqual([{ app: "digital-desk", user: "op@test", since: expect.any(String), lastSeen: null, ip: null }]);
+    expect(body).toMatchObject({ totals: { success: 1, failed: 2 }, truncated: false });
     // Another day's sign-ins are not this day's
     expect((await owner("/owner/ops/logins?date=2026-01-01")).body.events).toEqual([]);
+  });
+
+  it("logins: past the cap, every success first, then the newest failures; true totals and truncated", async () => {
+    // A recent day (inside the 90 days kept), with nothing else on it
+    const day = opsDay(undefined, new Date(Date.now() - 3 * 86_400_000));
+    const at = (min: number) => new Date(day.start.getTime() + min * 60_000);
+    await h.db.insert(loginEvent).values([
+      { app: "digital-desk", username: "s1", result: "success", at: at(1) },
+      { app: "digital-desk", username: "f1", result: "bad_password", at: at(2) },
+      { app: "digital-desk", username: "f2", result: "unknown_user", at: at(3) },
+      { app: "digital-desk", username: "s2", result: "success", at: at(4) },
+      { app: "digital-desk", username: "f3", result: "locked", at: at(5) },
+      { app: "digital-desk", username: "f4", result: "totp_failed", at: at(6) },
+    ]);
+    const capped = await opsLogins(h.db, day, 3);
+    expect(capped.totals).toEqual({ success: 2, failed: 4 });
+    expect(capped.truncated).toBe(true);
+    // Newest first: both successes kept, the newest failure fills the rest
+    expect(capped.events.map((e) => e.user)).toEqual(["f4", "s2", "s1"]);
+    const all = await opsLogins(h.db, day);
+    expect(all.truncated).toBe(false);
+    expect(all.events.map((e) => e.user)).toEqual(["f4", "f3", "s2", "f2", "f1", "s1"]);
+  });
+
+  it("sign-ins refused by a lockout are recorded once per lockout, not per request", async () => {
+    const limited = await buildApp({ db: h.db, storage: {} as Storage, config, authLimits: { loginFailuresPerIpAccount: 2 } }, false);
+    try {
+      const day = opsDay(undefined);
+      const before = (await opsLogins(h.db, day)).totals;
+      const attempt = () =>
+        limited.inject({ method: "POST", url: "/auth/login", payload: { email: "flood@test", password: "nope nope" }, remoteAddress: "10.9.9.9" });
+      for (let i = 0; i < 2; i++) expect((await attempt()).statusCode).toBe(401);
+      for (let i = 0; i < 5; i++) expect((await attempt()).statusCode).toBe(429);
+      const after = await opsLogins(h.db, day);
+      expect(after.totals.failed - before.failed).toBe(3);
+      expect(after.events.filter((e) => e.user === "flood@test").map((e) => e.result)).toEqual(["locked", "unknown_user", "unknown_user"]);
+    } finally {
+      await limited.close();
+    }
   });
 
   it("login_event keeps 90 days", async () => {

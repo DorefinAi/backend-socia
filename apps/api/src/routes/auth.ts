@@ -62,6 +62,17 @@ class FailureGate {
     return 0;
   }
 
+  /**
+   * Which limit refuses this request (the same order as retryAfter), as a key, with its window in ms; null when none
+   * does. A lockout is one key: one IP spraying many accounts is one "ip:" lockout, not one per account.
+   */
+  lockout(ip: string, account: string): { key: string; ms: number } | null {
+    if (this.account.isOver(account)) return { key: `account:${account}`, ms: this.limits.accountWindowMs };
+    if (this.ipAccount.isOver(`${ip}|${account}`)) return { key: `ip-account:${ip}|${account}`, ms: this.limits.windowMs };
+    if (this.ip.isOver(ip)) return { key: `ip:${ip}`, ms: this.limits.windowMs };
+    return null;
+  }
+
   fail(ip: string, account: string): void {
     this.ipAccount.record(`${ip}|${account}`);
     this.ip.record(ip);
@@ -73,15 +84,44 @@ class FailureGate {
   }
 }
 
+/** At most this many lockouts are remembered at once; past it (a flood of distinct keys) refused requests are not recorded */
+export const LOCKOUTS_REMEMBERED = 10_000;
+
+/**
+ * Flood safety for login_event (dev-docs/ops-status-contract.md §5, v1.1): a request refused because its key is already
+ * locked out is recorded once per lockout window (the first refused attempt), not on every request.
+ */
+export class LockoutLog {
+  private readonly until = new Map<string, number>();
+
+  /** True for the first refusal of a lockout (and marks it); false while the same lockout is still on */
+  first(key: string, windowMs: number, now = Date.now()): boolean {
+    const end = this.until.get(key);
+    if (end !== undefined && end > now) return false;
+    if (end === undefined && this.until.size >= LOCKOUTS_REMEMBERED) {
+      for (const [k, t] of this.until) if (t <= now) this.until.delete(k);
+      if (this.until.size >= LOCKOUTS_REMEMBERED) return false;
+    }
+    this.until.set(key, now + windowMs);
+    return true;
+  }
+
+  sweep(now = Date.now()): void {
+    for (const [k, t] of this.until) if (t <= now) this.until.delete(k);
+  }
+}
+
 export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, config, authLimits }) => {
   const limits = { ...AUTH_LIMITS, ...authLimits };
   const loginGate = new FailureGate(limits.loginFailuresPerIpAccount, limits.loginFailuresPerIp, limits.loginFailuresPerAccount, limits);
   const totpGate = new FailureGate(limits.totpFailuresPerIpAccount, limits.totpFailuresPerIp, limits.totpFailuresPerAccount, limits);
   /** session id -> wrong codes so far */
   const totpFailures = new Map<string, { n: number; at: number }>();
+  const lockouts = new LockoutLog();
   const sweep = setInterval(() => {
     const now = Date.now();
     for (const [k, v] of totpFailures) if (now - v.at > 3600_000) totpFailures.delete(k);
+    lockouts.sweep(now);
   }, 600_000);
   sweep.unref();
   const keySaves = new SlidingLimiter(KEY_BINDING_SAVES, 60_000);
@@ -96,10 +136,14 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
 
   /**
    * One sign-in attempt into login_event (dev-docs/ops-status-contract.md §5). Never fails the sign-in; the answer
-   * the client gets does not change (an unknown email still looks like a wrong password).
+   * the client gets does not change (an unknown email still looks like a wrong password). Always called with no
+   * transaction open: the insert takes one pooled connection of its own, never while another is held.
    */
   const recordAttempt = (req: FastifyRequest, username: string, result: LoginResult, userId: string | null = null) =>
     recordLoginEvent(db, { username, userId, result, ip: req.ip, userAgent: req.headers["user-agent"] ?? null }, req.log);
+  /** A request refused by a lockout: recorded only if it is the lockout's first refusal (v1.1 flood safety) */
+  const recordLockout = (req: FastifyRequest, gate: "login" | "totp", lock: { key: string; ms: number } | null, username: string, userId: string | null = null) =>
+    lock && lockouts.first(`${gate}|${lock.key}`, lock.ms) ? recordAttempt(req, username, "locked", userId) : Promise.resolve();
 
   const rateLimited = (reply: FastifyReply, seconds: number, message = "Too many failed sign-in attempts. Wait a while and try again.") => {
     reply.header("retry-after", String(seconds));
@@ -117,7 +161,7 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const email = req.body.email.trim().toLowerCase();
       const wait = loginGate.retryAfter(req.ip, email);
       if (wait) {
-        await recordAttempt(req, req.body.email, "locked");
+        await recordLockout(req, "login", loginGate.lockout(req.ip, email), req.body.email);
         throw rateLimited(reply, wait);
       }
       const [user] = await db.select().from(users).where(eq(users.email, email));
@@ -164,7 +208,7 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     const record = (result: LoginResult) => (s.verified ? Promise.resolve() : recordAttempt(req, s.user.email, result, s.user.id));
     const wait = totpGate.retryAfter(req.ip, s.user.id);
     if (wait) {
-      await record("locked");
+      if (!s.verified) await recordLockout(req, "totp", totpGate.lockout(req.ip, s.user.id), s.user.email, s.user.id);
       throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
     }
     const [user] = await db.select().from(users).where(eq(users.id, s.user.id));
@@ -208,7 +252,7 @@ export const authRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     const record = (result: LoginResult) => (s.verified ? Promise.resolve() : recordAttempt(req, s.user.email, result, s.user.id));
     const wait = totpGate.retryAfter(req.ip, s.user.id);
     if (wait) {
-      await record("locked");
+      if (!s.verified) await recordLockout(req, "totp", totpGate.lockout(req.ip, s.user.id), s.user.email, s.user.id);
       throw rateLimited(reply, wait, "Too many wrong codes. Wait a while and try again.");
     }
     const [user] = await db.select().from(users).where(eq(users.id, s.user.id));

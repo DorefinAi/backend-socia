@@ -333,14 +333,15 @@ export const ownerRoutes: FastifyPluginAsyncTypebox<AppDeps & { ownerKey: string
         querystring: Type.Object(
           {
             q: Type.Optional(Type.String({ maxLength: 200 })),
-            date: Type.Optional(DateParam),
+            // Missing: today in IST, as everywhere; "all": every day still stored (contract §2, v1.1)
+            date: Type.Optional(Type.Union([DateParam, Type.Literal("all")])),
             limit: Type.Optional(Type.Integer({ minimum: 1, maximum: STORIES_MAX_LIMIT })),
           },
           { additionalProperties: false },
         ),
       },
     },
-    async (req) => opsStories(db, { q: req.query.q, day: req.query.date === undefined ? undefined : opsDay(req.query.date), limit: req.query.limit }),
+    async (req) => opsStories(db, { q: req.query.q, day: req.query.date === "all" ? undefined : opsDay(req.query.date), limit: req.query.limit }),
   );
 
   app.get(

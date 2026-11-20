@@ -53,6 +53,8 @@ export const ACTIVE_SESSIONS_MAX = 500;
 
 /** How a story failed in compose (worker stages/isolate.ts: `Could not ${stage} this file: …`) */
 const COMPOSE_FAILED_PREFIX = "Could not compose";
+/** audit_log.entity_id is text: only a uuid is joined to a draft (anything else would fail the cast) */
+const UUID_RE = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 /** A draft withdrawn by a bad re-save (worker stages/convert.ts WITHDRAWN_NOTE): the failure is the file's, not publishing's */
 const WITHDRAWN_PREFIX = "The file was saved again and can't be used: ";
 /** The worker's log messages counted here (stages/render.ts, stages/ingest.ts, stages/convert.ts) */
@@ -220,7 +222,9 @@ export async function opsSummary(db: Db, day: OpsDay, opts: OpsSummaryOptions) {
         count(DISTINCT a.entity_id) FILTER (WHERE a.action IN (${operatorActions}))::int AS acted,
         count(DISTINCT a.entity_id) FILTER (WHERE a.action IN (${postedActions}))::int AS approved,
         count(DISTINCT a.entity_id) FILTER (WHERE a.action = 'draft.reject')::int AS rejected
-      FROM audit_log a JOIN post_drafts d ON d.id::text = a.entity_id JOIN stories s ON s.id = d.story_id
+      FROM audit_log a
+        JOIN post_drafts d ON d.id = CASE WHEN a.entity_id ~* ${UUID_RE} THEN a.entity_id::uuid END
+        JOIN stories s ON s.id = d.story_id
       WHERE a.entity_type = 'post_draft' AND a.action IN (${operatorActions}) AND ${inDay("a.at")} AND ${notTrend}
     )
     SELECT o.rendered, o.render_failed, o.ingest_failed, a.acted, a.approved, a.rejected,
@@ -228,7 +232,8 @@ export async function opsSummary(db: Db, day: OpsDay, opts: OpsSummaryOptions) {
     (SELECT count(*) FROM stories s WHERE s.source = 'file' AND ${inDay("s.created_at")})::int AS from_share,
     (SELECT count(*) FROM stories s WHERE ${notTrend} AND s.file_id IS NOT NULL AND ${inDay("s.created_at")}
        AND (s.status IN ('converted', 'composed', 'archived') OR (s.status = 'failed' AND s.last_error LIKE ${`${COMPOSE_FAILED_PREFIX}%`})))::int AS converted,
-    (SELECT count(*) FROM post_drafts d JOIN stories s ON s.id = d.story_id WHERE ${notTrend} AND d.platform = 'x' AND ${inDay("d.created_at")})::int AS composed,
+    (SELECT count(*) FROM post_drafts d WHERE d.platform = 'x' AND ${inDay("d.created_at")}
+       AND (SELECT s.source FROM stories s WHERE s.id = d.story_id) <> 'trend')::int AS composed,
     (SELECT count(*) FROM stories s WHERE ${notTrend} AND s.status = 'failed' AND ${inDay("s.updated_at")}
        AND coalesce(s.last_error, '') NOT LIKE ${`${COMPOSE_FAILED_PREFIX}%`})::int AS convert_failed,
     (SELECT count(*) FROM stories s WHERE ${notTrend} AND s.status = 'failed' AND ${inDay("s.updated_at")}
@@ -247,16 +252,22 @@ export async function opsSummary(db: Db, day: OpsDay, opts: OpsSummaryOptions) {
     ) x GROUP BY h`;
 
   // Everything waiting in a stage now: worker stages whatever their day, the desk's queue for the day asked about
+  // Each branch matches an index (migration 0032): stories_status_idx, post_drafts_moving_idx, post_drafts_card_due_idx,
+  // stories_received_idx. The candidates are few; their rows are then read by primary key.
   const waitingQ = sql`WITH cand AS (
       SELECT s.id FROM stories s WHERE s.status IN ('ingested', 'converted')
       UNION
-      SELECT d.story_id FROM post_drafts d WHERE d.platform = 'x'
-        AND (d.status IN ('rendering', 'queued', 'publishing') OR (d.status IN ('ready', 'claimed') AND d.card_rendered_rev < d.card_rev))
+      SELECT d.story_id FROM post_drafts d WHERE d.platform = 'x' AND d.status IN ('rendering', 'queued', 'publishing')
       UNION
-      SELECT d.story_id FROM post_drafts d JOIN stories s ON s.id = d.story_id
-        WHERE d.platform = 'x' AND d.status IN ('ready', 'claimed') AND ${inDay("s.received_at")}
+      SELECT d.story_id FROM post_drafts d WHERE d.platform = 'x' AND d.status IN ('ready', 'claimed') AND d.card_rendered_rev < d.card_rev
+      UNION
+      SELECT s.id FROM stories s
+        CROSS JOIN LATERAL (SELECT d.status FROM post_drafts d WHERE d.story_id = s.id AND d.platform = 'x' LIMIT 1) d
+        WHERE ${inDay("s.received_at")} AND d.status IN ('ready', 'claimed')
     )
-    SELECT ${STORY_COLS} FROM ${STORY_FROM} JOIN cand c ON c.id = s.id WHERE ${notTrend}`;
+    SELECT ${STORY_COLS} FROM cand c CROSS JOIN LATERAL (SELECT * FROM stories s WHERE s.id = c.id LIMIT 1) s
+      LEFT JOIN LATERAL (SELECT * FROM post_drafts d WHERE d.story_id = s.id AND d.platform = 'x' LIMIT 1) d ON true
+      WHERE ${notTrend}`;
 
   const queueQ = sql`SELECT
       count(*) FILTER (WHERE status = 'pending')::int AS pending,
@@ -551,14 +562,27 @@ export async function opsStory(db: Db, slug: string, opts: { phase: 1 | 2; now?:
 
 // ─── GET /owner/ops/logins ───────────────────────────────────────────────────
 
-export async function opsLogins(db: Db, day: OpsDay) {
-  const [events, active] = await Promise.all([
+/**
+ * Contract §4 (v1.1): the day's attempts, newest first, at most `max`. When the day has more, every success is kept
+ * first (they are few) and the rest are the newest failures; `totals` are the day's true counts and `truncated` says
+ * the list was cut.
+ */
+export async function opsLogins(db: Db, day: OpsDay, max = LOGINS_MAX) {
+  const inDay = sql`e.at >= ${ts(day.start)} AND e.at < ${ts(day.end)}`;
+  const cols = sql.raw(`e.id AS n, e.id::text AS id, e.at, e.app, e.username, u.name, u.role, e.ip, e.user_agent, e.result`);
+  const [events, totalRows, active] = await Promise.all([
     rowsOf(
       db,
-      sql`SELECT e.id::text AS id, e.at, e.app, e.username, u.name, u.role, e.ip, e.user_agent, e.result
-        FROM login_event e LEFT JOIN users u ON u.id = e.user_id
-        WHERE e.at >= ${ts(day.start)} AND e.at < ${ts(day.end)}
-        ORDER BY e.at DESC, e.id DESC LIMIT ${LOGINS_MAX}`,
+      sql`(SELECT ${cols} FROM login_event e LEFT JOIN users u ON u.id = e.user_id
+          WHERE ${inDay} AND e.result = 'success' ORDER BY e.at DESC, e.id DESC LIMIT ${max})
+        UNION ALL
+        (SELECT ${cols} FROM login_event e LEFT JOIN users u ON u.id = e.user_id
+          WHERE ${inDay} AND e.result <> 'success' ORDER BY e.at DESC, e.id DESC LIMIT ${max})`,
+    ),
+    rowsOf(
+      db,
+      sql`SELECT count(*) FILTER (WHERE e.result = 'success')::int AS success, count(*) FILTER (WHERE e.result <> 'success')::int AS failed
+        FROM login_event e WHERE ${inDay}`,
     ),
     // Signed in now: a verified session that has not expired, of a user who may still sign in
     rowsOf(
@@ -568,8 +592,16 @@ export async function opsLogins(db: Db, day: OpsDay) {
         ORDER BY s.created_at DESC LIMIT ${ACTIVE_SESSIONS_MAX}`,
     ),
   ]);
+  const newestFirst = (a: Row, b: Row) => (dateOf(b.at)?.getTime() ?? 0) - (dateOf(a.at)?.getTime() ?? 0) || num(b.n) - num(a.n);
+  const successes = events.filter((r) => r.result === "success").sort(newestFirst).slice(0, max);
+  const failures = events.filter((r) => r.result !== "success").sort(newestFirst).slice(0, max - successes.length);
+  const kept = [...successes, ...failures].sort(newestFirst);
+  const t = totalRows[0] ?? {};
+  const totals = { success: num(t.success), failed: num(t.failed) };
   return {
-    events: events.map((r) => ({
+    totals,
+    truncated: totals.success + totals.failed > kept.length,
+    events: kept.map((r) => ({
       id: String(r.id),
       at: isoOf(r.at),
       app: String(r.app),

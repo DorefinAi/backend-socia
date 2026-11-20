@@ -685,7 +685,9 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
       if (fileLookalike(d.handle, governed) !== null) return;
       const pick: HandlePick = { handle: d.handle, reason: "desk", title: d.title };
       if (!d.settings) {
-        if (!exclusive) deskPicks.push(pick);
+        // A learned keyword not yet on two posted stories: offered, on any class
+        if (d.suggestOnly) suggested.push(pick);
+        else if (!exclusive) deskPicks.push(pick);
       } else if (emits && !d.settings.suggestOnly) deskPicks.push(pick);
       else suggested.push(pick);
     };

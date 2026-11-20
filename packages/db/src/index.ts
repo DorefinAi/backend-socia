@@ -5,6 +5,7 @@ export * from "./events";
 export * from "./audit";
 export * from "./kv";
 export * from "./desk";
+export * from "./learn";
 export * from "./queue";
 export * from "./migrate";
 export * from "./pipeline";

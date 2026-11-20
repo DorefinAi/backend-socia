@@ -16,6 +16,7 @@ import { HttpError, guard, requirePermission, type SessionUser } from "../auth";
 import { jpegSize, pngSize } from "../image-size";
 import type { AppDeps } from "../app";
 import { ReporterHandles } from "../handle-keywords";
+import { PostedTagLearning } from "../tag-learning";
 import { NOT_A_CHECK, breakingFields, cardUrl, draftView, shownReceivedAt, storyLabels } from "../views";
 import { etagOnSend } from "../etag";
 
@@ -152,6 +153,9 @@ const postTextFields = (text: string) => ({ postText: text, length: xLen(text) }
 export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, storage, config }) => {
   /** The desk's own reporters (apps/worker/config/reporter-handles.json), re-read when the file changes */
   const reporters = new ReporterHandles(app.log);
+  /** The desk's handles and hashtags learn from each post (core learn.ts); the data files they are checked against */
+  const tagLearning = new PostedTagLearning(app.log);
+  const postOptions = async () => ({ learner: await tagLearning.learner(), log: app.log });
 
   /** Phase 1 posts by hand: nothing that would reach the X API is accepted */
   const xApiOff = () => {
@@ -620,7 +624,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
       const permalink = req.body.permalink.trim();
       const match = X_PERMALINK.exec(permalink);
       if (!match) throw new HttpError(400, "invalid", "Paste the post's link from X, like https://x.com/<account>/status/<number>.");
-      const post = await markPosted(db, actor(user), req.params.id, req.body.version, { platformPostId: match[3]!, permalink });
+      const post = await markPosted(db, actor(user), req.params.id, req.body.version, { platformPostId: match[3]!, permalink }, await postOptions());
       return { postId: post.id, permalink: post.permalink };
     },
   );
@@ -632,7 +636,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
   app.post("/drafts/:id/copy-posted", { schema: { params: Id, body: Type.Object({ version: Type.Integer() }) } }, async (req) => {
     const { user } = guard(req);
     requirePermission(user, "post.mark_posted", "x");
-    return copyPosted(db, actor(user), req.params.id, req.body.version);
+    return copyPosted(db, actor(user), req.params.id, req.body.version, await postOptions());
   });
 
   app.post("/drafts/:id/copy-posted/undo", { schema: { params: Id } }, async (req) => {
@@ -666,7 +670,7 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
     const { user } = guard(req);
     xApiOff();
     requirePermission(user, "post.publish", "x");
-    const { job } = await approveDraft(db, actor(user), req.params.id, req.body.version);
+    const { job } = await approveDraft(db, actor(user), req.params.id, req.body.version, await postOptions());
     return { jobId: job.id, sendAt: job.nextAttemptAt };
   });
 

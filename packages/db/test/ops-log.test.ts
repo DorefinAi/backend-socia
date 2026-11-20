@@ -241,6 +241,10 @@ describe("the sink", () => {
   });
 
   it("prunes lines after 14 days and heartbeats after 7", async () => {
+    // Starts empty: the lines an earlier test wrote carry fixed dates (6 Nov 2026), which this prune removes once
+    // they are 14 days old, so counting them made the test fail from 20 Nov on
+    await h.db.execute(sql`DELETE FROM ops_log`);
+    await h.db.execute(sql`DELETE FROM ops_heartbeat`);
     await h.db.execute(sql`INSERT INTO ops_log (at, system, level, message) VALUES (now() - interval '15 days', 'socia-api', 'info', 'old'), (now() - interval '13 days', 'socia-api', 'info', 'kept')`);
     await h.db.execute(sql`INSERT INTO ops_heartbeat (process, system, host, pid, started_at, beat_at) VALUES ('gone', 'socia-api', 'h', 1, now() - interval '9 days', now() - interval '8 days')`);
     expect(await pruneOps(h.db)).toEqual({ lines: 1, heartbeats: 1 });

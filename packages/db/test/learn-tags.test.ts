@@ -86,7 +86,7 @@ run("learning from posted breaking stories", () => {
     expect(r.aliases.map((k) => [k, deskKeywordAuto(r, k)])).toEqual([["Jaipur", false], ["जयपुर", false], ["चाकसू", true]]);
   });
 
-  it("typed hashtags become topic rules at once; footer, offered and an editor's own tags do not", async () => {
+  it("typed hashtags become topic rules at once (an unknown one off until its 2nd story); footer, offered and an editor's own tags do not", async () => {
     const before = await dictionaryFingerprint(h.db, s.org.id);
     const d = await breaking("जैसलमेर में चुनाव", "", "Jaisalmer", [], ["#RajasthanWithFirstIndia", "#Jaisalmer", "#JaswantYadav", "#jaipur", "#BombThreat", "#RajasthanWithFirstIndiaJaipurPolice"], ["#BombThreat"]);
     await copyPosted(h.db, s.priya, d.id, d.version, { learner });
@@ -95,7 +95,8 @@ run("learning from posted breaking stories", () => {
     await copyPosted(h.db, s.priya, bare.id, bare.version, { learner });
 
     expect(await rule("Jaisalmer")).toMatchObject({ matchType: "entity", name: "Jaisalmer", aliases: ["जैसलमेर"], active: true, priority: 1 });
-    expect(await rule("JaswantYadav")).toMatchObject({ name: "Jaisalmer", aliases: ["जैसलमेर", "Jaswant", "Yadav"], active: true });
+    // A tag naming no known place or subject is saved with its keywords but offered only from its second story
+    expect(await rule("JaswantYadav")).toMatchObject({ name: "Jaisalmer", aliases: ["जैसलमेर", "Jaswant", "Yadav"], active: false });
     expect(await rule("RCA")).toMatchObject({ name: "RCA", aliases: [], active: false });
     // The editor's Jaipur rule is the only one for #jaipur; nothing for the footer run-on or the offered tag
     expect(await h.db.select().from(hashtagRules).where(eq(hashtagRules.hashtagLatin, "jaipur"))).toEqual([]);
@@ -114,7 +115,8 @@ run("learning from posted breaking stories", () => {
     const d = await breaking("जयपुर में क्रिकेट", "", "Jaipur", [], ["#RCA", "#JaswantYadav"]);
     await copyPosted(h.db, s.priya, d.id, d.version, { learner });
     expect(await rule("RCA")).toMatchObject({ name: "Jaipur", aliases: ["जयपुर"], active: true });
-    expect((await rule("JaswantYadav"))!.aliases).toEqual(["जैसलमेर", "Jaswant", "Yadav", "Jaipur", "जयपुर"]);
+    // Its second story: now offered
+    expect(await rule("JaswantYadav")).toMatchObject({ aliases: ["जैसलमेर", "Jaswant", "Yadav", "Jaipur", "जयपुर"], active: true });
 
     // An editor edits the Jaisalmer rule in Settings: from then on it is theirs
     const jaisalmer = (await rule("Jaisalmer"))!;

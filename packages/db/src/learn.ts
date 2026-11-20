@@ -7,7 +7,8 @@
 //     official's, a reporter's). verified_at is bumped so the worker's dictionary fingerprint reloads the rows.
 //   - A hashtag an editor typed that no rule offered becomes an active topic rule (match_type "entity"), or adds to
 //     the one this loop made for it before; never a footer tag, never a second rule for a tag an editor's rule has
-//     (any case). A tag with nothing to match on is saved inactive. hashtag_staging keeps its row; promoted_at is set.
+//     (any case). A tag with nothing to match on is saved inactive, and one that names no known place or subject stays
+//     inactive until it has gone out on UNKNOWN_TAG_POSTS (2) different stories. hashtag_staging keeps its row; promoted_at is set.
 //
 // Every change is audited (handle.keywords_learned, hashtag.rule_learned). It all runs in a savepoint: if learning
 // fails, the post still goes out and the failure is logged.
@@ -146,6 +147,21 @@ async function learnedRule(tx: Executor, orgId: string, rules: (typeof hashtagRu
   return rules.find((r) => actions.some((a) => a.id === r.id && a.action === "hashtag.rule_learned") && !actions.some((a) => a.id === r.id && a.action.startsWith("hashtag_rule."))) ?? null;
 }
 
+/**
+ * A tag that names no known district, place or subject is offered only once it has gone out on this many different
+ * stories (owner, 20 Nov 2026): one-off typos (#bbhbh) are saved but stay off. A known one is offered after one post.
+ */
+export const UNKNOWN_TAG_POSTS = 2;
+
+/** The different drafts this loop has learned a rule from (its hashtag.rule_learned audit rows), plus this one */
+async function rulePosts(tx: Executor, orgId: string, ruleId: string, draftId: string): Promise<number> {
+  const rows = await tx
+    .select({ draftId: sql<string | null>`${auditLog.after}->>'draftId'` })
+    .from(auditLog)
+    .where(and(eq(auditLog.orgId, orgId), eq(auditLog.entityType, "hashtag_rule"), eq(auditLog.entityId, ruleId), eq(auditLog.action, "hashtag.rule_learned")));
+  return new Set([...rows.map((r) => r.draftId).filter((d): d is string => !!d), draftId]).size;
+}
+
 async function learnHashtags(tx: Executor, who: LearnWho, draft: Draft, names: string[], learner: PostedLearner, report: LearnedReport): Promise<void> {
   for (const [tagKey, tag] of typedHashtags(draft)) {
     if (isFooterTag(tag)) {
@@ -162,10 +178,12 @@ async function learnHashtags(tx: Executor, who: LearnWho, draft: Draft, names: s
         report.tags.push({ tag, action: "duplicate", active: existing.some((r) => r.active), keywords: [], ruleId: existing[0]!.id });
         continue;
       }
-      // A rule saved inactive has no keywords yet: its name is only the tag
-      const had = rule.active ? [rule.name, ...rule.aliases] : rule.aliases;
+      // A rule saved with no keywords has only the tag as its name; any other name is its first keyword (an unknown tag
+      // waiting for its second story is inactive but already has keywords)
+      const nameIsTag = !rule.active && rule.aliases.length === 0 && rule.name.toLowerCase() === bare(tag).toLowerCase();
+      const had = nameIsTag ? [] : [rule.name, ...rule.aliases];
       const { keywords, added } = mergeKeywords(had, fresh.keywords, MAX_RULE_KEYWORDS);
-      const active = keywords.length > 0;
+      const active = keywords.length > 0 && (fresh.known || (await rulePosts(tx, who.orgId, rule.id, draft.id)) >= UNKNOWN_TAG_POSTS);
       if (!added.length && active === rule.active) {
         report.tags.push({ tag, action: "unchanged", active, keywords, ruleId: rule.id });
         continue;
@@ -183,7 +201,8 @@ async function learnHashtags(tx: Executor, who: LearnWho, draft: Draft, names: s
       continue;
     }
     const keywords = fresh.keywords;
-    const active = keywords.length > 0;
+    // A first post: a known tag is offered at once; any other waits for its second story (UNKNOWN_TAG_POSTS)
+    const active = keywords.length > 0 && (fresh.known || UNKNOWN_TAG_POSTS <= 1);
     const text = bare(tag);
     const [row] = await tx
       .insert(hashtagRules)

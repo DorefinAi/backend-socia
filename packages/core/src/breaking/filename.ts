@@ -186,14 +186,21 @@ export function isNationalFlash(tags: Pick<FileTags, "other"> | null | undefined
 const BREAKING_WORD = /breaking|braking|breking|break/;
 
 /**
+ * BLAST as a word of the file name: the TV's full-screen "blast" items ("..._FULL_SCREEN_6_30PM_BLAST", 17 files
+ * on 18 Nov, 23 on 19 Nov). Not for the desk (owner, 20 Nov 2026). The file name only: an explosion story
+ * (ब्लास्ट in the text) still comes in.
+ */
+const BLAST_WORD = /(?:^|[^a-z])blast(?:[^a-z]|$)/;
+
+/**
  * Only BREAKING files (the national flash, nat_flash_rj_breaking_... / nat_fash_..., included: the desk wants
- * them in the queue, owner 15 Nov 2026), never SCROLL, never "x.txtbtn_...".
+ * them in the queue, owner 15 Nov 2026), never SCROLL, never BLAST, never "x.txtbtn_...".
  */
 export function isBreakingFileName(fileName: string): boolean {
   const base = (fileName.split(/[\\/]/).pop() ?? fileName).normalize("NFC");
   if (!/\.txt$/i.test(base)) return false;
   const lower = base.toLowerCase();
-  if (!BREAKING_WORD.test(lower) || lower.includes("scroll")) return false;
+  if (!BREAKING_WORD.test(lower) || lower.includes("scroll") || BLAST_WORD.test(lower)) return false;
   // "x.txtbtn_..." is a mis-saved double name: skip it rather than guess which half is the story
   return lower.indexOf(".txt") === lower.length - 4;
 }

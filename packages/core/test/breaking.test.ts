@@ -39,6 +39,10 @@ describe("breaking file names", () => {
     expect(isBreakingFileName("nat_fash_rj_breaking_602.txt")).toBe(true);
     expect(isBreakingFileName("दnat_flash_rj_breaking_603.txt")).toBe(true);
     expect(isBreakingFileName("nat_flash_rj_scroll_604.txt")).toBe(false);
+    // The TV's full-screen BLAST items stay off the desk (owner, 20 Nov 2026); only BLAST as a word of the name
+    expect(isBreakingFileName("BTN_RJ_BREAKING_2401_19NOV_VT_CONTROL_PHOTO_BIG_BREAK_FULL_SCREEN_6_30PM_BLAST.txt")).toBe(false);
+    expect(isBreakingFileName("btn_rj_breaking_7001_20nov_blast_big.txt")).toBe(false);
+    expect(isBreakingFileName("BTN_RJ_BREAKING_2402_19NOV_VT_CONTROL_BLASTER_big.txt")).toBe(true);
     expect(isBreakingFileName("BTN_RAJ_BREAKING_1.odt")).toBe(false);
     expect(isBreakingFileName("BTN_RJ_BRAKING_2001_29OCT.txt")).toBe(true);
     expect(isBreakingFileName("BTN_RJ_BREKING_2001_29OCT.txt")).toBe(true);

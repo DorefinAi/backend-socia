@@ -8,6 +8,7 @@ import {
   approveDraft, assets, capUsage, cardState, claimDraft, clearCustomCard, clearExpiredCorrectionHolds, copyPosted, endCorrection, extendClaim, ingestedFiles, markPosted, postDrafts, postedTodayIst, postedView, publishedPosts,
   rejectDraft, releaseDraft, requestCardRender, requestRecall, restoreDraft, retryFailed, setCustomCard, startCorrection, stories, undoCopyPosted, undoPost, updateDraft,
   users, type Actor, type CorrectionRights,
+  type DraftHandlePick,
 } from "@socia/db";
 import { Type, type FastifyPluginAsyncTypebox, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import { and, count, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
@@ -251,6 +252,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
           images: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'image')`,
           videos: sql<number>`(SELECT count(*)::int FROM ${assets} WHERE ${assets.storyId} = ${stories.id} AND ${assets.kind} = 'video')`,
           headline: stories.headline,
+          /** b9: line 1's and the card's place (handle_pick.headingPlace); null on drafts composed before b9 */
+          headingPlace: sql<DraftHandlePick["headingPlace"] | null>`${postDrafts.handlePick}->'headingPlace'`,
           /** The story's points, one per line: the card text (bodyText is the tweet) */
           storyBody: slim ? sql<string | null>`NULL` : stories.body,
           receivedAt: stories.receivedAt,
@@ -303,6 +306,8 @@ export const deskRoutes: FastifyPluginAsyncTypebox<AppDeps> = async (app, { db, 
               /** The story's name for the editor link (?story=) and downloaded files, instead of the draft id */
               ...storyLinkName({ district: r.district, headline: r.headline, receivedAt: r.linkAt }),
               headline: r.headline,
+              /** The card heading's place, decided with line 1 (b9); null before b9: the card then works it out from district and town */
+              headingPlace: r.headingPlace ?? null,
               ...(!slim && { bodyText: r.bodyText, storyBody: r.storyBody ?? "" }),
               // On the share's clock, which can run a few seconds ahead: never shown in the future
               receivedAt: shownReceivedAt(r.receivedAt, now),

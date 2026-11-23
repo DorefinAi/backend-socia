@@ -10,6 +10,7 @@
 // assemblePostText() puts them together exactly as the desk copies it. Always within X's 280 (weighted).
 
 import { fold } from "../fold";
+import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 import { assemblePostText, cutOnGraphemes, cutOnWords } from "../compose";
 import type { HashtagGazetteer } from "../hashtags";
 import { xLen } from "../xtext";
@@ -20,7 +21,8 @@ import { EMPTY_PARTY_RULES, partyOfLeader, type PartyRules } from "./parties";
 import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, type ReporterMatch, type ReporterRules } from "./reporters";
 import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
-import { deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, type DistrictFrom } from "./parse";
+import { PARTY, deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, withoutRoutesAndBuildings, type DistrictFrom } from "./parse";
+import { openingPlaceLength, placeWordInCompound } from "./place-match";
 import {
   EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, isDevanagari, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand, electionOf,
   BRAND_RAJASTHAN, type PlaceKind, type PlaceKindLookup, type Sourced, type SuggestRules, type TagNormaliser,
@@ -33,6 +35,83 @@ import { mergeHandleTypes, type HandleType } from "./handle-types";
 
 /** A headline that starts with the desk's own hashtags and a colon ("#BJP:", "#Congress #Kota:") */
 const DESK_TAG_RUN = /^(?:#\S+\s*){1,3}[:：]/u;
+/** The headline's first word: letters, marks and digits */
+const OPENING_WORD = /^[\p{L}\p{M}\p{N}]+/u;
+
+/**
+ * The districts' other Latin names (rajasthan.ts aliases: "Didwana", "Kuchaman", "Khairthal", "Ganganagar", "Jalor"...),
+ * folded. The places file tags a district by one name only ("#DidwanaKuchaman"), but the desk writes these too (#Didwana
+ * on 40 of its own posts, Sep–Nov): such a tag is a city the desk wrote. Read ONLY to tell whether the copy already
+ * carries a city (b9 rule 1) and to keep a reporter's desk rule off it; the parser and the handle rules do not see it.
+ */
+const DISTRICT_TAG_ALIASES = new Set(
+  RAJASTHAN_DISTRICTS.flatMap((d) => d.aliases.filter((a) => /^[A-Za-z]/.test(a)).map((a) => fold(a).replace(/[\s_-]+/g, ""))),
+);
+/** R1: the first Rajasthan district the text window names, with the parser's own guards (routes and buildings are not places) */
+function windowDistrict(book: PlaceBook, lines: readonly string[]): DistrictInfo | null {
+  for (const line of lines) {
+    const d = inferHeadlineDistrict(book, line);
+    if (d?.rajasthan) return d;
+  }
+  return null;
+}
+
+/** R8: a place's name as the card shows it: a national one with its spaces ("UttarPradesh" → "Uttar Pradesh") */
+export function cardName(info: DistrictInfo): string {
+  return info.rajasthan ? info.name : info.name.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+/** Every spelling of a district or national place: the places file's, and rajasthan.ts's other names ("Didwana", "बांसवाडा") */
+export function placeSpellings(book: PlaceBook, info: DistrictInfo): string[] {
+  const own = RAJASTHAN_DISTRICTS.find((d) => d.name === info.name);
+  return [...book.spellingsOf(info.name), info.name, info.tag, info.hi, ...(own ? [own.hi, ...own.aliases] : [])];
+}
+
+/**
+ * The first place a national story's text names (D4, 23 Nov 2026), an outside one included: "दिल्ली के द्वारका में…" →
+ * Delhi, "पटना में…" → Patna; a town gives its district. Routes and buildings are not places ("जयपुर-दिल्ली हाईवे").
+ */
+function textPlace(book: PlaceBook, lines: readonly string[]): DistrictInfo | null {
+  for (const line of lines) {
+    for (const m of book.find(withoutRoutesAndBuildings(line))) {
+      const d = m.entry.data.districts;
+      if (d.length === 1) return d[0]!;
+    }
+  }
+  return null;
+}
+
+/**
+ * Hindi words that are a party, a topic or an institution, never a place, though a desk may lead with them ("#भाजपा:",
+ * "#सुप्रीमकोर्ट:"): Q2 (owner, 23 Nov 2026). Compared folded, without spaces.
+ */
+const NOT_PLACE_WORDS = new Set(
+  [
+    "भाजपा", "बीजेपी", "कांग्रेस", "आप", "बसपा", "सपा", "रालोपा", "सुप्रीमकोर्ट", "हाईकोर्ट", "उच्चन्यायालय", "कोर्ट", "अदालत", "पुलिस",
+    "सरकार", "राजस्थानसरकार", "केंद्रसरकार", "विधानसभा", "लोकसभा", "राज्यसभा", "संसद", "चुनाव", "मतदान", "पंचायतचुनाव", "मौसम",
+    "बारिश", "हादसा", "अपराध", "राजनीति", "खेल", "क्रिकेट", "शिक्षा", "स्वास्थ्य", "कृषि", "किसान", "बजट", "नौकरी", "भर्ती", "परीक्षा",
+    "रिजल्ट", "धर्म", "त्योहार", "दीपावली", "होली", "मुख्यमंत्री", "मंत्री", "कलेक्टर", "एसीबी", "ईडी", "सीबीआई", "राजस्थान",
+  ].map((w) => fold(w).replace(/\s+/g, "")),
+);
+
+/**
+ * Q2: a hashtag the desk wrote is its city when it names a place the places file knows, in any spelling (a district,
+ * town or outside place), or when it is a single unknown Hindi word leading line 1's run before the colon ("#आकोला:")
+ * that is not a party, topic or label word. "#भाजपा" and "#सुप्रीमकोर्ट" never are.
+ */
+export function deskPlaceTag(book: PlaceBook, tag: string, inLeadRun: boolean, labels: readonly string[] = HEADLINE_LABEL_WORDS): boolean {
+  if (knownPlaceTag(book, tag) || book.isPlaceName(tag)) return true;
+  if (!inLeadRun || !isDevanagari(tag)) return false;
+  const key = fold(tag).replace(/\s+/g, "");
+  return !NOT_PLACE_WORDS.has(key) && !PARTY.test(tag) && !isHeadlineLabel(tag, labels);
+}
+
+/** A hashtag naming a place: one the places file knows, or a district's other Latin name ("#Didwana", "#KhairthalNews") */
+function knownPlaceTag(book: PlaceBook, tag: string): boolean {
+  if (placeOfTag(book, tag) !== null) return true;
+  const key = fold(tag).replace(/[\s_-]+/g, "");
+  return DISTRICT_TAG_ALIASES.has(key) || DISTRICT_TAG_ALIASES.has(key.replace(/news$/, ""));
+}
 export const RAJASTHAN_FOOTER = "#RajasthanWithFirstIndia";
 export const NATIONAL_FOOTER = "#FirstIndiaNews";
 /** A cut headline ends with three dots (line 2 ends with "..." or "....": breakingDots) */
@@ -51,8 +130,57 @@ export const BREAKING_CUT = "...";
  * b8: line 2 the desk's length (100–130 with its dots, crispPoints) whatever the headline, cut to withhold the
  *     payoff, then "..." or "...."; the post may go past 280 (the desk posts by hand; "Fit to 280" in the editor
  *     makes a post fit), up to BREAKING_POST_MAX; a line 2 that would be under BREAKING_BODY_FLOOR is dropped.
+ * b9: the city (owner rules, 23 Nov 2026, SOCIA_HEADING_GAPS_AND_PLAN): every post carries a city hashtag (the city chain in
+ *     composeBreaking, ending in #Jaipur), and line 1 never names its city twice — a headline that opens with line 1's town
+ *     takes the tag in place of the word ("#Bundi #नैनवां में…"), one that opens with line 1's district moves the
+ *     district tag to the tag line, as the desk writes both. One place decision (headingPlace) for line 1 and the card.
  */
-export const BREAKING_FORMAT = "b8";
+export const BREAKING_FORMAT = "b9";
+
+/**
+ * The head office: the city a post gets when nothing else names one (owner rule 1, 23 Nov 2026). On 15–22 Nov the
+ * desk itself put #Jaipur on 108 of the 214 posted stories that named no district.
+ */
+export const HEAD_OFFICE_DISTRICT = "Jaipur";
+
+/**
+ * Whether a post with no stated place takes the district its copy names (inferred: the headline's, or the first
+ * points') as its city, in the TAG LINE, before the file code and the head office. Owner decision D2 (23 Nov
+ * 2026): ON. The plan had no such step (a place found only in the text stays offered, b7), but measured on the 1,689
+ * stories posted 15–22 Nov it beats the head office: with it the post's city equals the desk's on 1,454 posts
+ * (without: 1,413), and a city the desk did not use goes on 43 posts (without: 84). It never leads line 1 and never
+ * picks a handle. false: such a post gets the file code or #Jaipur, and the inferred district is offered as before.
+ */
+export const CITY_FROM_COPY_TEXT = true;
+
+/** Where line 1's city came from (HeadingPlace.source) */
+export type HeadingSource = "desk" | "copy" | "reporter_rule" | "file_code" | "inferred" | "fallback" | "none";
+/**
+ * Where the city tag sits: `lead` "#District #Town: <headline>", `inline` the town tag in place of the headline's
+ * first word ("#Bundi #नैनवां में…"), `trailing` in the tag line, `copy` the desk's own tag in the copy, `none`.
+ */
+export type HeadingPlacement = "lead" | "inline" | "trailing" | "copy" | "none";
+
+/**
+ * The ONE place decision behind line 1 and the card heading (plan step 1): the card never works its place out again.
+ * Stored on the draft (handle_pick.headingPlace).
+ */
+export interface HeadingPlace {
+  /** The city tags the composer put on the post, as written there ("#Bundi", "#नैनवां") */
+  tags: string[];
+  /** The city's English district or national place ("Bundi", "Delhi"), null when the composer added none */
+  district: string | null;
+  /** The Hindi town in line 1, if any */
+  town: string | null;
+  source: HeadingSource;
+  placement: HeadingPlacement;
+  /**
+   * The place the card heading starts with (D1): the town in Hindi when the post carries one, else the district's or
+   * national place's name ("नैनवां", "Jodhpur", "Uttar Pradesh"), for lead, inline and trailing alike; the card drops the
+   * word when the headline opens with it. Null for `copy` (the card reads the desk's own tag run) and `none`.
+   */
+  card: string | null;
+}
 
 export interface BreakingComposeInput {
   headline: string;
@@ -160,6 +288,10 @@ export interface BreakingDraft {
    * reporter's desk rule (a hashtag only: it chose no handle), null when line 1 carries none
    */
   districtSource: string | null;
+  /** Line 1's and the card's place (b9) */
+  headingPlace: HeadingPlace;
+  /** D4: a national story whose copy names no place carries no city; the worker flags the story "no_city" */
+  noCity: boolean;
 }
 
 /** "#बड़ीसादड़ी": spaces and punctuation out, Devanagari marks kept */
@@ -553,7 +685,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // ("#Jaipur: #BJP: ..."), the text's district is still offered, and the desk's tags stay where it wrote them. A Hindi
   // tag in the run counts as a place, known or not ("#आकोला:"): the desk writes its towns that way.
   const deskRunMatch = DESK_TAG_RUN.exec(headline);
-  const deskRun = !!deskRunMatch && [...deskRunMatch[0].matchAll(HASHTAG)].some((m) => m[1] !== undefined && (isDevanagari(m[1]) || placeOfTag(book, m[1]) !== null));
+  const deskRun = !!deskRunMatch && [...deskRunMatch[0].matchAll(HASHTAG)].some((m) => m[1] !== undefined && deskPlaceTag(book, m[1], true, headlineLabels));
   // A reporter's desk rule (reporter-prior brief §4): rituraj's post that names no district goes out as "#Jaipur:".
   // It means "filed from the Jaipur desk", not "happened in Jaipur" (his Jodhpur panchayat story went out as
   // #JaipurNews), so it is a line-1 hashtag and NOTHING ELSE: it was not in the picker's district above, never
@@ -569,7 +701,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   }
   // A place hashtag anywhere, "#<Place>News" included (#JodhpurNews, #DelhiNews, #जोधपुरन्यूज़): the desk wrote the place.
   // The same reading as the parser's headline district tags (parse.ts placeOfTag)
-  const placeTagged = [story.rawHeadline ?? story.headline, ...story.points].some((line) => [...line.matchAll(HASHTAG)].some((m) => m[1] !== undefined && placeOfTag(book, m[1]) !== null));
+  const placeTagged = [story.rawHeadline ?? story.headline, ...story.points].some((line) => [...line.matchAll(HASHTAG)].some((m) => m[1] !== undefined && deskPlaceTag(book, m[1], false, headlineLabels)));
   // A place the desk wrote before the headline's colon, known or not ("रामपुरा खुर्द: ..."), that is not a label
   // ("बड़ी खबर:", "पंचायत चुनाव:"). The parser drops an unknown two-word prefix from the headline; it still blocks.
   const prefixPlace = deskPlacePrefix(book, story.rawHeadline ?? story.headline);
@@ -624,7 +756,120 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // A tag the headline already carries without a colon ("#Jaipur जयपुर में…", "…#JaipurNews") is not added again
   // in front of it (desk fixes 14 Nov, point 6)
   const headlineTagKeys = copyTagKeys(book, [headline]);
-  const tags = [lineOne ? `#${lineOne.tag}` : "", townTag].filter((t) => t && !tagKeys(book, t).some((k) => headlineTagKeys.has(k)));
+  let tags = [lineOne ? `#${lineOne.tag}` : "", townTag].filter((t) => t && !tagKeys(book, t).some((k) => headlineTagKeys.has(k)));
+
+  // ── The city (b9, owner rules and decisions of 23 Nov 2026) ──
+  // Rule 1: every post carries at least one city hashtag, in this order (the first that applies wins):
+  //   1. a place the desk wrote: line 1's stated district or town, its own tag run, a place prefix before the colon,
+  //      a place hashtag anywhere in the copy, known or unknown ("#आकोला", "#Didwana"), or a stored district of unknown
+  //      provenance (a row before migration 0023): no guess below applies;
+  //   2. an outside place the desk tagged (a place hashtag, as in 1);
+  //   3. the reporter's desk rule (a video post's too);
+  //   4. the file name's district code (a state bureau's included: a TAG only, it picked no handle above);
+  //   5. the district the text names (CITY_FROM_COPY_TEXT), in the tag line;
+  //   6. #Jaipur (the head office), in the tag line, for a Rajasthan story only.
+  // A national story (#FirstIndiaNews) skips 4 and 6: after 3 it takes the first place its text names, an outside one
+  // included (#Delhi, #Bihar), and with none it carries NO city: the draft says so (noCity) and offers the three likeliest.
+  const video = isVideoHeadline(headline);
+  // B1: the desk's own tag run is line 1 as written, so a stated district never reaches line 1 beside it
+  if (deskRun) tags = [];
+  const legacy = district?.provenance === "inferred" && district.from === "legacy" ? district.value : null;
+  const deskPlace = deskRun || placeTagged || prefixTagged;
+  const trailing: string[] = [];
+  let placement: HeadingPlacement = tags.length ? "lead" : deskPlace ? "copy" : "none";
+  let source: HeadingSource = tags.length ? (place || !lineOne ? "desk" : "reporter_rule") : placement === "copy" ? "copy" : "none";
+  let cityInfo: DistrictInfo | null = tags.length ? lineOne : null;
+  let noCity = false;
+  const cityOffers: TagSuggestion[] = [];
+  if (placement === "none") {
+    const code = book.district(story.fileDistrict);
+    // R1 (owner, 23 Nov 2026): a bureau reporter (Navin: no district of his own, or marked bureau) files every district
+    // under one code, so the district the text names (headline and first two points, parse's window) comes before it.
+    // For a district reporter the file code still wins.
+    const bureau = !!reporter && (!!reporter.bureau || reporter.districts.length === 0);
+    const inferredText = district?.provenance === "inferred" && (district.from === "headline" || district.from === "text") ? district.value : null;
+    const guess = inferredText ?? (bureau ? windowDistrict(book, [headline, ...story.points.slice(0, 2)]) : null);
+    const head = book.district(HEAD_OFFICE_DISTRICT);
+    // A national story's city is a place its text names, an outside one included ("दिल्ली के द्वारका में…" → #Delhi)
+    const named = rajasthan ? null : textPlace(book, [headline, ...story.points]);
+    // Step 4 (owner, 23 Nov 2026): a file code reaching here is one storyDistrict did not trust (a bureau reporter such as
+    // Navin, filing every district under JPR, or a code not among the reporter's districts). It is the city only when the
+    // text names no district: "डूंगरपुर में ACB कार्रवाई" under JPR is #Dungarpur (as the desk wrote it); Navin's IAS stories,
+    // naming none, stay "#Jaipur:" (3 of 3 as the desk wrote them, 15–22 Nov). Measured on 1,689 posts: no other change.
+    const fileCodeCity = bureau && guess && CITY_FROM_COPY_TEXT ? null : code;
+    const pick: [DistrictInfo, HeadingSource] | null = legacy
+      ? [legacy, "desk"]
+      : policy
+        ? [policy.district, "reporter_rule"]
+        : rajasthan
+          ? fileCodeCity
+            ? [fileCodeCity, "file_code"]
+            : guess && CITY_FROM_COPY_TEXT
+              ? [guess, "inferred"]
+              : head
+                ? [head, "fallback"]
+                : null
+          : named && CITY_FROM_COPY_TEXT
+            ? [named, "inferred"]
+            : null;
+    if (pick) {
+      [cityInfo, source] = pick;
+      const tag = `#${cityInfo.tag}`;
+      // A video post takes no leading tag. The reporter's desk rule and the file code lead line 1, as the desk wrote them
+      // (Navin's JPR files went out "#Jaipur: ..."); a district from the text, a stored one of unknown provenance and the
+      // head office go in the tag line (as a lead, the head office matched the desk's line 1 on 126 fewer of 1,689 posts)
+      const lead = !video && (source === "reporter_rule" || source === "file_code");
+      if (lead) {
+        tags = [tag];
+        placement = "lead";
+      } else {
+        trailing.push(tag);
+        placement = "trailing";
+      }
+    } else if (!rajasthan) {
+      // D4: no place anywhere: no city on the post, the draft is flagged, and the three likeliest are offered
+      noCity = true;
+      const likely = [...(reporter?.districts ?? []), story.fileDistrict ?? "", "Delhi", HEAD_OFFICE_DISTRICT]
+        .map((n) => book.district(n))
+        .filter((d): d is DistrictInfo => !!d)
+        .filter((d, i, all) => all.findIndex((x) => x.name === d.name) === i)
+        .slice(0, 3);
+      for (const d of likely) cityOffers.push({ tag: `#${d.tag}`, source: "district.city.candidate", reason: `a national story naming no place: ${d.name} is one of the likeliest (one click)` });
+    }
+  }
+  // Rule 3: line 1 never names its city twice (the desk, Sep–Nov exports: a town tag in place of the word 62 times to 6
+  // doubled; a headline opening with its district has the district tag in the tag line 221 times to 3 doubled, and 81
+  // to 34 on 15–22 Nov). Spelling-tolerant (place-match.ts): "नैनवा" = "नैनवां", "बड़ी सादड़ी" = "बड़ीसादड़ी".
+  let inlineLine: string | null = null;
+  if (placement === "lead" && tags.length) {
+    const last = tags.at(-1)!;
+    const townOpening = last === townTag ? openingPlaceLength(headline, [story.town ?? "", townTag.slice(1), book.hashtag(townTag.slice(1))?.hi ?? ""]) : 0;
+    const first = tags[0] === townTag ? null : tagPlace(book, tags[0]!.slice(1));
+    const districtOpening = first && first.kind !== "town" && first.districts[0] ? openingPlaceLength(headline, placeSpellings(book, first.districts[0])) : 0;
+    if (townOpening && !placeWordInCompound(headline, townOpening)) {
+      // "#Bundi #नैनवां में मां कंकाली…": the town tag in place of the word, the rest as written
+      inlineLine = `${tags.join(" ")}${headline.slice(townOpening)}`;
+      placement = "inline";
+    } else if (districtOpening) {
+      // "टोंक में अवैध खनन…": no leading tag, the headline as written, the city (and a town with it) in the tag line
+      trailing.push(...tags);
+      tags = [];
+      placement = "trailing";
+    }
+  }
+  if (trailing.length) hashtags.splice(1, 0, ...trailing.filter((t) => !hashtags.some((h) => h.toLowerCase() === t.toLowerCase())));
+  const written = placement === "lead" || placement === "inline" ? tags : placement === "trailing" ? trailing : [];
+  const townWritten = !!townTag && written.includes(townTag);
+  const headingPlace: HeadingPlace = {
+    tags: [...written],
+    district: placement === "copy" || placement === "none" ? null : (cityInfo?.name ?? null),
+    town: townWritten ? (story.town ?? null) : null,
+    source,
+    placement,
+    // D1: the card always leads with the post's city: its town in Hindi when line 1 or the tag line carries one, else the
+    // district's (or national place's) English name. The desk's own place (copy) is read by the card itself.
+    card: placement === "copy" || placement === "none" ? null : townWritten ? townTag.slice(1) : cityInfo ? cardName(cityInfo) : null,
+  };
 
   // ── added after every rule above has finished, as suggestions only: nothing above moves (brief §3.5, L7) ──
   const offeredHandles = [...picked.suggestions];
@@ -670,18 +915,20 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // First occurrence of each tag wins; never the footer, never a tag already in line 1's prefix or anywhere in the
   // headline or points (the same tag, any case, or the same place as "#<Place>News")
   const onPost = copyTagKeys(book, [headline, ...story.points]);
-  for (const t of tags) for (const k of tagKeys(book, t)) onPost.add(k);
+  for (const t of [...tags, ...trailing]) for (const k of tagKeys(book, t)) onPost.add(k);
+  // D4: a national story with no city offers its three likeliest first, one click each
+  offered.unshift(...cityOffers);
   const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && !hashtags.some((t) => t.toLowerCase() === o.tag.toLowerCase()) && !tagKeys(book, o.tag).some((k) => onPost.has(k)));
   const hashtagSuggestions = hashtagSuggestionItems.map((o) => o.tag);
-  const prefix = tags.length && !deskRun ? `${tags.join(" ")}: ` : "";
+  const prefix = tags.length && !deskRun && inlineLine === null ? `${tags.join(" ")}: ` : "";
   // Room for lines 1–2: the limit less the footer and its blank line
   const room = limit - xLen(assemblePostText("x", hashtags, mentions)) + 1;
 
-  let line1 = prefix + headline;
+  let line1 = inlineLine ?? prefix + headline;
   let headlineCut = false;
   if (xLen(line1) > room) {
     headlineCut = true;
-    const cut = cutOnWords(headline, room - xLen(prefix) - xLen(BREAKING_CUT));
+    const cut = inlineLine === null ? cutOnWords(headline, room - xLen(prefix) - xLen(BREAKING_CUT)) : "";
     line1 = cut ? `${prefix}${cut}${BREAKING_CUT}` : (cutOnWords(line1, room - xLen(BREAKING_CUT)) + BREAKING_CUT);
   }
   // Line 2 the desk's length whatever the headline (100–130), shorter only when the post's limit leaves less room,
@@ -691,19 +938,33 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // The decision log's view of all of the above (brief §2.3): line 1's tags only when this composer put them there
   const proposals: Proposal[] = [];
   const stated = place && district ? districtSource(district.from, false) : null;
-  if (prefix && place && district) proposals.push({ item: `#${place.tag}`, kind: "hashtag", layer: "emit", source: districtSource(district.from, false), reason: `${place.name}, stated (${district.from})` });
-  if (prefix && policy?.layer === "emit") proposals.push({ item: `#${policy.district.tag}`, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.reporterPolicy, reason: policyReason });
-  if (prefix && townTag) proposals.push({ item: townTag, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.town, reason: `the town on the place line (${story.town})` });
+  // The composer's city tags: line 1's (a lead run, or a town tag in place of its word) and the tag line's
+  const cityTags = new Set(headingPlace.tags.map((t) => t.toLowerCase()));
+  const placed = (tag: string) => cityTags.has(tag.toLowerCase());
+  const where = placement === "trailing" ? "in the tag line" : placement === "inline" ? "in place of the headline's first word" : "in line 1";
+  if (place && district && placed(`#${place.tag}`)) proposals.push({ item: `#${place.tag}`, kind: "hashtag", layer: "emit", source: districtSource(district.from, false), reason: `${place.name}, stated (${district.from}), ${where}` });
+  if (source === "reporter_rule" && policy && placed(`#${policy.district.tag}`)) proposals.push({ item: `#${policy.district.tag}`, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}, ${where}` });
+  if (townTag && placed(townTag)) proposals.push({ item: townTag, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.town, reason: `the town on the place line (${story.town}), ${where}` });
+  if (legacy && cityInfo && placed(`#${cityInfo.tag}`)) proposals.push({ item: `#${cityInfo.tag}`, kind: "hashtag", layer: "emit", source: "district.city.legacy", reason: `${cityInfo.name}, the story's stored district (provenance unknown), ${where}` });
+  if ((source === "file_code" || source === "inferred" || source === "fallback") && cityInfo) {
+    const why = source === "file_code" ? `the file name's district code (${cityInfo.name}): a tag only, no handle` : source === "inferred" ? `${cityInfo.name}, the district the copy names` : `no place in the copy: the head office (${cityInfo.name})`;
+    proposals.push({ item: `#${cityInfo.tag}`, kind: "hashtag", layer: "emit", source: `district.city.${source}`, reason: `every post carries a city: ${why}, ${where}` });
+  }
   proposals.push({ item: footer, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.brand, reason: rajasthan ? "a Rajasthan story" : "a story from outside Rajasthan" });
-  for (const t of hashtags.slice(1)) proposals.push({ item: t, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.campaign, reason: `an election story (#${election})` });
+  for (const t of hashtags.slice(1)) if (!placed(t)) proposals.push({ item: t, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.campaign, reason: `an election story (#${election})` });
   for (const h of handles) proposals.push(handleProposal(h, "emit"));
   for (const t of hashtagSuggestionItems) proposals.push(tagProposal(t));
   for (const h of handleSuggestions) proposals.push(handleProposal(h, "suggest"));
   return {
     bodyText, hashtags, hashtagSuggestions, hashtagSuggestionItems, proposals, mentions, handles, handleSuggestions, cls: picked.cls, why: picked.why,
-    warnings: [...picked.warnings, ...codeWarnings, ...policyWarnings, ...priorWarnings, ...flags.map((f) => `hashtag typo: ${f}`)],
+    warnings: [
+      ...picked.warnings, ...codeWarnings, ...policyWarnings, ...priorWarnings, ...flags.map((f) => `hashtag typo: ${f}`),
+      ...(noCity ? ["a national story naming no place: no city hashtag was added; pick one of the offered places"] : []),
+    ],
     unmatchedReporter: picked.unmatchedReporter, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}`,
     // Only when this composer put line 1's district there (the desk's own tag run is left as written)
-    districtSource: !prefix ? null : stated ?? (policy?.layer === "emit" ? PROPOSAL_SOURCES.reporterPolicy : null),
+    districtSource: !prefix && inlineLine === null ? null : stated ?? (source === "reporter_rule" ? PROPOSAL_SOURCES.reporterPolicy : source === "file_code" || source === "fallback" || source === "inferred" ? `district.city.${source}` : null),
+    headingPlace,
+    noCity,
   };
 }

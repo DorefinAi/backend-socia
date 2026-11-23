@@ -702,6 +702,28 @@ describe("BreakingShareSource (no database)", () => {
   const ingestFor = () =>
     new Ingest({ db: h.db, storage: store, source: new BreakingShareSource(join(dir, "share"), { now: () => new Date(clock) }), orgId, log, now: () => clock, layout: "breaking", startFromNow: true });
 
+  it("D4: a national file naming no place is flagged no_city with no city tag; re-saved naming Delhi, the flag goes", async () => {
+    const ingest = ingestFor();
+    expect(await settle(ingest)).toBe(0);
+    const name = "BTN_NWS_BREAKING_7101_29OCT_US_CONTROL_big.txt";
+    await put("29_OCTOBER_2026", name, `${name.replace(/\.txt$/, "")}\n\nयमुना प्रदूषण पर सुप्रीम कोर्ट सख्त\nसरकार से मांगा जवाब\n`);
+    expect(await settle(ingest)).toBe(1);
+    const [story] = await h.db.select().from(stories);
+    expect(story!.needsCheck).toContain("no_city");
+    const [draft] = await h.db.select().from(postDrafts).where(eq(postDrafts.storyId, story!.id));
+    expect(draft!.hashtags).toEqual(["#FirstIndiaNews"]);
+    expect(draft!.hashtagSuggestions.slice(0, 2)).toEqual(["#Delhi", "#Jaipur"]);
+    expect((draft!.handlePick as { headingPlace: { placement: string } }).headingPlace.placement).toBe("none");
+
+    clock += 60_000;
+    await put("29_OCTOBER_2026", name, `${name.replace(/\.txt$/, "")}\n\nदिल्ली में यमुना प्रदूषण पर सुप्रीम कोर्ट सख्त\nसरकार से मांगा जवाब\n`);
+    await settle(ingest);
+    const [again] = await h.db.select().from(stories).where(eq(stories.id, story!.id));
+    expect(again!.needsCheck).not.toContain("no_city");
+    const [redraft] = await h.db.select().from(postDrafts).where(eq(postDrafts.storyId, story!.id));
+    expect(redraft!.hashtags).toEqual(["#FirstIndiaNews", "#Delhi"]);
+  });
+
   it("received_at is the file's last save when taken; a re-save keeps it; an update of a posted story takes its save time", async () => {
     const files = new Map<string, { bytes: Buffer; mtime: Date; addedAt: Date | null }>();
     const source: FileSource = {
@@ -864,8 +886,9 @@ describe("BreakingShareSource (no database)", () => {
     expect(all.find((s) => s.id !== kota.id)).toMatchObject({ status: "failed", needsCheck: ["empty"] });
 
     const [draft] = await h.db.select().from(postDrafts);
-    // Before b7 this went out "#Kota: ..." with @KotaPolice; an inferred district now picks no police force
-    expect(draft).toMatchObject({ status: "ready", cardRev: 0, hashtags: ["#RajasthanWithFirstIndia"], mentions: [] });
+    // Before b7 this went out "#Kota: ..." with @KotaPolice; an inferred district now picks no police force.
+    // b9: every post carries a city, so the inferred district is the tag line's (never line 1's, never a handle)
+    expect(draft).toMatchObject({ status: "ready", cardRev: 0, hashtags: ["#RajasthanWithFirstIndia", "#Kota"], mentions: [] });
     expect(draft!.bodyText.startsWith("कोटा में हिस्ट्रीशीटर")).toBe(true);
     // Why those handles, stored with the draft for the desk: the class the rules hung off, the reason,
     // and the reporter name the file carried. "REPORTER" is the fixture's placeholder for a real name,
@@ -875,15 +898,12 @@ describe("BreakingShareSource (no database)", () => {
     // Every story carries our reporter now (owner, 20 Nov 2026), a crime story too, so the unknown name is raised
     // for the desk; it is still stored, which is what lets an editor's own edit teach it.
     expect((draft!.handlePick as { warnings: string[] }).warnings.join(" ")).toMatch(/reporter list/);
-    expect(draft!.composeVersion.startsWith("b8.")).toBe(true);
-    // The footer is the only hashtag that goes on a post by itself; the inferred district is offered first.
-    // This org has no topic rules, so nothing else is offered; packages/core covers the case where one matches.
-    expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
-    expect(draft!.hashtagSuggestions).toEqual(["#Kota"]);
-    // ...and why, for the desk: the rule id and the reason line behind each offered tag
-    expect((draft!.handlePick as { tagSuggestions: unknown[] }).tagSuggestions).toEqual([
-      { tag: "#Kota", source: "district.inferred.headline", reason: expect.stringMatching(/inferred/) },
-    ]);
+    expect(draft!.composeVersion.startsWith("b9.")).toBe(true);
+    // b9: the footer and the post's city go on by themselves; this org has no topic rules, so nothing is offered
+    expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia", "#Kota"]);
+    expect(draft!.hashtagSuggestions).toEqual([]);
+    // The heading place is stored with the draft: the card reads it instead of working its own place out
+    expect((draft!.handlePick as { headingPlace: unknown }).headingPlace).toEqual({ tags: ["#Kota"], district: "Kota", town: null, source: "inferred", placement: "trailing", card: "Kota" });
 
     // The decision log's proposal half (reporter-prior brief §2): written with the draft, undecided, with what the
     // file name said about the reporter (L1: the file name only) and every item with its rule id
@@ -895,8 +915,8 @@ describe("BreakingShareSource (no database)", () => {
     });
     expect(logged!.draftText.startsWith("कोटा में हिस्ट्रीशीटर")).toBe(true);
     expect(logged!.proposals).toEqual([
+      { item: "#Kota", kind: "hashtag", layer: "emit", source: "district.city.inferred", reason: expect.stringMatching(/every post carries a city/) },
       { item: "#RajasthanWithFirstIndia", kind: "hashtag", layer: "emit", source: "brand.geo", reason: "a Rajasthan story" },
-      { item: "#Kota", kind: "hashtag", layer: "suggest", source: "district.inferred.headline", reason: expect.stringMatching(/inferred/) },
     ]);
 
     // A restart skips the first-start files and the ingested ones without reading them again

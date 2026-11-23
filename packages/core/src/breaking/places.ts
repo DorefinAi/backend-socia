@@ -4,6 +4,7 @@
 // Matching goes through fold() (nukta, chandrabindu, joiners), so spelling variants of one name collapse.
 
 import { fold } from "../fold";
+import { placeMatchKey } from "./place-match";
 import { Gazetteer, type GazetteerMatch } from "../gazetteer";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 
@@ -51,9 +52,12 @@ const USUAL: Record<string, string> = { शाहपुरा: "Jaipur", बस�
  * Town names that are also everyday words (आंधी = dust storm, रानी = queen, नगर = town): a place line or an
  * "X के Y" phrase may name them, a headline or point may not. Towns of two districts are kept out of free text too.
  */
-const NOT_IN_TEXT = new Set(
-  ["आंधी", "तूफान", "बारिश", "सांभर", "मंडी", "थाना", "नगर", "शिव", "रानी", "बाप", "महाजन", "भीम", "सम", "पाटन", "देई", "डग", "आऊ", "गढ़ी", "लाठी", "बगड़", "रायपुर", "बाली", "पहाड़ी", "वैर", "सेवर", "बाड़ी", "इटावा", "मनिया", "लवाण", "बसवा", "मानपुर", "कामां", "महला", "धोद", "करवर", "सीकरी", "रारह", "चिखली", "खाटू", "कुचेरा"].map(fold),
-);
+const NOT_IN_TEXT_WORDS = [
+  "आंधी", "तूफान", "बारिश", "सांभर", "मंडी", "थाना", "नगर", "शिव", "रानी", "बाप", "महाजन", "भीम", "सम", "पाटन", "देई", "डग", "आऊ", "गढ़ी", "लाठी", "बगड़", "रायपुर", "बाली", "पहाड़ी", "वैर", "सेवर", "बाड़ी", "इटावा", "मनिया", "लवाण", "बसवा", "मानपुर", "कामां", "महला", "धोद", "करवर", "सीकरी", "रारह", "चिखली", "खाटू", "कुचेरा",
+];
+const NOT_IN_TEXT = new Set(NOT_IN_TEXT_WORDS.map(fold));
+/** The same words as placeMatchKey keys, so every spelling of them is caught ("आन्धी" is आंधी): R4 */
+const EVERYDAY_KEYS = new Set(NOT_IN_TEXT_WORDS.map(placeMatchKey));
 
 /** Outside Rajasthan: a place line here gets this English tag and the #FirstIndiaNews footer */
 const NATIONAL: [string, string[]][] = [
@@ -136,6 +140,10 @@ export class PlaceBook {
   readonly codes: Record<string, string> = {};
   private readonly gazetteer: Gazetteer<Place>;
   readonly districts: DistrictInfo[];
+  /** Every spelling of a district or national place by its name: English name and tag, each Hindi spelling (b9) */
+  private readonly spellings = new Map<string, string[]>();
+  /** Every place spelling and hashtag, as placeMatchKey keys: what isPlaceName reads (Q2) */
+  private readonly matchKeys = new Set<string>();
 
   constructor(data: PlacesData) {
     this.districts = data.districts.map((d) => ({ name: NAME_OF_TAG.get(d.tag.toLowerCase()) ?? d.tag, tag: d.tag, hi: d.hi[0] ?? d.tag, rajasthan: true }));
@@ -144,6 +152,7 @@ export class PlaceBook {
       const info = this.districts[i]!;
       for (const c of d.codes) this.codes[c] = info.name;
       for (const s of d.hi) this.put(s, { kind: "district", hi: info.hi, tag: info.tag, districts: [info] });
+      this.spellings.set(info.name, [info.name, info.tag, ...d.hi]);
     });
     data.districts.forEach((d, i) => {
       for (const t of d.towns) this.put(t.hi, { kind: "town", hi: t.hi, tag: t.tag, districts: [this.districts[i]!] });
@@ -156,6 +165,7 @@ export class PlaceBook {
     for (const [i, [, spellings]] of NATIONAL.entries()) {
       const info = NATIONAL_INFO[i]!;
       for (const s of spellings) this.put(s, { kind: "national", hi: spellings[0]!, tag: info.tag, districts: [info] });
+      this.spellings.set(info.name, [info.name, info.tag, ...spellings]);
     }
     // Hashtag spellings: a district's tag and English name, then a national place's, then a town's (never over a district)
     for (const info of this.districts) {
@@ -173,6 +183,8 @@ export class PlaceBook {
         if (key && !this.byTag.has(key)) this.byTag.set(key, this.lookup(t.hi) ?? { kind: "town", hi: t.hi, tag: t.tag, districts: [] });
       }
     }
+    for (const d of data.districts) for (const t of d.towns) this.matchKeys.add(placeMatchKey(t.tag));
+    for (const info of [...this.districts, ...NATIONAL_INFO]) { this.matchKeys.add(placeMatchKey(info.tag)); this.matchKeys.add(placeMatchKey(info.name)); }
     this.gazetteer = new Gazetteer<Place>(
       [...this.places.entries()]
         .filter(([key, place]) => !NOT_IN_TEXT.has(key) && !(place.kind === "town" && place.districts.length > 1))
@@ -182,6 +194,7 @@ export class PlaceBook {
   }
 
   private put(spelling: string, place: Place): void {
+    this.matchKeys.add(placeMatchKey(spelling));
     const key = fold(spelling);
     if (!key) return;
     const prev = this.places.get(key);
@@ -190,6 +203,30 @@ export class PlaceBook {
     if (prev.kind !== "town") return;
     if (place.kind !== "town") return void this.places.set(key, place);
     for (const d of place.districts) if (!prev.districts.includes(d)) prev.districts.push(d);
+  }
+
+  /**
+   * Every spelling of a district or national place, by its name ("Bundi" → Bundi, बूंदी, बूँदी…; "Delhi" → Delhi, दिल्ली,
+   * नई दिल्ली…): what a headline may open with when it names that place (place-match.ts). Empty for an unknown name.
+   */
+  spellingsOf(name: string | null | undefined): string[] {
+    return name ? (this.spellings.get(name) ?? []) : [];
+  }
+
+  /** The national (outside Rajasthan) places it knows, for lists built from the places file (the desk's card, C3) */
+  nationals(): readonly DistrictInfo[] {
+    return NATIONAL_INFO;
+  }
+
+  /** A town name that is also an everyday word (आंधी, बाप, नगर), in any spelling ("आन्धी"): never read as a place from free text */
+  static everydayWord(name: string): boolean {
+    return EVERYDAY_KEYS.has(placeMatchKey(name));
+  }
+
+  /** Q2: whether a word or hashtag names a place this file knows, in any spelling ("#नैनवा", "#बून्दी", "#Didwana") */
+  isPlaceName(text: string): boolean {
+    const bare = text.replace(/^#/, "");
+    return !!bare && (this.hashtag(bare) !== null || this.matchKeys.has(placeMatchKey(bare)));
   }
 
   /** The place a whole phrase names ("रावतभाटा", "मारवाड़ जंक्शन"), or null */

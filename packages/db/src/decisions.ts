@@ -21,8 +21,9 @@ import {
  *   prior-1  the first cut (reporter-prior brief, 13 Nov 2026)
  *   prior-2  reporter directory changes v2: institution handles only (R2), the R3 seed table, a person or office the
  *            copy names shown above the prior (R4), recency-weighted nightly features (R5)
+ *   city-1   b9 (23 Nov 2026): every post carries a city tag, never twice in line 1 (SOCIA_HEADING_GAPS_AND_PLAN)
  */
-export const LOGIC_VERSION = "tags-v3+prior-2";
+export const LOGIC_VERSION = "tags-v3+city-1+prior-2";
 
 /** One post in ten is an exploration post (brief §7.2.3): its proposals carry explore: true */
 export const EXPLORE_RATE = 0.1;

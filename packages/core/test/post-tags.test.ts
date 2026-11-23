@@ -186,14 +186,16 @@ const draft = (text: string, file: string) => {
   };
 };
 
-describe("12 Nov ACB file: a bureau reporter's file code is not used, the headline's district is offered (b6 fix brief P0)", () => {
-  it("offers #Dungarpur, never puts it in line 1, offers #ACB without applying it", () => {
+describe("12 Nov ACB file: a bureau reporter's file code picks no handle, and gives way to the district the text names", () => {
+  it("puts #Dungarpur in the tag line, never #Jaipur from the JPR code; offers #ACB without applying it", () => {
     const { p, d } = draft(ACB_TEXT, ACB_FILE);
-    // Parsed, the JPR code stands; the composer drops it because Navin files for no single district
+    // Parsed, the JPR code stands; storyDistrict drops it because Navin files for no single district
     expect([p.district, p.districtFrom]).toEqual(["Jaipur", "file_code"]);
+    // Owner, 23 Nov 2026: an untrusted file code (Navin files every district under JPR) is the city only when the text
+    // names no district; here it names Dungarpur, as the desk wrote it
     expect(d.bodyText.startsWith("#")).toBe(false);
-    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
-    expect(d.hashtagSuggestions[0]).toBe("#Dungarpur");
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Dungarpur"]);
+    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: "Dungarpur" });
     expect(d.hashtagSuggestions).toContain("#ACB");
     expect(d.mentions).not.toContain("@jaipur_police");
     expect(d.mentions).not.toContain("@DungarpurP");
@@ -410,27 +412,33 @@ describe("b6 fix brief fixtures", () => {
     expect(published.district).toBe("Chittorgarh");
     expect(published.trail).toEqual(["Chittorgarh", BRAND_RAJASTHAN]);
     expect([...published.trail, ...published.suggest]).not.toContain("Udaipur");
-    // The draft side: the desk's own place line names Chittorgarh
+    // The draft side: the desk's own place line names Chittorgarh. b9: the headline opens with it, so the tag goes in
+    // the tag line instead of "#Chittorgarh: चित्तौड़गढ़-उदयपुर …" (the desk's way: 221 posts to 3, Sep–Nov)
     const { d } = file("चित्तौड़गढ़-उदयपुर हाईवे पर हादसा", ["दो वाहनों की भिड़ंत"], { place: "चित्तौड़गढ़" });
-    expect(d.bodyText.startsWith("#Chittorgarh: ")).toBe(true);
+    expect(d.bodyText.startsWith("चित्तौड़गढ़-उदयपुर हाईवे पर हादसा")).toBe(true);
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Chittorgarh"]);
+    expect(d.headingPlace).toMatchObject({ source: "desk", placement: "trailing", card: "Chittorgarh" });
     expect(everyTag(d)).not.toMatch(/#Udaipur\b/);
   });
 
-  it("6. the 12 Nov Dungarpur ACB post without its #Dungarpur: #Jaipur not emitted, no @JaipurPolice, Navin infers nothing", () => {
+  it("6. the 12 Nov Dungarpur ACB post: #Dungarpur, never #Jaipur or @JaipurPolice from Navin's JPR code", () => {
     const { d } = draft(ACB_TEXT, ACB_FILE);
     expect(d.bodyText.startsWith("#")).toBe(false);
-    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
-    // Navin is a state bureau (no district): neither his roster entry nor his JPR file code is offered
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Dungarpur"]);
+    expect(d.hashtags).not.toContain("#Jaipur");
     expect(d.hashtagSuggestions).not.toContain("#Jaipur");
     for (const h of policeOf("Jaipur")) expect(everyHandle(d)).not.toContain(h);
     expect(pickReporter("NAVIN", reporters).match?.districts).toEqual([]);
-    // The only district on the draft is the headline's, offered; nothing district-wise comes from Navin
-    expect(d.hashtagSuggestions.filter((t) => book.hashtag(t.slice(1))?.kind === "district")).toEqual(["#Dungarpur"]);
+    // The headline's district is the post's city (tag line); the JPR code is neither a tag nor a handle here
+    expect(d.hashtagSuggestions.filter((t) => book.hashtag(t.slice(1))?.kind === "district")).toEqual([]);
     expect(d.handles.some((h) => h.reason === "police" || h.reason === "collector")).toBe(false);
-    // With a headline that names no district, a Navin JPR file has no district at all: not stated, not offered
+    // With a headline that names no district, a Navin JPR file has no district at all: not stated, not offered.
+    // b9 (plan step 2.4): his file code is the post's city tag, "#Jaipur:" as the desk wrote it on his 18 Nov stories,
+    // and a TAG only: no police, no collector (below), storyDistrict still null
     const navin = file("ACB ने रिश्वत लेते अधिकारी को दबोचा", ["एक हजार रुपए की रिश्वत"], { reporter: "NAVIN" });
     expect(navin.p).toMatchObject({ district: "Jaipur", districtFrom: "file_code" });
-    expect(navin.d.bodyText.startsWith("#")).toBe(false);
+    expect(navin.d.bodyText.startsWith("#Jaipur: ")).toBe(true);
+    expect(navin.d.headingPlace).toMatchObject({ source: "file_code", placement: "lead", card: "Jaipur" });
     expect(navin.d.hashtagSuggestions.filter((t) => book.hashtag(t.slice(1))?.kind === "district")).toEqual([]);
     expect(navin.d.handles.some((h) => h.reason === "police" || h.reason === "collector")).toBe(false);
     expect(storyDistrict({ ...navin.p, fileDistrict: "Jaipur" }, book, pickReporter("NAVIN", reporters).match)).toBeNull();
@@ -513,11 +521,11 @@ describe("b6 fix brief: provenance — only what the desk wrote reaches the post
     const coded = file("सड़क हादसे में दो की मौत", ["पुलिस ने शुरू की जांच"]).d;
     expect(coded.bodyText.startsWith("#Jaipur: ")).toBe(true);
     expect(coded.mentions).toContain("@jaipur_police");
-    // No code, no place line: the headline's district is only offered
+    // No code, no place line: the headline's district is never line 1's and picks no police (b9: the tag line's city)
     const text = file("झालावाड़ में सड़क हादसे में दो घायल", ["पुलिस ने शुरू की जांच"], { code: "XX", reporter: "NOBODY" });
     expect(text.p.districtFrom).toBe("text");
     expect(text.d.bodyText.startsWith("#")).toBe(false);
-    expect(text.d.hashtagSuggestions[0]).toBe("#Jhalawar");
+    expect(text.d.hashtags).toContain("#Jhalawar");
     expect(text.d.handles.some((h) => h.reason === "police")).toBe(false);
     // A row stored before the provenance column (null) is treated as inferred
     const legacy = composeBreaking({ headline: "सड़क हादसा", points: [], district: "Jaipur", districtFrom: null, town: null, rajasthan: true, leaderPost: false }, rules, book);
@@ -605,9 +613,9 @@ describe("review r3: rows stored before migration 0023 (district_from NULL)", ()
       expect(d.bodyText.startsWith("#Jaipur")).toBe(false);
       for (const h of policeOf("Jaipur")) expect(everyHandle(d)).not.toContain(h);
     }
-    // Without the file, Jodhpur is not the file code: offered, not stated
+    // Without the file, Jodhpur is not the file code: not stated, so never line 1 (b9: the tag line's city, not the JPR code)
     expect(blind.bodyText.startsWith("#")).toBe(false);
-    expect(blind.hashtagSuggestions[0]).toBe("#Jodhpur");
+    expect(blind.hashtags).toContain("#Jodhpur");
   });
 
   it("a file with no code and the place line Jodhpur keeps Jodhpur", () => {
@@ -615,14 +623,14 @@ describe("review r3: rows stored before migration 0023 (district_from NULL)", ()
     const { recovered, blind } = legacy(text(n, "जोधपुर"), `${n}.txt`);
     expect(recovered.bodyText.startsWith("#Jodhpur: ")).toBe(true);
     expect(recovered.mentions.map((m) => m.toLowerCase())).toEqual(expect.arrayContaining(policeOf("Jodhpur").slice(0, 1).map((h) => `@${h}`)));
-    expect(blind.hashtagSuggestions).toContain("#Jodhpur");
+    expect([...blind.hashtags, ...blind.hashtagSuggestions]).toContain("#Jodhpur");
   });
 
   it("Navin's JPR file with the place line 'डूंगरपुर से खबर' keeps Dungarpur", () => {
     const n = name("NAVIN", "JPR");
     const { recovered, blind } = legacy(text(n, "डूंगरपुर से खबर"), `${n}.txt`);
     expect(recovered.bodyText.startsWith("#Dungarpur: ")).toBe(true);
-    expect(blind.hashtagSuggestions).toContain("#Dungarpur");
+    expect(blind.hashtags).toContain("#Dungarpur");
     for (const d of [blind, recovered]) expect(everyTag(d)).not.toMatch(/#Jaipur\b/);
   });
 

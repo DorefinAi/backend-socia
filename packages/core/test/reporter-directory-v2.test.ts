@@ -202,7 +202,9 @@ describe("R2: the prior offers institution handles only", () => {
       entries: [{ handle: "@satyatv99_news", handle_type: "person", name: "Satya", names_en: ["satya"], districts: ["Jaipur"], verified: true, prior: { n: 70, handles: { jaipur_police: 0.9 } } }],
     });
     const d = draft(fileFor("SATYA"), ["#Tonk: टोंक में चोरी की वारदात का खुलासा", "पुलिस ने दो आरोपियों को किया गिरफ्तार"], satya);
-    expect(d.bodyText.startsWith("#Tonk")).toBe(true);
+    // b9: the headline opens with its district, so #Tonk is the tag line's (never "#Tonk: टोंक में …")
+    expect(d.bodyText.startsWith("टोंक में चोरी")).toBe(true);
+    expect(d.hashtags).toContain("#Tonk");
     expect(fromPrior(d)).toEqual([]);
     expect(handlesOf(d)).not.toContain("jaipur_police");
     // Directly too, with the police guard switched off: the handle_type alone keeps it out
@@ -250,9 +252,11 @@ describe("R4: the display order of handle suggestions", () => {
     expect(list.map((h) => suggestionTier(h, types))).not.toContain("video_headline_district");
   });
 
-  it("a video post's '| <Place> News' label still only decides the brand: no district suggestion comes from it", () => {
+  it("a video post's '| <Place> News' label still only decides the brand: no district comes from it", () => {
     const d = draft(fileFor("RITURAJ"), ["सीकर में किसानों का धरना | Sikar News"]);
-    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia"]);
+    // b9: the city is rituraj's desk rule, in the tag line (a video post takes no leading tag); nothing from the label
+    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia", "#Jaipur"]);
+    expect(d.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing" });
     expect(d.handleSuggestions.filter((h) => h.reason === "police" || h.reason === "collector")).toEqual([]);
   });
 });

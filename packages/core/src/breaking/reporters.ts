@@ -385,8 +385,9 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     }
     const bureau = (e as { bureau?: unknown }).bureau;
     if (bureau !== undefined && typeof bureau !== "boolean") entryProblems.push(`"bureau" must be true or false`);
-    // A bureau reporter's file code is never the story's district, so a desk rule naming one would contradict it
-    if (bureau === true && e.policy?.district_when_missing !== undefined) entryProblems.push(`a "bureau" reporter cannot carry a district_when_missing policy`);
+    // A bureau reporter may carry a desk rule (owner, 23 Nov 2026: Dinesh Kasana's outside stories go out as #Jaipur).
+    // The two do not clash: `bureau` keeps his FILE CODE from ever being the story's district or picking a handle; the
+    // desk rule is a line-1 hashtag only, applied when the copy names no place, and never picks a handle either.
     const profile = parseProfile(e as ReporterHandleEntry, handle, name, who, problem, (m) => entryProblems.push(m), priorCheck);
     if (entryProblems.length) {
       return problem(`${who}: entry REJECTED, this reporter is not loaded (no byline, no desk rule, no prior) until it is fixed — ${entryProblems.join("; ")}`);

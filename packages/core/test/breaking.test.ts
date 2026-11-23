@@ -321,19 +321,22 @@ describe("parseBreaking", () => {
 });
 
 describe("composeBreaking", () => {
-  it("writes the house layout: the footer tag alone; a district only the headline names is offered, and picks no police (b6 P0)", () => {
+  it("writes the house layout; a district only the headline names goes in the tag line, never line 1, and picks no police (b6 P0, b9)", () => {
     const { text, d } = post("btn_rj_breaking_29Oct_vks_1566_control_Reporter_big_breaking_full.txt");
-    // No place line, no place prefix: "कोटा में ..." is inferred, so it is offered and goes neither in line 1
-    // nor to @KotaPolice. Before b7 this file went out "#Kota: ..." with @KotaPolice.
+    // No place line, no place prefix: "कोटा में ..." is inferred, so it goes neither in line 1 nor to @KotaPolice
+    // (before b7 this file went out "#Kota: ..." with @KotaPolice). b9: every post carries a city, so the inferred
+    // district is the tag line's (CITY_FROM_COPY_TEXT) instead of an offer.
     expect(text.startsWith("कोटा में हिस्ट्रीशीटर")).toBe(true);
-    expect(d.hashtagSuggestions[0]).toBe("#Kota");
-    expect(text.endsWith("\n\n#RajasthanWithFirstIndia")).toBe(true);
+    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia", "#Kota"]);
+    // D1: the card leads with the city even when it is only in the tag line
+    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: "Kota" });
+    expect(text.endsWith("\n\n#RajasthanWithFirstIndia #Kota")).toBe(true);
     expect(d.mentions).toEqual([]);
     // "वारदात" still matches #RajasthanPolice — it is offered to the desk, not put on the post
     expect(d.hashtagSuggestions).toContain("#RajasthanPolice");
     expect(text).not.toContain("#RajasthanPolice");
     expect(text).toContain("तलवारे और डंडे लेकर आए बदमाशों ने किया हमला, दादाबाड़ी");
-    expect(d.composeVersion).toBe("b8.0");
+    expect(d.composeVersion).toBe("b9.0");
   });
 
   it("adds the Hindi town tag and cuts line 2 right after a linking word, at the desk's length, with 3 or 4 dots (b8)", () => {

@@ -53,32 +53,38 @@ describe("Changes #3 step 1: config", () => {
     expect(pickReporter("KAMALKANT", reporters).match?.districts).toEqual(["Jaipur"]);
   });
 
-  it("Q2 Kasana: districts Jaipur, no policy, and a bureau reporter", () => {
+  it("Q2 Kasana: districts Jaipur, a bureau reporter; since 23 Nov 2026 a #Jaipur desk rule too", () => {
     expect(entry("@DineshKasana15")).toMatchObject({ districts: ["Jaipur"], bureau: true });
-    expect(entry("@DineshKasana15").policy).toBeUndefined();
+    // SOCIA_HEADING_GAPS_AND_PLAN step 4 replaced the 15 Nov "no district policy" decision
+    expect(entry("@DineshKasana15").policy).toEqual({ district_when_missing: "Jaipur" });
     expect(String(entry("@DineshKasana15").note)).toMatch(/special correspondent/i);
     expect(pickReporter("DINESH_KASANA", reporters).match).toMatchObject({ handle: "DineshKasana15", districts: ["Jaipur"], bureau: true });
   });
 
-  it("Q2 Kasana: no #Jaipur: is ever added, not even when his file carries the Jaipur code", () => {
+  it("Q2 Kasana (23 Nov 2026): a story naming no place goes out '#Jaipur:' by his desk rule, never from his file code, and picks no handle", () => {
     for (const code of ["", "JPR3"]) {
       const d = draft(fileFor("DINESH_KASANA", code), ["जेडीए ने जारी किए नए आदेश", "सभी जोन में लागू होंगे नियम"]);
-      expect(d.bodyText.startsWith("#")).toBe(false);
-      expect(d.districtSource).toBeNull();
-      expect(d.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
-      // Nor is Jaipur offered on his behalf: his file code and his district say where he sits, not where the story is
-      expect(d.hashtagSuggestionItems.some((t) => t.source.startsWith("district.") && t.tag === "#Jaipur")).toBe(false);
+      expect(d.bodyText.startsWith("#Jaipur: ")).toBe(true);
+      expect(d.districtSource).toBe("reporter_policy");
+      expect(d.headingPlace).toMatchObject({ source: "reporter_rule", placement: "lead", card: "Jaipur" });
+      // "bureau" still holds: the file code is not the story's district, so no Jaipur police or collector
+      for (const h of [...jaipur.police, ...jaipur.collector]) expect(everywhere(d)).not.toContain(lc(h));
     }
+    // A place the desk wrote still wins over his rule
+    const kota = draft(fileFor("DINESH_KASANA", "JPR3"), ["#Kota: जेडीए ने जारी किए नए आदेश", "सभी जोन में लागू होंगे नियम"]);
+    expect(kota.bodyText.startsWith("#Kota: ")).toBe(true);
+    expect(kota.proposals.some((p) => p.source === "reporter_policy")).toBe(false);
   });
 
-  it("Q2 a bureau reporter: a district_when_missing policy beside it rejects the entry; a non-boolean bureau too", () => {
+  it("Q2 a bureau reporter may carry a district_when_missing policy (23 Nov 2026); a non-boolean bureau still rejects the entry", () => {
     const base = { handle: "@x_reporter", handle_type: "person", names_en: ["XREP"], districts: ["Jaipur"], verified: true };
-    for (const bad of [{ ...base, bureau: true, policy: { district_when_missing: "Jaipur" } }, { ...base, bureau: "yes" }]) {
-      const problems: string[] = [];
-      const r = parseReporterHandles({ version: 1, entries: [bad] }, (m) => problems.push(m));
-      expect(r.count).toBe(0);
-      expect(problems.join(" ")).toMatch(/bureau/);
-    }
+    const ok = parseReporterHandles({ version: 1, entries: [{ ...base, bureau: true, policy: { district_when_missing: "Jaipur" } }] });
+    expect(ok.count).toBe(1);
+    expect(pickReporter("XREP", ok).match).toMatchObject({ bureau: true });
+    const problems: string[] = [];
+    const r = parseReporterHandles({ version: 1, entries: [{ ...base, bureau: "yes" }] }, (m) => problems.push(m));
+    expect(r.count).toBe(0);
+    expect(problems.join(" ")).toMatch(/bureau/);
   });
 
   it("Q1 Baran: @DcDmBaran is the only collector Socia picks; @DcDmBaran_ is a recognised alternate", () => {
@@ -239,10 +245,13 @@ describe("Changes #3 step 3: the district-when-missing policy for four more repo
     for (const h of [...jaipur.police, ...jaipur.collector, "jaipur_police", "DcDmJaipur"]) expect(everywhere(d)).not.toContain(lc(h));
   });
 
-  it("Bhanwar, video post, no district: #Kota offered in the trailing run, no leading tag", () => {
+  it("Bhanwar, video post, no district: #Kota in the trailing run (b9: emitted, no longer only offered), no leading tag", () => {
     const d = draft(fileFor("BHANWAR"), ["कोचिंग छात्रों के लिए नई गाइडलाइन जारी | Rajasthan News", "सभी संस्थानों को भेजे गए निर्देश"]);
     expect(d.bodyText.startsWith("#")).toBe(false);
-    expect(d.hashtagSuggestionItems[0]).toMatchObject({ tag: "#Kota", source: "reporter_policy" });
+    expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia", "#Kota"]);
+    expect(d.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing", card: "Kota" });
+    expect(d.proposals.find((p) => p.item === "#Kota")).toMatchObject({ layer: "emit", source: "reporter_policy" });
+    expect(d.hashtagSuggestions).not.toContain("#Kota");
   });
 
   it("Bhanwar, '#Bundi: …': unchanged, the policy does not fire", () => {

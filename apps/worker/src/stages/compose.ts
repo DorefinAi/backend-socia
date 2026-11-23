@@ -325,7 +325,9 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       reporterPrior: priorOff === null,
     },
   );
-  const needsCheck = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
+  const cut = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
+  // b9 D4: "no_city" follows the latest compose (a re-saved file that now names a place loses it)
+  const needsCheck = out.noCity ? (cut.includes("no_city") ? cut : [...cut, "no_city"]) : cut.filter((c) => c !== "no_city");
   const content = {
     bodyText: out.bodyText,
     // Line 2 as composed ("" when there is none): Fit to 280 rebuilds line 2 only while the draft still carries it
@@ -362,6 +364,8 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       reporterToken: slot.reporterToken,
       // hashtagSuggestions with the rule and reason behind each, for the desk (the column holds the strings)
       ...(out.hashtagSuggestionItems && { tagSuggestions: out.hashtagSuggestionItems }),
+      // b9: line 1's and the card's place, one decision (the desk's card reads it instead of working its own out)
+      headingPlace: out.headingPlace,
     },
   };
 

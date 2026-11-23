@@ -54,8 +54,10 @@ describe("double place tag", () => {
     expect(news.hashtagSuggestions.map((t) => t.toLowerCase())).not.toContain("#jaipur");
   });
 
-  it("still suggests an inferred district the copy does not carry", () => {
+  it("an inferred district the copy does not carry goes in the tag line (b9: every post carries a city), never line 1", () => {
     const d = composeBreaking(story("हत्या के आरोपी से पूछताछ", { district: "Jaipur", districtFrom: "text" }), rules, book);
-    expect(d.hashtagSuggestions).toContain("#Jaipur");
+    expect(d.hashtags).toContain("#Jaipur");
+    expect(d.bodyText.startsWith("#")).toBe(false);
+    expect(d.hashtagSuggestions).not.toContain("#Jaipur");
   });
 });

@@ -1,5 +1,6 @@
 // Phase 1: the newsroom's breaking .txt files → ready X posts. Pure rules; see each file.
 export * from "./places";
+export * from "./place-match";
 export * from "./filename";
 export * from "./decode";
 export * from "./parse";

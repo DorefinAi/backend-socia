@@ -12,7 +12,7 @@ import { noteOutcome, recordOutcome, voidOutcome } from "./decisions";
 import type { Db, Executor } from "./client";
 import { notify } from "./events";
 import { learnFromPost, type LearnLogger } from "./learn";
-import { REPORTER_SOURCE, auditLog, handleDirectory, hashtagStaging, orgs, postDrafts, publishJobs, publishedPosts, users, type DraftHandlePick } from "./schema";
+import { REPORTER_SOURCE, auditLog, composerCityTags, handleDirectory, hashtagStaging, orgs, postDrafts, publishJobs, publishedPosts, users, type DraftHandlePick } from "./schema";
 
 export interface Actor {
   id: string;
@@ -331,6 +331,8 @@ async function stagePostedHashtags(tx: Executor, actor: Actor, draft: Draft): Pr
   const known = new Set(
     [RAJASTHAN_FOOTER, NATIONAL_FOOTER, ...draft.hashtagSuggestions].map((t) => t.replace(/^#/, "").toLowerCase()),
   );
+  // The composer's own city tags (b9: "#Jaipur" in the tag line) are not the desk's
+  for (const t of composerCityTags(draft.handlePick as DraftHandlePick | null)) known.add(t);
   const added = new Map<string, string>();
   for (const raw of draft.hashtags) {
     const tag = raw.trim();

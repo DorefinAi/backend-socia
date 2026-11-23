@@ -1,0 +1,160 @@
+{
+  "_note": "Shared by backend packages/core/test/place-match.test.ts and frontend BreakingDesk/placeMatch.test.ts: both copies of openingPlaceLength must give `length` for every case (b9 B4/B6, 23 Nov 2026).",
+  "cases": [
+    {
+      "headline": "नैनवां में मां कंकाली की सवारी",
+      "names": [
+        "नैनवां"
+      ],
+      "length": 6
+    },
+    {
+      "headline": "नैनवां में मां कंकाली की सवारी",
+      "names": [
+        "नैनवा"
+      ],
+      "length": 6
+    },
+    {
+      "headline": "नैनवा में मां कंकाली की सवारी",
+      "names": [
+        "नैनवां"
+      ],
+      "length": 5
+    },
+    {
+      "headline": "बड़ी सादड़ी में हादसा",
+      "names": [
+        "बड़ीसादड़ी"
+      ],
+      "length": 11
+    },
+    {
+      "headline": "बड़ीसादड़ी में हादसा",
+      "names": [
+        "बड़ी सादड़ी"
+      ],
+      "length": 10
+    },
+    {
+      "headline": "बड़ी‌सादड़ी में हादसा",
+      "names": [
+        "बड़ीसादड़ी"
+      ],
+      "length": 11
+    },
+    {
+      "headline": "बून्दी के धोवड़ा के बूथ पर",
+      "names": [
+        "बूंदी"
+      ],
+      "length": 6
+    },
+    {
+      "headline": "बूँदी महोत्सव का आगाज",
+      "names": [
+        "बूंदी"
+      ],
+      "length": 5
+    },
+    {
+      "headline": "चित्तौड़गढ़-उदयपुर हाईवे पर हादसा",
+      "names": [
+        "चित्तौड़गढ़"
+      ],
+      "length": 11
+    },
+    {
+      "headline": "  टोंक में अवैध खनन",
+      "names": [
+        "टोंक"
+      ],
+      "length": 6
+    },
+    {
+      "headline": "Jaipur में मेट्रो का काम",
+      "names": [
+        "Jaipur"
+      ],
+      "length": 6
+    },
+    {
+      "headline": "jaipur में मेट्रो का काम",
+      "names": [
+        "Jaipur"
+      ],
+      "length": 6
+    },
+    {
+      "headline": "बड़ी खबर: टोंक में हादसा",
+      "names": [
+        "टोंक"
+      ],
+      "length": 0
+    },
+    {
+      "headline": "जयपुरिया अस्पताल में आग",
+      "names": [
+        "जयपुर"
+      ],
+      "length": 0
+    },
+    {
+      "headline": "दिल्ली के द्वारका में छापा",
+      "names": [
+        "Delhi",
+        "दिल्ली",
+        "नई दिल्ली"
+      ],
+      "length": 6
+    },
+    {
+      "headline": "नई दिल्ली में बैठक",
+      "names": [
+        "दिल्ली",
+        "नई दिल्ली"
+      ],
+      "length": 9
+    },
+    {
+      "headline": "",
+      "names": [
+        "टोंक"
+      ],
+      "length": 0
+    },
+    {
+      "headline": "टोंक में हादसा",
+      "names": [],
+      "length": 0
+    },
+    {
+      "headline": "नीम का थाना में सड़क हादसा",
+      "names": [
+        "नीमकाथाना"
+      ],
+      "length": 11
+    },
+    {
+      "headline": "चौथ का बरवाड़ा में मेला",
+      "names": [
+        "चौथ का बरवाड़ा"
+      ],
+      "length": 14
+    },
+    {
+      "headline": "सवाई माधोपुर में बारिश",
+      "names": [
+        "सवाईमाधोपुर"
+      ],
+      "length": 12
+    },
+    {
+      "headline": "जयपुर-दिल्ली हाईवे पर हादसा",
+      "names": [
+        "जयपुर"
+      ],
+      "length": 5
+    }
+  ]
+}

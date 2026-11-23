@@ -46,6 +46,8 @@
     },
     {
       "handle": "@Nirmaltiwaribki",
+      "policy": { "district_when_missing": "Jaipur" },
+      "_policy_note": "Owner, 23 Nov 2026 (SOCIA_HEADING_GAPS_AND_PLAN step 4): the desk put #Jaipur on 6 of 6 of his outside stories. Same guards as rituraj: only when the copy names no place; a place found only in the text does not block it; never a police or collector handle.",
       "handle_type": "person",
       "name": "Nirmal Tiwari",
       "names_hi": [],
@@ -62,6 +64,8 @@
     },
     {
       "handle": "@ashvinigokul",
+      "policy": { "district_when_missing": "Delhi" },
+      "_policy_note": "Owner, 23 Nov 2026 (SOCIA_HEADING_GAPS_AND_PLAN step 4): the Delhi correspondent: the desk put #Delhi on 10 of 13 of his outside stories. Same guards as rituraj.",
       "handle_type": "person",
       "name": "Ashvini",
       "names_hi": [],
@@ -127,6 +131,8 @@
     },
     {
       "handle": "@naresh_jsharma",
+      "policy": { "district_when_missing": "Jaipur" },
+      "_policy_note": "Owner, 23 Nov 2026 (SOCIA_HEADING_GAPS_AND_PLAN step 4): the desk put #Jaipur on 6 of 6 of his outside stories. Same guards as rituraj.",
       "handle_type": "person",
       "name": "Naresh Sharma",
       "names_hi": [],
@@ -198,13 +204,15 @@
     },
     {
       "handle": "@DineshKasana15",
+      "policy": { "district_when_missing": "Jaipur" },
+      "_policy_note": "Owner, 23 Nov 2026 (SOCIA_HEADING_GAPS_AND_PLAN step 4): the desk put #Jaipur on 2 of 2 of his outside stories; replaces the 15 Nov \"no district policy\" decision. \"bureau\" stays: his file code is still never the story district and picks no handle; this rule is a line-1 hashtag only.",
       "handle_type": "person",
       "name": "Dinesh Kasana",
       "names_hi": [],
       "names_en": ["dinesh_kasana", "kasana", "dineshkasana"],
       "districts": ["Jaipur"],
       "bureau": true,
-      "_districts_note": "Changes #3 §1.1 and Q2 (owner, 15 Nov 2026): districts Jaipur, NO district policy, and no #Jaipur: is ever added for him. \"bureau\": true keeps that: as a special correspondent his file code is where he sits, not where the story is, so it is never the story's district and Jaipur is never offered from it.",
+      "_districts_note": "Changes #3 §1.1 and Q2 (owner, 15 Nov 2026): districts Jaipur. The \"no district policy\" part was replaced on 23 Nov 2026 (see _policy_note). \"bureau\": true keeps that: as a special correspondent his file code is where he sits, not where the story is, so it is never the story's district and Jaipur is never offered from it.",
       "beats": ["jda", "rca-cricket", "minister"],
       "beats_source": "desk",
       "_todo": "An RCA handle for the 'rca-cricket' beat: NOT AVAILABLE (owner, 14 Nov: build without it). 'rca-cricket' stays a display-only beat with no handles, and no handle is guessed (0 corpus posts). Districts left empty on purpose (special correspondent, 69 of 102 files carry no code); the brief's 'Jaipur' was not applied because it would make his file code and the reporter-district suggestion fire on every story.",

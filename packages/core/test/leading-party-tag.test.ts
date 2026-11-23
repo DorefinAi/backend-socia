@@ -31,10 +31,14 @@ describe("F10: a leading party tag does not fill the district slot", () => {
     }
   });
 
-  it("the district from the text is still offered (no reporter rule); the party tag stays as written", () => {
-    const d = draft(fileFor("NARESH"), ["#BJP: कोटा में प्रदेश कार्यसमिति की बैठक", "संगठन चुनाव पर चर्चा"]);
+  it("the district from the text goes in the tag line, not line 1 (no reporter rule); the party tag stays as written", () => {
+    // Vikas carries no desk rule (Naresh, used here before, got one on 23 Nov 2026)
+    const d = draft(fileFor("VIKAS"), ["#BJP: कोटा में प्रदेश कार्यसमिति की बैठक", "संगठन चुनाव पर चर्चा"]);
     expect(line1(d)).toBe("#BJP: कोटा में प्रदेश कार्यसमिति की बैठक");
-    expect(d.hashtagSuggestions).toContain("#Kota");
+    expect(d.hashtags).toContain("#Kota");
+    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing" });
+    // Naresh now has the #Jaipur desk rule; a place found only in the text does not block it (13 Nov decision)
+    expect(line1(draft(fileFor("NARESH"), ["#BJP: कोटा में प्रदेश कार्यसमिति की बैठक", "संगठन चुनाव पर चर्चा"]))).toBe("#Jaipur: #BJP: कोटा में प्रदेश कार्यसमिति की बैठक");
   });
 
   it("a run WITH a place is still the desk's line 1, as written: no tag added", () => {

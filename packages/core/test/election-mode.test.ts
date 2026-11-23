@@ -43,7 +43,9 @@ const BIKANER = [
 describe("an election story on counting day", () => {
   it("Laxman's Bikaner result: election tag, both parties and their hashtags, the collector", () => {
     const d = draft("BTN_RJ_BREAKING_20NOV_2714_AM_CONTROL_LAXMAN_BKN_BIG_.txt", BIKANER);
-    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#RajasthanPanchayatElection2026", "#Congress", "#BJP"]);
+    // b9: the headline (the byline "बीकानेर से …") opens with its district, so #Bikaner is the tag line's, not line 1's
+    expect(d.bodyText.startsWith("बीकानेर से")).toBe(true);
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Bikaner", "#RajasthanPanchayatElection2026", "#Congress", "#BJP"]);
     expect(handles(d)).toEqual(["bikanerdm", "incrajasthan", "bjp4rajasthan"]);
     expect(d.why).toMatch(/election story/);
     // On the post, so never offered again
@@ -81,7 +83,7 @@ describe("an election story on counting day", () => {
 
   it("after the window the same result story is back to the old rules: nothing added on its own", () => {
     const d = draft("BTN_RJ_BREAKING_20NOV_2714_AM_CONTROL_LAXMAN_BKN_BIG_.txt", BIKANER, AFTER);
-    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Bikaner"]);
     expect(handles(d)).not.toContain("incrajasthan");
   });
 });

@@ -26,6 +26,8 @@ export const NEEDS_CHECK = [
   "file_deleted",
   /** A word or number of the file is missing from the story (a rule changed the desk's text): check against the file before posting */
   "text_changed",
+  /** A national story naming no place: the composer added no city hashtag (b9 D4); the desk picks one. Set by the composer */
+  "no_city",
 ] as const;
 /** Set by the ingest stage, not the parser: they survive a re-parse */
 export const STICKY_CHECKS: readonly NeedsCheck[] = ["resaved", "update_of_posted"];

@@ -71,7 +71,9 @@ describe("Step 1: V1–V11 hold before the prior is added", () => {
     const { d } = draft(fileFor(null), ["फ्रांस में सरकार के खिलाफ प्रदर्शन", "पेरिस में हजारों लोग सड़कों पर उतरे"]);
     // The breaking composer: a story the worker marks as not Rajasthan gets the national brand
     const n = composeBreaking({ headline: "फ्रांस में सरकार के खिलाफ प्रदर्शन", points: ["पेरिस में हजारों लोग"], district: null, town: null, rajasthan: false, leaderPost: false }, rules, book, { subjects, reporters, parties });
+    // b9 D4: "फ्रांस" is not a place the places file knows, so the national story carries no city and says so
     expect(n.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
+    expect(n.noCity).toBe(true);
     expect(d.bodyText.startsWith("#")).toBe(false);
   });
   it("V5 trailing-format posts emit out-of-state places, district before brand", () => {
@@ -81,11 +83,11 @@ describe("Step 1: V1–V11 hold before the prior is added", () => {
     expect(normaliseTag("FINVido", normaliser)).toEqual({ tag: "FINVideo", flag: "#FINVido → #FINVideo" });
     expect(composePostTags("Diwali Mela 2026: रोशनी से जगमगाया शहर\n\n#FINVido #RajasthanWithFirstIndia", ctx).flags).toContain("#FINVido → #FINVideo");
   });
-  it("V7 the Dungarpur ACB post filed by navinsharmabki: nothing emitted from inference, no Jaipur police", () => {
+  it("V7 the Dungarpur ACB post filed by navinsharmabki: #Dungarpur from the text, nothing from his JPR code, no Jaipur police", () => {
     const { d } = draft("BTN_RJ_BREAKING_6043_12NOV_US_NAVIN_JPR_BIG_FULL.txt", ["डूंगरपुर में ACB  कार्रवाई", "ACB ने झोतरी CHC के प्रभारी को किया ट्रैप", "प्रभारी डॉ.अमित को एक हजार रुपए की रिश्वत लेते दबोचा"]);
+    // Owner, 23 Nov 2026: Navin's JPR code gives way to the district the text names: #Dungarpur in the tag line
     expect(d.bodyText.startsWith("#")).toBe(false);
-    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
-    // User decision (12 Nov): nothing from Navin — #Jaipur is not even suggested (the brief allows "may")
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Dungarpur"]);
     expect(d.hashtagSuggestions).not.toContain("#Jaipur");
     for (const h of [...jaipur.police, ...jaipur.collector]) expect(all(d)).not.toContain(h.toLowerCase());
   });
@@ -391,7 +393,7 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     // …and as a video, the same story offers #Jaipur in the trailing run instead
     const v = draft(fileFor("RITURAJ"), ["पंचायत समिति बिलाड़ा में पुनर्मतदान | Rajasthan News", "मतपत्र चोरी के चलते फैसला"]).d;
     expect(v.bodyText.startsWith("#")).toBe(false);
-    expect(v.hashtagSuggestions).toContain("#Jaipur");
+    expect(v.hashtags).toContain("#Jaipur");
   });
   it("12. a post that already names Kota keeps Kota; no #Jaipur", () => {
     const { d } = draft(fileFor("RITURAJ", "KTA4"), NONE);
@@ -434,13 +436,13 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(nws.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
     expect(nws.bodyText.startsWith("#Jaipur: #BJP: ")).toBe(true);
   });
-  it("A3: a video-format breaking headline takes no leading tag; #Jaipur is offered, marked reporter_policy", () => {
+  it("A3: a video-format breaking headline takes no leading tag; #Jaipur goes in the tag line (b9: emitted), marked reporter_policy", () => {
     const { d } = draft(fileFor("RITURAJ"), ["नए दिशा-निर्देश जारी | Rajasthan News", "सभी विभागों को आदेश"]);
     expect(d.bodyText.startsWith("#")).toBe(false);
-    expect(d.hashtagSuggestions[0]).toBe("#Jaipur");
-    expect(d.hashtagSuggestionItems[0]).toMatchObject({ tag: "#Jaipur", source: "reporter_policy" });
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Jaipur"]);
+    expect(d.hashtagSuggestions).not.toContain("#Jaipur");
     expect(d.districtSource).toBeNull();
-    expect(d.proposals.filter((p) => p.source === "reporter_policy")).toEqual([expect.objectContaining({ item: "#Jaipur", layer: "suggest" })]);
+    expect(d.proposals.filter((p) => p.source === "reporter_policy")).toEqual([expect.objectContaining({ item: "#Jaipur", layer: "emit" })]);
   });
   it("A4: a place the desk wrote before the colon that Socia does not know ('आकोला: ...') stays as written: no #Jaipur", () => {
     const lines = ["आकोला: पंचायत समिति की बैठक", "विकास कार्यों पर चर्चा"];
@@ -459,15 +461,19 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.warnings.join(" ")).toMatch(/Jaipurr.*not a district/);
   });
-  it("13. a reporter without a policy block, no district: nothing in line 1 (V7 unchanged)", () => {
-    const { d } = draft(fileFor("NARESH"), NONE);
+  it("13. a reporter without a policy block, no district: nothing in line 1 (V7 unchanged); b9: #Jaipur in the tag line", () => {
+    // Vikas carries no desk rule (Naresh, used here before, got one on 23 Nov 2026)
+    const { d } = draft(fileFor("VIKAS"), NONE);
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.districtSource).toBeNull();
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Jaipur"]);
+    expect(d.headingPlace).toMatchObject({ source: "fallback", placement: "trailing" });
   });
   it("the policy is opt-in per reporter: rituraj, the four desk-stated reporters of Changes #3 §2.2, and the three of 17 Nov carry one", () => {
     const policies = Object.fromEntries([...reporters.profiles!.values()].filter((p) => p.districtWhenMissing).map((p) => [p.handle, p.districtWhenMissing]));
-    // 17 Nov 2026 (owner, from 16 Nov's hand-added #Jaipur): Dinesh Dangi, Aishwarya, Satya. Dinesh Kasana stays without (15 Nov Q2)
-    expect(policies).toEqual({ rituraj9999: "Jaipur", parmarshivendra: "Jaipur", vyaskamalkant: "Jaipur", yogesh2727sh1: "Jaipur", bhanwar_83: "Kota", dineshdangi84: "Jaipur", aishwaryam99: "Jaipur", satyatv99_news: "Jaipur" }); // Satya: @satyatv99_news (owner, 20 Nov 2026)
+    // 17 Nov 2026 (owner, from 16 Nov's hand-added #Jaipur): Dinesh Dangi, Aishwarya, Satya. 23 Nov 2026 (SOCIA_HEADING_GAPS_AND_PLAN
+    // step 4): Nirmal, Naresh and Dinesh Kasana (#Jaipur, replacing 15 Nov Q2), Ashvini (#Delhi)
+    expect(policies).toEqual({ rituraj9999: "Jaipur", parmarshivendra: "Jaipur", vyaskamalkant: "Jaipur", yogesh2727sh1: "Jaipur", bhanwar_83: "Kota", dineshdangi84: "Jaipur", aishwaryam99: "Jaipur", satyatv99_news: "Jaipur", Nirmaltiwaribki: "Jaipur", naresh_jsharma: "Jaipur", DineshKasana15: "Jaipur", ashvinigokul: "Delhi" }); // Satya: @satyatv99_news (owner, 20 Nov 2026)
     expect(reporterProfile(reporters, reporters.byToken.get("RITURAJ"))?.districtWhenMissing).toBe("Jaipur");
   });
 });

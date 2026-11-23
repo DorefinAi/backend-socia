@@ -106,8 +106,10 @@ export function replayHashtags(posts: readonly CorpusPost[], book: PlaceBook, to
     const district = s.lead[0] && !DEVANAGARI.test(s.lead[0]) ? normaliseTag(s.lead[0]) : null;
     const town = s.lead[1] && DEVANAGARI.test(s.lead[1]) ? s.lead[1] : null;
     const place = book.district(district);
+    // A lead the places file does not know ("#Didwana:") stays in the headline, as parseBreaking leaves it on a real file
+    const headline = place || !s.lead.length ? s.headline : `${s.lead.map((t) => `#${t}`).join(" ")}: ${s.headline}`;
     const draft = composeBreaking(
-      { headline: s.headline, points: s.points, district, town, rajasthan: place ? place.rajasthan : true, leaderPost: false },
+      { headline, points: s.points, district, town, rajasthan: place ? place.rajasthan : true, leaderPost: false },
       EMPTY_HANDLE_RULES, book, { topics },
     );
     const ours = new Set(draft.hashtags.map((t) => normaliseTag(t.replace(/^#/, ""))));

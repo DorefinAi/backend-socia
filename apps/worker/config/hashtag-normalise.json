@@ -8,6 +8,7 @@
     "RajasthanWithfirstIndia": "RajasthanWithFirstIndia",
     "RajasthanpanchayatElection2026": "RajasthanPanchayatElection2026",
     "Sawaimadhopur": "SawaiMadhopur",
+    "Didiwana": "Didwana",
     "banswara": "Banswara",
     "BhajanLalSharma": "BhajanlalSharma",
     "CMbhajanlalSharma": "CMBhajanlalSharma",
@@ -38,5 +39,5 @@
   },
   "guarded": ["RajasthanWithFirstIndia", "FirstIndiaNews", "FINVideo"],
   "_known": "The confirmed canonical spellings a variant may map to (the guarded tags count too). A variant whose target is not here REJECTS THE WHOLE FILE: the worker keeps its last good copy and /ingest/status says why. Add a target here only once a person has checked its spelling against the desk's own posts.",
-  "known": ["RajasthanPanchayatElection2026", "SawaiMadhopur", "Banswara", "BhajanlalSharma", "CMBhajanlalSharma", "DiyaKumari", "DrJagdeeshChandra", "Dholpur", "Chittorgarh", "Jaisalmer", "Rajsamand", "Delhi", "SawaiMadhopurNews"]
+  "known": ["RajasthanPanchayatElection2026", "SawaiMadhopur", "Banswara", "BhajanlalSharma", "CMBhajanlalSharma", "DiyaKumari", "DrJagdeeshChandra", "Dholpur", "Chittorgarh", "Jaisalmer", "Rajsamand", "Delhi", "SawaiMadhopurNews", "Didwana"]
 }

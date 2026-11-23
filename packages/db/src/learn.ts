@@ -17,7 +17,7 @@ import { LEARNED_RULE_PRIORITY, MAX_HANDLE_KEYWORDS, MAX_RULE_KEYWORDS, NATIONAL
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { audit } from "./audit";
 import type { Executor } from "./client";
-import { auditLog, handleDirectory, hashtagRules, hashtagStaging, postDrafts, stories } from "./schema";
+import { auditLog, composerCityTags, handleDirectory, hashtagRules, hashtagStaging, postDrafts, stories } from "./schema";
 
 /** Who the change is recorded as: the person who posted, or (actorId null) a named script */
 export interface LearnWho {
@@ -45,9 +45,14 @@ type Draft = Pick<typeof postDrafts.$inferSelect, "id" | "orgId" | "storyId" | "
 const bare = (s: string) => s.trim().replace(/^[#@]+/, "");
 const DEVANAGARI = /[ऀ-ॿ]/;
 
-/** The tags an editor typed on the post that no rule offered (stagePostedHashtags' rule), keyed lower-case without the # */
-export function typedHashtags(draft: Pick<Draft, "hashtags" | "hashtagSuggestions">): Map<string, string> {
+/**
+ * The tags an editor typed on the post that no rule offered (stagePostedHashtags' rule), keyed lower-case without the #.
+ * Never the footer, a suggestion, or a city tag the composer put on the post itself (b9 headingPlace.tags: "#Jaipur" in the
+ * tag line is the composer's, not the desk's, and must not become a topic rule).
+ */
+export function typedHashtags(draft: Pick<Draft, "hashtags" | "hashtagSuggestions"> & { handlePick?: Draft["handlePick"] }): Map<string, string> {
   const known = new Set([RAJASTHAN_FOOTER, NATIONAL_FOOTER, ...draft.hashtagSuggestions].map((t) => bare(t).toLowerCase()));
+  for (const t of composerCityTags(draft.handlePick)) known.add(t);
   const out = new Map<string, string>();
   for (const raw of draft.hashtags) {
     const tag = raw.trim();

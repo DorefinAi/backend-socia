@@ -644,6 +644,23 @@ export interface DraftHandlePick {
   suggested?: { handle: string; reason: HandlePick["reason"]; title?: string }[];
   /** hashtag_suggestions with the rule id and reason line behind each (reporter-prior brief §2.3); absent before */
   tagSuggestions?: { tag: string; source: string; reason: string; score?: number; n?: number }[];
+  /**
+   * Line 1's and the card's place (core HeadingPlace, b9): the city tags the COMPOSER put on the post (`tags`), where they
+   * sit, and the card's place word. Absent on drafts composed before b9.
+   */
+  headingPlace?: {
+    tags: string[];
+    district: string | null;
+    town: string | null;
+    source: string;
+    placement: "lead" | "inline" | "trailing" | "copy" | "none";
+    card: string | null;
+  };
+}
+
+/** The composer's own city tags on a draft (headingPlace.tags), lower-cased without the # */
+export function composerCityTags(pick: DraftHandlePick | null | undefined): Set<string> {
+  return new Set((pick?.headingPlace?.tags ?? []).map((t) => t.replace(/^#/, "").toLowerCase()));
 }
 
 export interface DraftRewrite {

@@ -28,6 +28,8 @@ export const NEEDS_CHECK = [
   "text_changed",
   /** A national story naming no place: the composer added no city hashtag (b9 D4); the desk picks one. Set by the composer */
   "no_city",
+  /** A national story (#FirstIndiaNews) carrying no city: no Rajasthan city is added, the state tag is offered (P3). Set by the composer */
+  "national_story",
 ] as const;
 /** Set by the ingest stage, not the parser: they survive a re-parse */
 export const STICKY_CHECKS: readonly NeedsCheck[] = ["resaved", "update_of_posted"];
@@ -458,13 +460,32 @@ function placeInText(book: PlaceBook, text: string, hint: string | null): { dist
  */
 export function nationalWithoutPlace(tags: FileTags | null | undefined, text: string, book: PlaceBook, reporterDistricts?: readonly string[]): boolean {
   if (!tags) return false;
+  // P3 (owner, 25 Nov 2026): rule 2 holds for EVERY file, not only the flash: a story whose text names only places outside
+  // Rajasthan (and never says राजस्थान) is national ("यूपी चुनाव को लेकर बड़ी खबर" from the TV desk went out Rajasthan)
+  if (namesOnlyOutsidePlace(book, text)) return true;
   if (isNationalFlash(tags)) {
     if (/राजस्थान/u.test(text)) return false;
-    if (placeInText(book, text, null)?.national) return true;
     if (reporterDistricts?.length && reporterDistricts.every((d) => book.district(d)?.rajasthan === false)) return true;
     return !tags.reporter;
   }
   return fromNationalDesk(tags);
+}
+
+/** P3: the text never says राजस्थान, names no Rajasthan place (routes and buildings aside), and names one outside it */
+export function namesOnlyOutsidePlace(book: PlaceBook, text: string): boolean {
+  return !/राजस्थान/u.test(text) && !RAJASTHAN_HOUSE.test(text) && !!placeInText(book, text, null)?.national;
+}
+/** Rajasthan's own houses in Delhi ("बीकानेर हाउस", "जोधपुर हाउस"): a story there is the state's news, not Delhi's */
+const RAJASTHAN_HOUSE = /(?:बीकानेर|जोधपुर|जयपुर|उदयपुर)\s*हाउस/u;
+
+/**
+ * The post's brand as the worker decides it, one rule for the worker, the replay and the tests: a stated place decides
+ * (stories.district: a Rajasthan district or a national place); with none, nationalWithoutPlace on the text, with the
+ * filing reporter's districts.
+ */
+export function isRajasthanStory(book: PlaceBook, district: string | null | undefined, tags: FileTags | null | undefined, text: string, reporterDistricts?: readonly string[]): boolean {
+  const place = book.district(district);
+  return place ? place.rajasthan : !nationalWithoutPlace(tags, text, book, reporterDistricts);
 }
 
 export function parseBreaking(text: string, fileName: string, book: PlaceBook): BreakingStory {
@@ -597,9 +618,19 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   // on "झालावाड़ में सड़क हादसे में दो घायल"), except for a bureau reporter, which the composer checks (it
   // knows the reporters): Navin files every district's ACB story under JPR.
   if (!district && hint) {
-    district = book.district(hint);
-    from = "file_code";
-    national = !!district && !district.rajasthan;
+    const code = book.district(hint);
+    const all = [headline, ...points].join(" । ");
+    const inText = placeInText(book, all, hint);
+    // P3 (owner, 25 Nov 2026): a Rajasthan file code never beats a place outside Rajasthan that the text names, nor the
+    // national flash's own rule when the text names no Rajasthan place (NAT_FLASH_RAJ_JPR's Bhopal, Hyderabad, Nepal,
+    // Delhi-NCR stories went out "#Jaipur:")
+    if (code?.rajasthan && !(inText && !inText.national) && nationalWithoutPlace(tags, all, book)) {
+      national = true;
+    } else {
+      district = code;
+      from = "file_code";
+      national = !!district && !district.rajasthan;
+    }
   }
   // Everything below is INFERRED (b6 fix brief P0): stored for the queue and its filters, only ever offered
   if (!district) {

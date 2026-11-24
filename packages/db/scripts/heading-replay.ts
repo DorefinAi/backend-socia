@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import * as core from "@socia/core";
 import {
-  LEADER_POST, PlaceBook, composeBreaking, deskPlaceTag, nationalWithoutPlace, openingPlaceLength, parseBreaking, parseHandleRules, parsePartyHandles,
+  LEADER_POST, PlaceBook, composeBreaking, deskPlaceTag, isRajasthanStory, openingPlaceLength, parseBreaking, parseHandleRules, parsePartyHandles,
   parsePlacesData, parseReporterHandles, parseSubjectHandles, pickReporter, placeMatchKey, placeSpellings, placeWordInCompound, slotFromTags, type BreakingDraft,
 } from "@socia/core";
 
@@ -127,10 +127,9 @@ const leadKeys = (line1: string) => {
 const result = rows.map((r) => {
   const p = parseBreaking(r.source_text, r.file_name, book);
   const slot = slotFromTags(p.tags);
-  // R6: as the worker decides it (apps/worker/src/stages/compose.ts): a stated place, else the national-desk rule with the
-  // reporter's districts
-  const place = book.district(p.district);
-  const worksAsRajasthan = place ? place.rajasthan : !nationalWithoutPlace(p.tags, [p.headline, p.points.join("\n")].join(" । "), book, pickReporter(slot.reporterToken, reporters).match?.districts);
+  // R6: as the worker decides it (apps/worker/src/stages/compose.ts, core isRajasthanStory): a stated place, else the text and
+  // the file's national rules with the reporter's districts
+  const worksAsRajasthan = isRajasthanStory(book, p.district, p.tags, [p.headline, p.points.join("\n")].join(" । "), pickReporter(slot.reporterToken, reporters).match?.districts);
   const d = composeBreaking(
     {
       headline: p.headline, points: p.points, district: p.district, districtFrom: p.districtFrom, town: p.town, rajasthan: worksAsRajasthan,

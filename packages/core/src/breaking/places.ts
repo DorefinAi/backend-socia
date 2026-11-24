@@ -282,7 +282,9 @@ export class PlaceBook {
 
   /** Places named anywhere in the text, in reading order */
   find(text: string): GazetteerMatch<Place>[] {
-    return this.gazetteer.find(text).sort((a, b) => a.start - b.start);
+    // A visarga typed as a colon ("दिल्लीः केंद्रीय कैबिनेट…", "गुजरातः जामनगर में…") ends the word: the place is still found.
+    // Same length, so match positions stay those of the text.
+    return this.gazetteer.find(text.replace(/ः(?=[\s,।]|$)/gu, " ")).sort((a, b) => a.start - b.start);
   }
 
   /** A district (Rajasthan) or national place by its English name, as stored in stories.district */

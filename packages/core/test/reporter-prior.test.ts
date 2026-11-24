@@ -419,7 +419,8 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     const input = { headline: "दिल्ली में केंद्रीय मंत्रियों की बैठक", points: ["राज्यों के मंत्री शामिल हुए"], district: null, town: null, rajasthan: false, leaderPost: false };
     const withRule = composeBreaking({ ...input, reporterToken: "RITURAJ" }, rules, book, { subjects, reporters, parties, beats });
     const without = composeBreaking({ ...input, reporterToken: "NARESH" }, rules, book, { subjects, reporters, parties, beats });
-    expect(withRule.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
+    // P3: a national story carries the outside city its text names, with or without the reporter
+    expect(withRule.hashtags).toEqual([`#${BRAND_NATIONAL}`, "#Delhi"]);
     expect(withRule.hashtags).toEqual(without.hashtags);
   });
   it("A2 (as handle fixes F10 changed it): a party tag run ('#BJP: ...') is kept and does not fill the district slot: #Jaipur goes in front", () => {
@@ -433,8 +434,9 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(placed.districtSource).toBeNull();
     // The rule is a line-1 hashtag only: it never changes the footer (a place the gazetteer finds in the text does not block it)
     const nws = composeBreaking({ headline: "#BJP: दिल्ली में बैठक", points: ["नेताओं ने भाग लिया"], district: null, town: null, rajasthan: false, leaderPost: false, reporterToken: "RITURAJ" }, rules, book, { subjects, reporters, parties, beats });
-    expect(nws.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
-    expect(nws.bodyText.startsWith("#Jaipur: #BJP: ")).toBe(true);
+    // P3 (owner, 25 Nov 2026): on a national story the Jaipur rule does not apply at all
+    expect(nws.hashtags).toEqual([`#${BRAND_NATIONAL}`, "#Delhi"]);
+    expect(nws.bodyText.startsWith("#BJP: ")).toBe(true);
   });
   it("A3: a video-format breaking headline takes no leading tag; #Jaipur goes in the tag line (b9: emitted), marked reporter_policy", () => {
     const { d } = draft(fileFor("RITURAJ"), ["नए दिशा-निर्देश जारी | Rajasthan News", "सभी विभागों को आदेश"]);

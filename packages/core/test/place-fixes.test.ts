@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  BRAND_RAJASTHAN, PlaceBook, composeBreaking, parseBreaking, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
+  BRAND_RAJASTHAN, PlaceBook, composeBreaking, isRajasthanStory, parseBreaking, pickReporter, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
   parseReporterHandles, parseSubjectHandles, slotFromTags, type BreakingDraft,
 } from "../src";
 
@@ -78,5 +78,74 @@ describe("P5: a merged district's desk tag", () => {
   it(`still a Rajasthan story (${BRAND_RAJASTHAN})`, () => {
     const d = draft(fileFor(null), ["खैरथल से खबर", "कोटकासिम में बैठक", ...POINTS]);
     expect(d.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+  });
+});
+
+/** As the worker composes it: the brand from isRajasthanStory (stored district, else the text and the file's rules) */
+function worker(name: string, lines: string[]): BreakingDraft {
+  const p = parseBreaking(`${name.replace(/\.txt$/, "")}\r\n\r\n${lines.join("\r\n")}\r\n`, name, book);
+  const slot = slotFromTags(p.tags);
+  const rajasthan = isRajasthanStory(book, p.district, p.tags, [p.headline, p.points.join("\n")].join(" । "), pickReporter(slot.reporterToken, reporters).match?.districts);
+  return composeBreaking({ ...p, rajasthan, reporterToken: slot.reporterToken, fileDistrict: slot.district, unknownBureauCode: slot.unknownCode }, rules, book, opts);
+}
+const tagsOf = (d: BreakingDraft) => [...`${d.bodyText} ${d.hashtags.join(" ")}`.matchAll(/#([\p{L}\p{M}\p{N}_-]+)/gu)].map((m) => m[1]!);
+const FLASH = (n: number) => `NAT_FLASH_RAJ_JPR_BREAKING_${n}_23NOV_US_CONTROL_tv_big.txt`;
+
+describe("P3: national detection on every file; a file code never beats a named outside place", () => {
+  it.each([
+    ["Bhopal", ["भोपाल के ऐशबाग में बुलडोजर एक्शन जारी", "जनता क्वार्टर ध्वस्तीकरण की कार्रवाई जारी"], "#Bhopal"],
+    ["Hyderabad", ["हैदराबाद में बम धमाके की धमकी से हड़कंप", "पुलिस ने बढ़ाई सुरक्षा, बम निरोधक दस्ते तैनात"], "#Hyderabad"],
+    ["Delhi-NCR", ["दिल्ली-NCR में हवा की गुणवत्ता ‘बहुत खराब’ श्रेणी में दर्ज", "दिल्ली के कई इलाकों में AQI-400 के पार दर्ज"], "#Delhi"],
+    ["Ayodhya", ["अयोध्या-जनकपुर के बीच सीधी ट्रेन सेवा शुरु", "PM मोदी और नेपाल के PM करेंगे वर्चुअल शुभारंभ"], "#Ayodhya"],
+    ["Nepal", ["नेपाल पीएम बालेन शाह भारत दौरे पर", "पीएम मोदी और बालेन शाह के बीच महत्वपूर्ण बैठक", "हैदराबाद हाउस में चल रही महत्वपूर्ण बैठक"], null],
+    ["Jamnagar (गुजरातः)", ["गुजरातः जामनगर में पुलिस टीम पर हमला", "नशे के खिलाफ कार्रवाई करने गई थी पुलिस टीम"], null],
+    ["Red Fort (no place, the flash's own rule)", ["लाल किला ब्लास्ट मामला", "सुप्रीम कोर्ट ने खारिज की डिफ़ॉल्ट ज़मानत याचिका"], null],
+  ])("NAT_FLASH_RAJ_JPR %s: #FirstIndiaNews, never #Jaipur, no Jaipur police", (_label, lines, city) => {
+    const d = worker(FLASH(6030), lines as string[]);
+    expect(d.hashtags[0]).toBe("#FirstIndiaNews");
+    expect(tagsOf(d)).not.toContain("Jaipur");
+    expect(d.hashtagSuggestions).not.toContain("#Jaipur");
+    expect(d.mentions).not.toContain("@jaipur_police");
+    if (city) expect(d.hashtags).toContain(city);
+    else expect(d.cityFlag).toBe("national_story");
+  });
+
+  it("a state named (गुजरातः) is offered first, not carried; nothing Rajasthan is offered", () => {
+    const jam = worker(FLASH(6007), ["गुजरातः जामनगर में पुलिस टीम पर हमला", "नशे के खिलाफ कार्रवाई करने गई थी पुलिस टीम"]);
+    expect(jam.hashtagSuggestions[0]).toBe("#Gujarat");
+    expect(jam.hashtags).toEqual(["#FirstIndiaNews"]);
+  });
+
+  it("the UP story from the TV desk: national, flagged 'national story', #UttarPradesh offered, no Jaipur/Delhi city pick", () => {
+    const d = worker("btn_rj_breaking_24Nov_vks_1517_control_tv_big_breaking_full.txt", ["यूपी चुनाव को लेकर बड़ी खबर", "समाजवादी पार्टी ने 5 उम्मीदवारों का किया ऐलान"]);
+    expect(d.hashtags).toEqual(["#FirstIndiaNews"]);
+    expect(d.cityFlag).toBe("national_story");
+    expect(d.hashtagSuggestions[0]).toBe("#UttarPradesh");
+    expect(d.hashtagSuggestions).not.toContain("#Jaipur");
+    expect(d.warnings.join(" ")).toMatch(/national story/);
+    expect(d.warnings.join(" ")).not.toMatch(/pick one of the offered places/);
+  });
+
+  it("a reporter's JPR file naming only Delhi is national; one naming Delhi and राजस्थान stays Rajasthan", () => {
+    const delhi = worker(fileFor("DINESH", "JPR"), ["दिल्ली में सोनिया गांधी की पुस्तक का लॉन्चिंग समारोह", "कई नेता रहे मौजूद"]);
+    expect(delhi.hashtags).toEqual(["#FirstIndiaNews", "#Delhi"]);
+    expect(tagsOf(delhi)).not.toContain("Jaipur");
+    const raj = worker(fileFor("DINESH", "JPR"), ["दिल्ली में राजस्थान के सांसदों की बैठक", "कई नेता रहे मौजूद"]);
+    expect(raj.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+    // Rajasthan's own house in Delhi is the state's news
+    expect(worker(fileFor(null, "JPR"), ["दिल्ली के बीकानेर हाउस में बैठक", "कई नेता रहे मौजूद"]).hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+  });
+
+  it("a Rajasthan story keeps its file code (JPR), and a flash naming a Rajasthan place keeps it", () => {
+    expect(line1(worker(fileFor(null, "JPR"), ["सचिवालय में अहम बैठक", "कई अफसर रहे मौजूद"])).startsWith("#Jaipur: ")).toBe(true);
+    const flash = worker(FLASH(6040), ["जयपुर में तेज बारिश से जलभराव", "कई इलाकों में पानी भरा"]);
+    expect(flash.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+  });
+
+  it("a route name never offers or tags its place: no #Delhi on the Kota story ('दिल्ली-मुंबई एक्सप्रेसवे')", () => {
+    const d = worker(fileFor("GUL"), ["कोटा से खबर", "कोटा ग्रामीण की मंडाना थाना पुलिस ने दिल्ली-मुंबई एक्सप्रेसवे पर नाकाबंदी की", "नारकोटिक्स कंट्रोल ब्यूरो के तीन वांछित आरोपियों को दबोचा"]);
+    expect(d.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+    expect(tagsOf(d)).not.toContain("Delhi");
+    expect(d.hashtagSuggestions).not.toContain("#Delhi");
   });
 });

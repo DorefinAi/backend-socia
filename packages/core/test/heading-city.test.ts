@@ -300,6 +300,7 @@ describe("round 3 (owner, 23 Nov 2026 evening): R1–R8, Q1, Q2", () => {
 `, name, book);
     const slot = slotFromTags(p.tags);
     const d = composeBreaking({ ...p, reporterToken: slot.reporterToken, fileDistrict: slot.district }, rules, book, { ...opts, reporters: two });
+    // A district reporter's untrusted code still wins over a district in the points (only the HEADLINE's opening beats it: P9)
     expect(d.headingPlace).toMatchObject({ source: "file_code", placement: "lead" });
     expect(line1(d).startsWith("#Kota: ")).toBe(true);
   });

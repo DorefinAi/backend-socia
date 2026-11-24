@@ -6,6 +6,8 @@
 import { fold } from "../fold";
 import { fileTags, fromNationalDesk, isNationalFlash, type FileTags } from "./filename";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
+import { openingPlaceLength, placeWordInCompound } from "./place-match";
+import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 
 /**
  * Party and election words in a headline's prefix. A PARSING rule only: "भाजपा: ..." and "#BJP #Kota:"
@@ -50,11 +52,13 @@ export const MAX_BREAKING_LINES = 25;
  *   file_code        the file name's bureau code: the FILING desk. Stated (explicit) unless the reporter is a
  *                    bureau filing for no single district (Navin files every district's ACB story as JPR):
  *                    composeBreaking's storyDistrict decides, since only it knows the reporters
+ *   headline_lead    another Rajasthan district the headline (or the first point) opens with, or names as "X शहर",
+ *                    where the file code says otherwise: the desk's own words beat the code (P9, 25 Nov 2026) — explicit
  *   text             a place the headline or the first points mention — inferred
  */
-export type DistrictFrom = "place_line" | "headline_prefix" | "tag" | "file_code" | "text";
+export type DistrictFrom = "place_line" | "headline_prefix" | "tag" | "headline_lead" | "file_code" | "text";
 /** Explicit whoever filed it. file_code is explicit too, but only for a reporter tied to one district (storyDistrict). */
-export const EXPLICIT_DISTRICT_SOURCES: ReadonlySet<DistrictFrom> = new Set<DistrictFrom>(["place_line", "headline_prefix", "tag"]);
+export const EXPLICIT_DISTRICT_SOURCES: ReadonlySet<DistrictFrom> = new Set<DistrictFrom>(["place_line", "headline_prefix", "tag", "headline_lead"]);
 export const isExplicitDistrict = (from: DistrictFrom | null | undefined): boolean => !!from && EXPLICIT_DISTRICT_SOURCES.has(from);
 
 export interface BreakingStory {
@@ -284,6 +288,41 @@ export function headlineDistrictTags(book: PlaceBook, headline: string): Distric
     if (d?.rajasthan) out.set(d.name, d);
   }
   return [...out.values()];
+}
+
+/**
+ * After a place word: from, up to, to, for ("से", "तक", "को", "के लिए"): the place is an origin or a destination; a comma
+ * or "और" makes it the first of a list ("कोटा, बारां, करौली और श्रीगंगानगर में…"), not the story's place
+ */
+const LEAD_AWAY = /^\s*(?:[,،]|(?:से|तक|को|के\s+लिए|की\s+ओर|और|व|एवं|तथा)(?![\p{L}\p{M}]))/u;
+
+/**
+ * P9: the Rajasthan district the headline OPENS with, in any spelling ("बालोतरा शहर के…", "खैरथल के किशनगढ़बास में…"), never
+ * a place word inside a compound or route ("जयपुर-दिल्ली हाईवे", "अजमेर रोड पर"), an origin or destination, or a list's first;
+ * else the district the headline names as "<district> शहर". Null when none. The first point is NOT read: on the 2,271
+ * posts of 15–24 Nov a first point opening with another district changed 2 posts, both away from the desk's city.
+ */
+export function leadDistrict(book: PlaceBook, headline: string): DistrictInfo | null {
+  const text = headline.normalize("NFC").trim();
+  let best: DistrictInfo | null = null;
+  let len = 0;
+  for (const d of book.districts) {
+    if (!d.rajasthan) continue;
+    // rajasthan.ts's other Hindi names count: "खैरथल के किशनगढ़बास में…" opens with Khairthal-Tijara
+    const other = RAJASTHAN_DISTRICTS.find((r) => r.name === d.name)?.aliases.filter((a) => DEVANAGARI.test(a)) ?? [];
+    const k = openingPlaceLength(text, [...book.spellingsOf(d.name), d.hi, ...other]);
+    if (k > len) [best, len] = [d, k];
+  }
+  // A route or building keeps its words ("अजमेर रोड पर हादसा"): no longer the opening once they are taken out
+  const route = best && !withoutRoutesAndBuildings(text).trimStart().startsWith(text.slice(0, len));
+  // Where someone comes from or goes to is not where the story is ("उदयपुर से लौट रहे जयपुर के परिवार…", "… के लिए")
+  const away = best && LEAD_AWAY.test(text.slice(len));
+  if (best && !placeWordInCompound(text, len) && !route && !away) return best;
+  for (const m of headline.normalize("NFC").matchAll(/([\p{L}\p{M}]+)\s+शहर(?![\p{L}\p{M}])/gu)) {
+    const p = book.lookup(m[1]!);
+    if (p?.kind === "district" && p.districts[0]?.rajasthan) return p.districts[0];
+  }
+  return null;
 }
 
 /** A district tag in the headline is explicit only when it is the one district tagged: two are a conflict, offered */
@@ -621,10 +660,16 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
     const code = book.district(hint);
     const all = [headline, ...points].join(" । ");
     const inText = placeInText(book, all, hint);
+    // P9 (owner, 25 Nov 2026): another Rajasthan district the headline opens with ("बालोतरा शहर के…" in a BAR file), or that
+    // the headline names as "X शहर", beats any reporter's file code: the desk's own words
+    const lead = code?.rajasthan ? leadDistrict(book, headline) : null;
+    if (lead && lead.name !== code?.name) {
+      district = lead;
+      from = "headline_lead";
     // P3 (owner, 25 Nov 2026): a Rajasthan file code never beats a place outside Rajasthan that the text names, nor the
     // national flash's own rule when the text names no Rajasthan place (NAT_FLASH_RAJ_JPR's Bhopal, Hyderabad, Nepal,
     // Delhi-NCR stories went out "#Jaipur:")
-    if (code?.rajasthan && !(inText && !inText.national) && nationalWithoutPlace(tags, all, book)) {
+    } else if (code?.rajasthan && !(inText && !inText.national) && nationalWithoutPlace(tags, all, book)) {
       national = true;
     } else {
       district = code;

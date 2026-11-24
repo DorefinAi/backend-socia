@@ -149,3 +149,57 @@ describe("P3: national detection on every file; a file code never beats a named 
     expect(d.hashtagSuggestions).not.toContain("#Delhi");
   });
 });
+
+describe("P9: file codes; the copy's opening district beats any reporter's code", () => {
+  it("BAR is Barmer (the Barmer mortar story), BRN is Baran, RAJ is Rajsamand", () => {
+    expect(book.codes).toMatchObject({ BAR: "Barmer", BRN: "Baran", RAJ: "Rajsamand" });
+    const mortar = worker("BTN_RJ_BREAKING_24NOV_2740_AM_CONTROL_ASHOK_BAR_BIG_FULL_.txt", ["खेत में जिंदा मोर्टार बम मिलने से इलाके में फैली सनसनी", "पुलिस मौके पर पहुंची"]);
+    expect(line1(mortar).startsWith("#Barmer: ")).toBe(true);
+    expect(tagsOf(mortar)).not.toContain("Baran");
+    expect(line1(worker("BTN_RJ_BREAKING_20NOV_2724_AM_CONTROL_RAJ3_BIG_.txt", ["पंचायत समिति चुनाव परिणाम", "भाजपा को बढ़त"])).startsWith("#Rajsamand: ")).toBe(true);
+  });
+
+  it("the Balotra fire in a BAR file: Balotra (the split district), @BalotraPolice, never #Baran/@BaranPolice", () => {
+    const d = worker("btn_rj_breaking_6079_24nov_us_control_BAR2_big_full.txt", ["बालोतरा शहर के रामदेव टांका क्षेत्र में लगी आग", "तस्वीर बनाने के गोदाम में लगी आग", "आग से गोदाम जलकर हुआ राख"]);
+    expect(d.headingPlace.district).toBe("Balotra");
+    expect(tagsOf(d)).toContain("Balotra");
+    expect(tagsOf(d)).not.toContain("Baran");
+    expect(d.mentions).not.toContain("@BaranPolice");
+    expect(d.mentions).toContain("@BalotraPolice");
+  });
+
+  it("ALW21, 'खैरथल के किशनगढ़बास में…': Khairthal-Tijara, not Alwar", () => {
+    const d = worker("BTN_RJ_BREAKING_2003_24NOV_mh_CONTROL_ALW21_big.txt", ["खैरथल के किशनगढ़बास में अतिक्रमण कार्रवाई को लेकर बवाल!", "बासड़ा रोड पर कार्रवाई के विरोध में लामबंद हुए दुकानदार"]);
+    expect(d.headingPlace.district).toBe("Khairthal-Tijara");
+    expect(tagsOf(d)).not.toContain("Alwar");
+    expect(d.mentions).not.toContain("@AlwarPolice");
+  });
+
+  it("the headline opening with a split district beats its parent's code (AJM file, Beawar story); a list's first does not", () => {
+    expect(worker(fileFor(null, "AJM3"), ["ब्यावर में ट्रक और कार की टक्कर", "दो की मौत"]).headingPlace.district).toBe("Beawar");
+    const list = parseBreaking("x\r\nकोटा, बारां, करौली और श्रीगंगानगर में मतगणना जारी\r\nपहला बिंदु\r\n", fileFor(null, "JPR"), book);
+    expect(list.district).toBe("Jaipur");
+  });
+
+  it("never an origin, destination, route or compound: 'उदयपुर से लौट रहे…', 'अजमेर-जयपुर हाईवे' keep the JPR code", () => {
+    for (const h of ["उदयपुर से लौट रहे जयपुर के परिवार की कार पलटी", "अजमेर-जयपुर हाईवे पर बड़ा हादसा"]) {
+      const p = parseBreaking(`x\r\n${h}\r\nपहला बिंदु\r\n`, fileFor(null, "JPR"), book);
+      expect(p.district, h).toBe("Jaipur");
+    }
+  });
+
+  it("the code and the copy disagree otherwise (KTA file, 'भारी बारिश के बाद बारां में जलभराव'): both offered, neither emitted, no police", () => {
+    const d = worker(fileFor(null, "KTA4"), ["भारी बारिश के बाद बारां में जलभराव", "कई घरों में पानी भरा"]);
+    expect(tagsOf(d).filter((t) => t === "Kota" || t === "Baran")).toEqual([]);
+    expect(d.hashtagSuggestions.slice(0, 2)).toEqual(["#Baran", "#Kota"]);
+    expect(d.cityFlag).toBe("no_city");
+    expect(police(d)).toEqual([]);
+    expect(d.warnings.join(" ")).toMatch(/file code says Kota but the copy names Baran/);
+  });
+
+  it("a code the copy agrees with stands as before", () => {
+    const d = worker(fileFor(null, "KTA4"), ["कोटा में चोरी की वारदात", "बदमाश नकदी और जेवर ले गए"]);
+    expect(d.headingPlace.district).toBe("Kota");
+    expect(police(d).length).toBeGreaterThan(0);
+  });
+});

@@ -56,6 +56,15 @@ function windowDistrict(book: PlaceBook, lines: readonly string[]): DistrictInfo
   return null;
 }
 
+/**
+ * P9: another Rajasthan district than the file code's that the copy names (the headline or the first two points, with the
+ * parser's guards: routes and buildings out, the district read as a place), or null
+ */
+function otherDistrictNamed(book: PlaceBook, story: Pick<BreakingComposeInput, "headline" | "points">, code: DistrictInfo): DistrictInfo | null {
+  const other = windowDistrict(book, [story.headline, ...story.points.slice(0, 2)]);
+  return other && other.name !== code.name ? other : null;
+}
+
 /** R8: a place's name as the card shows it: a national one with its spaces ("UttarPradesh" → "Uttar Pradesh") */
 export function cardName(info: DistrictInfo): string {
   return info.rajasthan ? info.name : info.name.replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -509,6 +518,9 @@ const trustsFileCode = (m: ReporterMatch | null, code: DistrictInfo): boolean =>
  */
 export function storyDistrict(story: BreakingComposeInput, book: PlaceBook, reporter: ReporterMatch | null): Sourced<DistrictInfo> | null {
   const own = book.district(story.district);
+  // P9: the headline's opening district beats a file code; for a state bureau reporter (Navin: no district of his own) whose
+  // code was never trusted, it stays what R1 made it: the text's district, a tag in the tag line, no district handle
+  if (own && story.districtFrom === "headline_lead" && reporter && (reporter.bureau || reporter.districts.length === 0)) return inferred(own, "headline");
   if (own && (story.districtFrom === undefined || isExplicitDistrict(story.districtFrom))) return explicit(own, story.districtFrom ?? "caller");
   // A row stored before migration 0023 whose file could not be parsed again: the district is stated only when it
   // is the file code (what the file name says, as before b6); any other value is offered, never tagged
@@ -673,7 +685,12 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // district the handle rules see; everything inferred is offered in hashtagSuggestions and nothing else.
   const reporterPick = pickReporter(story.reporterToken, reporters);
   const reporter = reporterPick.match;
-  const district = storyDistrict(story, book, reporter);
+  const fromStory = storyDistrict(story, book, reporter);
+  // P9 (owner, 25 Nov 2026): a trusted file code that the copy contradicts (the headline or first two points name another
+  // Rajasthan district, not at the opening, which the parser already took) is no city at all: both are offered, neither is
+  // emitted, no district handle is picked
+  const codeConflict = fromStory?.provenance === "explicit" && fromStory.from === "file_code" && fromStory.value.rajasthan ? otherDistrictNamed(book, story, fromStory.value) : null;
+  const district = codeConflict && fromStory ? inferred(fromStory.value, "code_conflict") : fromStory;
   // The file code stood for a reporter the list does not know: say so, since the code is then trusted blind
   const codeWarnings =
     district?.provenance === "explicit" && district.from === "file_code" && reporterPick.unmatchedToken
@@ -760,7 +777,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // A video post's desk rule: offered first, never a leading tag
   if (policy?.layer === "suggest") offered.push({ tag: `#${cityTagOf(policy.district)}`, source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}; a video post takes no leading tag` });
   // An inferred district (§2.8) is offered first among the suggestions and goes nowhere else
-  if (district?.provenance === "inferred" && !(policy && policy.district.name === district.value.name)) {
+  if (district?.provenance === "inferred" && district.from !== "code_conflict" && !(policy && policy.district.name === district.value.name)) {
     offered.push({ tag: `#${cityTagOf(district.value)}`, source: districtSource(district.from, true), reason: `${district.value.name}, inferred from the ${district.from === "reporter" ? "reporter's district" : district.from}: not stated in the copy` });
   }
   for (const t of pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer])) {
@@ -829,7 +846,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     // Navin, filing every district under JPR, or a code not among the reporter's districts). It is the city only when the
     // text names no district: "डूंगरपुर में ACB कार्रवाई" under JPR is #Dungarpur (as the desk wrote it); Navin's IAS stories,
     // naming none, stay "#Jaipur:" (3 of 3 as the desk wrote them, 15–22 Nov). Measured on 1,689 posts: no other change.
-    const fileCodeCity = bureau && guess && CITY_FROM_COPY_TEXT ? null : code;
+    const fileCodeCity = codeConflict || (bureau && guess && CITY_FROM_COPY_TEXT) ? null : code;
     const pick: [DistrictInfo, HeadingSource] | null = legacy && (rajasthan || !legacy.rajasthan)
       ? [legacy, "desk"]
       : policy
@@ -862,15 +879,17 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
       noCity = true;
       // A national story is offered no Rajasthan place (P3): the state or country its text names first, then the reporter's
       // outside districts and Delhi
-      const candidates = rajasthan
-        ? [...(reporter?.districts ?? []), story.fileDistrict ?? "", HEAD_OFFICE_DISTRICT, "Delhi"]
-        : [named?.name ?? "", ...(reporter?.districts ?? []), "Delhi"];
+      const candidates = codeConflict && district
+        ? [codeConflict.name, district.value.name]
+        : rajasthan
+          ? [...(reporter?.districts ?? []), story.fileDistrict ?? "", HEAD_OFFICE_DISTRICT, "Delhi"]
+          : [named?.name ?? "", ...(reporter?.districts ?? []), "Delhi"];
       const likely = candidates
         .map((n) => book.district(n))
         .filter((d): d is DistrictInfo => !!d && (rajasthan || !d.rajasthan))
         .filter((d, i, all) => all.findIndex((x) => x.name === d.name) === i)
         .slice(0, 3);
-      const why = (d: DistrictInfo) => (!rajasthan && d.name === named?.name ? `a national story: the text names ${cardName(d)} (one click)` : `a story naming no place: ${d.name} is one of the likeliest (one click)`);
+      const why = (d: DistrictInfo) => (codeConflict && district ? `the file code says ${district.value.name}, the copy names ${codeConflict.name}: pick one (one click)` : !rajasthan && d.name === named?.name ? `a national story: the text names ${cardName(d)} (one click)` : `a story naming no place: ${d.name} is one of the likeliest (one click)`);
       for (const d of likely) cityOffers.push({ tag: `#${cityTagOf(d)}`, source: "district.city.candidate", reason: why(d) });
     }
   }
@@ -996,7 +1015,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     bodyText, hashtags, hashtagSuggestions, hashtagSuggestionItems, proposals, mentions, handles, handleSuggestions, cls: picked.cls, why: picked.why,
     warnings: [
       ...picked.warnings, ...codeWarnings, ...policyWarnings, ...priorWarnings, ...flags.map((f) => `hashtag typo: ${f}`),
-      ...(noCity && rajasthan ? ["a story naming no place: no city hashtag was added; pick one of the offered places"] : []),
+      ...(noCity && rajasthan && !codeConflict ? ["a story naming no place: no city hashtag was added; pick one of the offered places"] : []),
+      ...(codeConflict && district ? [`the file code says ${district.value.name} but the copy names ${codeConflict.name}: no city hashtag was added; pick one of the two offered`] : []),
       ...(noCity && !rajasthan ? ["national story (#FirstIndiaNews): no Rajasthan city tag is added; add the state or place tag if it fits (offered)"] : []),
     ],
     unmatchedReporter: picked.unmatchedReporter, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}`,

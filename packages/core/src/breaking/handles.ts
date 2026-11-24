@@ -72,6 +72,12 @@ export interface DistrictHandleEntry {
    */
   towns?: string[];
   words?: string[];
+  /**
+   * P7 (owner, 25 Nov 2026), collector entries only: OFFER this collector on every local story of the district that
+   * carries no reporter byline and is not crime (never tagged by this): the desk adds @DmChittorgarh by hand to its
+   * local civic stories (17 times on X, 23-24 Nov).
+   */
+  offer_on_local?: boolean;
 }
 
 /** One police force of a district with several, as the force choice reads it (folded) */
@@ -93,7 +99,7 @@ export interface HandlesData {
 export interface HandleRules {
   state: { government: string[]; cm: string[]; police: string[] };
   /** Keyed by districtKey() of the district */
-  districts: Record<string, { police: string[]; collector: string[]; forces?: PoliceForce[] }>;
+  districts: Record<string, { police: string[]; collector: string[]; forces?: PoliceForce[]; offerLocal?: string[] }>;
   /**
    * Every handle in the file, verified or not, lowercase without the @: the desk-added handles rule never
    * tags these or their lookalikes (desk-handles.ts)
@@ -139,6 +145,7 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
         if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !fold(x)))) fail(`${where}[${i}]: "${k}" must be a list of names`);
         if (v !== undefined && e!.role !== "police") fail(`${where}[${i}]: only a police entry has "${k}"`);
       }
+      if (e!.offer_on_local !== undefined && (typeof e!.offer_on_local !== "boolean" || e!.role !== "collector")) fail(`${where}[${i}]: "offer_on_local" is true or false, on a collector entry only`);
       return e as DistrictHandleEntry;
     });
   };
@@ -185,6 +192,7 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
       if (e.verified && !e.alternate && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) {
         d[e.role].push(bare(e));
         if (e.role === "police") (d.forces ??= []).push({ handle: bare(e), towns: (e.towns ?? []).map(fold), words: (e.words ?? []).map(fold) });
+        if (e.role === "collector" && e.offer_on_local) (d.offerLocal ??= []).push(bare(e));
       }
     }
     // A force list matters only where a district has two forces and the file says which is which
@@ -768,6 +776,16 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   // attack or criticism filter (M2): a named MLA is offered on a story attacking them too — the desk tagged
   // @V_S_Kanawat on 13 Nov on a story where villagers attacked him. attackTargets() only ever applies to parties.
   for (const m of pickMlaHandles(all, parties)) suggested.push({ handle: m.handle, reason: "party", title: m.name });
+
+  // P7 (owner, 25 Nov 2026): the desk's regular hand-added handles, OFFERED only, never tagged by these rules.
+  // The CM named (भजनलाल शर्मा): the CM's handles, @RajCMO included (the desk added it on X on 7 CM stories, 23-24 Nov)
+  if (story.rajasthan && (CM_SUBJECT.test(all) || (subjects.count > 0 && subjects.gazetteer.find(all).some((m) => rules.state.cm.some((h) => h.toLowerCase() === String(m.entry.data.handle).toLowerCase()) && !subjectExcluded(m, all))))) {
+    for (const h of rules.state.cm) suggested.push({ handle: h, reason: "cm", detail: "the CM is named in the copy: offered" });
+  }
+  // A collector the file marks offer_on_local (@DmChittorgarh), on the district's local copy with no byline, not crime
+  if (story.rajasthan && local?.offerLocal && cls !== "incident" && !rep.matches.length) {
+    for (const h of local.offerLocal) suggested.push({ handle: h, reason: "collector", detail: `the desk adds the ${district} collector to its local stories: offered` });
+  }
 
   // Handles the desk added with keywords, computed here because they ride on every class except the two
   // where the district force stands alone. Never a handle of the files (verified or not) nor a lookalike

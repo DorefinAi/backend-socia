@@ -21,6 +21,7 @@ import { EMPTY_PARTY_RULES, partyOfLeader, type PartyRules } from "./parties";
 import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, type ReporterMatch, type ReporterRules } from "./reporters";
 import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
+import { stateCapitalStory } from "./capital";
 import { PARTY, deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, withoutRoutesAndBuildings, type DistrictFrom } from "./parse";
 import { openingPlaceLength, placeWordInCompound } from "./place-match";
 import {
@@ -925,6 +926,12 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   for (const t of [...tags, ...trailing]) for (const k of tagKeys(book, t)) onPost.add(k);
   // D4: a national story with no city offers its three likeliest first, one click each
   offered.unshift(...cityOffers);
+  // P7 (owner, 25 Nov 2026): a Rajasthan state-capital story (CM, CS, secretariat, the High Court, the assembly) that carries
+  // no city offers #Jaipur first, as the desk adds it by hand; never applied, never on copy naming another state or country
+  const capital = rajasthan && headingPlace.placement === "none" ? book.district(HEAD_OFFICE_DISTRICT) : null;
+  if (capital && stateCapitalStory(text, book)) {
+    offered.unshift({ tag: `#${capital.tag}`, source: "district.capital", reason: "a state-capital story (CM, CS, secretariat, High Court, assembly) naming no city: offered" });
+  }
   const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && !hashtags.some((t) => t.toLowerCase() === o.tag.toLowerCase()) && !tagKeys(book, o.tag).some((k) => onPost.has(k)));
   const hashtagSuggestions = hashtagSuggestionItems.map((o) => o.tag);
   const prefix = tags.length && !deskRun && inlineLine === null ? `${tags.join(" ")}: ` : "";

@@ -262,7 +262,9 @@
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=31&isOtherDept=false",
-        "note": "linked as the office's X account (https://twitter.com/DMChittorgarh) on official site https://chittorgarh.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Chittorgarh', bio: \"Official Handle of District Collector and District Magistrate, #Chittorgarh, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/DmChittorgarh]"
+        "note": "linked as the office's X account (https://twitter.com/DMChittorgarh) on official site https://chittorgarh.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Chittorgarh', bio: \"Official Handle of District Collector and District Magistrate, #Chittorgarh, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/DmChittorgarh]",
+        "offer_on_local": true,
+        "offer_note": "P7 (owner, 25 Nov 2026): offered (never tagged by this flag) on Chittorgarh local stories without a reporter byline that are not crime: the desk added @DmChittorgarh by hand 17 times on X on 23-24 Nov (temple events, mandi, schools, power cuts). This is already the collector handle, so administration stories still tag it."
       }
     ],
     "Churu": [

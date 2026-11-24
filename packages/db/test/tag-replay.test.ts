@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  cardLeadsJaipur, compareToBaseline, headingKey, matchX, openingIsNotThePlace, outsidePlaces, tallyBySource, untagged, weightedLength, type Tally,
+  cardLeadsJaipur, cardMatchesLine1, cardPlaceName, compareToBaseline, expectedCards, headingKey, matchX, openingIsNotThePlace, outsidePlaces, tallyBySource, untagged, weightedLength, type Tally,
 } from "../scripts/tag-replay";
 import type { LoggedItemOutcome } from "../src/schema";
 
@@ -26,14 +26,37 @@ describe("weightedLength (G5, twitter-text v3)", () => {
   });
 });
 
-describe("card heading vs line 1 (G4)", () => {
-  it("drops the tags' # and compares without spaces", () => {
+describe("card heading vs line 1 (G4: the desk's cards on X)", () => {
+  const places = new Set(["#Kota", "#लाडपुरा", "#Jaipur", "#Khairthal", "#KhairthalTijara", "#UttarPradesh", "#Chittorgarh", "#भदेसर", "#KotputliBehror"]);
+  const isPlace = (t: string) => places.has(t);
+  const ok = (line1: string, card: string) => cardMatchesLine1(card, expectedCards(line1, isPlace));
+  it("drops the tags' # and compares without spaces or hyphens", () => {
     expect(untagged("#Jaipur #बस्सी: पंचायती राज चुनाव")).toBe("Jaipur बस्सी: पंचायती राज चुनाव");
-    expect(headingKey("Jaipur: बड़ी खबर")).toBe(headingKey(untagged("#Jaipur: बड़ी खबर")));
-    expect(headingKey("Sawai Madhopur: x")).toBe(headingKey(untagged("#SawaiMadhopur: x")));
+    expect(headingKey("Sawai Madhopur: x")).toBe(headingKey("SawaiMadhopur: x"));
+    // a half nasal before a consonant is the anusvara (placeMatchKey): one place, two spellings
+    expect(headingKey("निम्बाहेड़ा में शिविर")).toBe(headingKey("निंबाहेड़ा में शिविर"));
   });
-  it("tells a card that shows only the town from a two-tag line 1", () => {
-    expect(headingKey("बस्सी: पंचायती राज चुनाव")).not.toBe(headingKey(untagged("#Jaipur #बस्सी: पंचायती राज चुनाव")));
+  it("a lead run with a colon: the last place, then the rest", () => {
+    expect(ok("#Kota #लाडपुरा: सड़क हादसा", "लाडपुरा: सड़क हादसा")).toBe(true);
+    expect(ok("#Kota #लाडपुरा: सड़क हादसा", "Kota: सड़क हादसा")).toBe(false);
+    expect(ok("#Jaipur: बड़ी खबर", "Jaipur: बड़ी खबर")).toBe(true);
+    expect(ok("#Jaipur: #BJP की बैठक", "Jaipur: BJP की बैठक")).toBe(true);
+  });
+  it("writes Latin names as spoken and the desk's district names", () => {
+    expect(expectedCards("#UttarPradesh: चुनाव", isPlace)).toEqual(["Uttar Pradesh: चुनाव"]);
+    expect(expectedCards("#KhairthalTijara: बवाल", isPlace)).toEqual(["Khairthal: बवाल"]);
+    expect(expectedCards("#KotputliBehror: x", isPlace)).toEqual(["Kotputli-Behror: x"]);
+    expect(cardPlaceName("#Phalodi", { Phalodi: "Falodi" })).toBe("Falodi");
+  });
+  it("no lead place tag: line 1 itself, no prefix", () => {
+    expect(ok("जोधपुर पुलिस कमिश्नरेट में साक्षात्कार", "जोधपुर पुलिस कमिश्नरेट में साक्षात्कार")).toBe(true);
+    expect(ok("जोधपुर पुलिस कमिश्नरेट में साक्षात्कार", "Jodhpur: पुलिस कमिश्नरेट में साक्षात्कार")).toBe(false);
+    expect(ok("#BJP: प्रदेश कार्यकारिणी", "BJP: प्रदेश कार्यकारिणी")).toBe(true);
+  });
+  it("a town tag standing for a word: the three forms the desk's cards show", () => {
+    expect(ok("#Chittorgarh #भदेसर में गोशाला में आग", "भदेसर में गोशाला में आग")).toBe(true);
+    expect(ok("#Chittorgarh #भदेसर में गोशाला में आग", "Chittorgarh: भदेसर में गोशाला में आग")).toBe(true);
+    expect(ok("#Chittorgarh #भदेसर में गोशाला में आग", "Chittorgarh: गोशाला में आग")).toBe(false);
   });
   it("reads a Jaipur card lead in either script", () => {
     expect(cardLeadsJaipur("Jaipur: दिल्ली में जाम")).toBe(true);
@@ -104,6 +127,16 @@ describe("compareToBaseline (G1)", () => {
     const now = new Map([["s1", { file: "a.txt", outcomes: [O("#jaipur", "kept", "district.file_code"), O("@AlwarPolice", "accepted", "district.police", "suggest")] }]]);
     const { keptLost } = compareToBaseline({}, {}, now, base);
     expect(keptLost).toEqual([{ id: "s1", file: "a.txt", item: "@AlwarPolice", source: "district.police", now: "accepted" }]);
+  });
+  it("fails a source only when its kept-lost count is over 0.5% of its baseline kept items", () => {
+    const K = (kept: number): Tally => ({ kept, removed: 0, accepted: 0, ignored: 0, added: 0 });
+    const story = (outcome: LoggedItemOutcome["outcome"]) => ({ file: "a.txt", outcomes: [O("@AlwarPolice", outcome, "district.police")] });
+    const base = new Map([["s1", story("kept")]]);
+    const now = new Map([["s1", story("removed")]]);
+    // one lost of 400 kept (0.25%): a listed trade-off, not a failure
+    expect(compareToBaseline({}, { "district.police": K(400) }, now, base).keptLostOver).toEqual([]);
+    // one lost of 100 kept (1%): fails
+    expect(compareToBaseline({}, { "district.police": K(100) }, now, base).keptLostOver).toEqual([{ source: "district.police", lost: 1, kept: 100 }]);
   });
 });
 

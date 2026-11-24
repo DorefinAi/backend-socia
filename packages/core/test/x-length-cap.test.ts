@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  BREAKING_POST_MAX, PlaceBook, assemblePostText, composeBreaking, parseBreaking, parseHandleRules, parsePartyHandles, parsePlacesData,
+  BREAKING_BODY_FLOOR, BREAKING_POST_MAX, PlaceBook, assemblePostText, handleProposal, composeBreaking, parseBreaking, parseHandleRules, parsePartyHandles, parsePlacesData,
   parseReporterHandles, parseSubjectHandles, parseSuggestRules, slotFromTags, xLen, type BreakingDraft, type BreakingComposeOptions,
 } from "../src";
 
@@ -97,5 +97,32 @@ describe("P2: the draft fits X's 280", () => {
     expect(d.proposals.filter((p) => p.reason === "length" && p.kind === "hashtag")).toEqual([]);
     const e = draft(SIROHI_FILE, SIROHI, SIROHI_AT, { xLimit: BREAKING_POST_MAX, limit: 260 });
     expect(xLen(post(e))).toBeLessThanOrEqual(260);
+  });
+
+  it("an incident's police handle stays; line 2 gives way first (Jaipur court-ordered possession, 20 Nov)", () => {
+    // BTN_RJ_BREAKING_6105_20NOV_US_CONTROL_om_court_jpr_kamalkant_big: the cap used to move @jaipur_police off at full line 2
+    const name = "BTN_RJ_BREAKING_6105_20NOV_US_CONTROL_om_court_jpr_kamalkant_big.txt";
+    const lines = [
+      "जयपुर", "वित्तीय आस्तियों का प्रतिभूतिकरण व पुनर्गठन एवं प्रतिभूतिहित का प्रवर्तन एक्ट, 2002 से जुड़ा प्रकरण",
+      "अदालत के आदेश से सीज की गई संपत्ति के ताले तोड़ कर किया गया अवैध कब्जा", "अतिरिक्त मुख्य न्यायिक मजिस्ट्रेट ने बंधक संपत्ति पर पुनः कब्जा दिलाने के दिए आदेश",
+      "आवश्यकता होने पर पुलिस को नियमानुसार इमदाद उपलब्ध कराने के भी दिए निर्देश",
+    ];
+    const at = "2026-11-20T14:10:49Z";
+    const uncapped = draft(name, lines, at, { xLimit: BREAKING_POST_MAX });
+    expect(uncapped.mentions).toContain("@jaipur_police");
+    expect(xLen(post(uncapped))).toBeGreaterThan(280);
+    const d = draft(name, lines, at);
+    expect(xLen(post(d))).toBeLessThanOrEqual(280);
+    expect(d.mentions).toContain("@jaipur_police");
+    const line2 = d.bodyText.split("\n\n")[1]!;
+    expect(xLen(line2)).toBeGreaterThanOrEqual(BREAKING_BODY_FLOOR);
+    expect(xLen(line2)).toBeLessThan(xLen(uncapped.bodyText.split("\n\n")[1]!));
+  });
+
+  it("a handle moved for length carries movedFor and logs reason 'length' (the desk's suggestion reason too)", () => {
+    const d = draft(SIROHI_FILE, SIROHI, SIROHI_AT);
+    const moved = d.handleSuggestions.filter((h) => h.movedFor === "length");
+    expect(moved.map((h) => h.handle)).toEqual(["BJP4Rajasthan", "INCRajasthan", "Dmsirohi"]);
+    for (const h of moved) expect(handleProposal(h, "suggest")).toMatchObject({ layer: "suggest", reason: "length" });
   });
 });

@@ -57,6 +57,17 @@ describe("P4: the police force of a district with two", () => {
     expect(d.warnings.join(" ")).toMatch(/two police forces/);
   });
 
+  it("an offered force still holds the police slot: no body subject takes it (Harmara underpass, 19 Nov)", () => {
+    const d = draft("BTN_RJ_BREAKING_19NOV_2740_AM_CONTROL_JPR9_BIG_.txt", [
+      "हरमाड़ा से खबर", "बैनाड़ रोड सितावाली फाटक (RUB) अंडरपास का लोकार्पण आज", "डिप्टी CM  दीया कुमारी करेंगी अंडरपास का लोकार्पण",
+      "डिप्टी CM अपने निर्वाचन क्षेत्र विद्याधर नगर में बैनाड़ रोड पहुंचेंगी शाम 4 बजे", "दीया कुमारी जनता को समर्पित करेंगी अंडरपास",
+      "लोगों को ट्रैफिक जाम से मिलेगी राहत", "सीतावली फाटक व नाड़ी के फाटक के कारण लगने वाले ट्रैफिक जाम से राहत",
+    ], "2026-11-19T08:22:02Z");
+    expect(d.cls).toBe("incident");
+    expect(offered(d)).toEqual(expect.arrayContaining(["jaipur_police", "jprruralpolice"]));
+    expect(tagged(d)).not.toContain("kumaridiya");
+  });
+
   it("a Jaipur city story with no town keeps @jaipur_police (MI Road, 23 Nov)", () => {
     const d = draft("BTN_RJ_BREAKING_2129_23NOV_mh_CONTROL_satya_big.txt", [
       "जयपुर: अनियंत्रित कार जा घुसी दुकान के शटर में", "एमआई रोड पर आज सुबह हुआ हादसा", "घटना में कार चालक को आई चोट",

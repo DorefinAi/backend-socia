@@ -715,6 +715,9 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     }
     return { handle: local.police[0]!, offer: [], why: "" };
   };
+  // A force offered (two forces, unclear) still holds the police slot: the incident shape does not fall through to the
+  // body's subjects, so nothing else changes on the post (P4: no side effects beyond the force itself)
+  let policeOffered = false;
   const addDistrictPolice = (inHeadline: boolean) => {
     if (picks.some((p) => p.reason === "police")) return;
     const c = policeChoice();
@@ -723,6 +726,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
       picks.push({ handle: c.handle, reason: "police", inHeadline, ...(local?.forces && { detail: `district.police: ${c.why}` }) });
       return;
     }
+    policeOffered = true;
     for (const h of c.offer) suggested.push({ handle: h, reason: "police", detail: `${district} has two police forces: ${c.why}` });
     warnings.push(`${district} has two police forces and ${c.why}; both are offered, neither tagged`);
   };
@@ -876,7 +880,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     if (policeHqActs(head)) add(rules.state.police, "state_police", true);
     // A police subject in subject-handles.json that is acting (another force, a railway police unit)
     namedSubjects(head, true);
-    if (!picks.length) namedSubjects(body, false);
+    if (!picks.length && !policeOffered) namedSubjects(body, false);
   } else if (cls === "administration") {
     // ── administration: the collector, alone ────────────────────────────────
     if (!story.rajasthan) return onlyReporter();

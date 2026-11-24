@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  DESK_LEARNED_POSTED_USES, MAX_HANDLE_KEYWORDS, PlaceBook, PostedLearner, SETTINGS_POSTED_USES, deskAutoKey, deskHandleRules, deskKeywordAuto, districtKeywordCandidates,
+  DESK_LEARNED_POSTED_USES, MAX_HANDLE_KEYWORDS, PlaceBook, PostedLearner, SETTINGS_POSTED_USES, deskAutoKey, deskHandleRules, deskKeywordAuto, deskKeywordOffered, districtKeywordCandidates,
   handleLearnWithheld, isFooterTag, keywordPostedCounts, knownTagNames, mergeKeywords, parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles,
   parseSubjectHandles, pickHandlesExplained, storyNames, tagRuleKeywords, tagWords, withKeywordUses, type DeskHandleRow, type LearnStory,
 } from "../src";
@@ -68,7 +68,7 @@ describe("which desk handles may learn", () => {
   });
 });
 
-describe("a learned keyword: offered after one post, added after two", () => {
+describe("a learned keyword: used from two desk-typed stories, never added on its own when it is a place", () => {
   it("counts each posted story once per keyword, the district field in both scripts", () => {
     const counts = keywordPostedCounts(["Jaipur", "जयपुर", "चाकसू"], [
       story("चाकसू में हादसा", "", "Jaipur"),
@@ -83,12 +83,14 @@ describe("a learned keyword: offered after one post, added after two", () => {
   });
 
   const row: DeskHandleRow = { handle: "@ChaksuNews", entityName: "ChaksuNews", aliases: ["चाकसू", "Jaipur", "जयपुर"] };
-  it("a row read without its posts keeps the old rule (every keyword added); with them, one story only offers", () => {
+  it("a row read without its posts keeps the old rule (every keyword added); with them, one story uses nothing, two only offer a place", () => {
     expect(row.aliases.every((k) => deskKeywordAuto(row, k))).toBe(true);
     const once = withKeywordUses(row, [story("चाकसू में हादसा", "", "Jaipur")], districtKeywordCandidates());
     expect(once.aliases.map((k) => deskKeywordAuto(once, k))).toEqual([false, false, false]);
+    expect(once.aliases.map((k) => deskKeywordOffered(once, k))).toEqual([false, false, false]);
     const twice = withKeywordUses(row, [story("चाकसू में हादसा", "", "Jaipur"), story("चाकसू में बारिश")], districtKeywordCandidates());
-    expect(twice.aliases.map((k) => deskKeywordAuto(twice, k))).toEqual([true, false, false]);
+    expect(twice.aliases.map((k) => deskKeywordAuto(twice, k))).toEqual([false, false, false]);
+    expect(twice.aliases.map((k) => deskKeywordOffered(twice, k))).toEqual([true, false, false]);
     expect(deskAutoKey([once])).not.toBe(deskAutoKey([twice]));
   });
 
@@ -97,16 +99,16 @@ describe("a learned keyword: offered after one post, added after two", () => {
     expect(own.aliases.map((k) => deskKeywordAuto(own, k))).toEqual([true, true, false]);
   });
 
-  it("pickHandles offers a suggest-only desk keyword and tags an added one", () => {
+  it("pickHandles: one desk-typed story uses nothing, two offer a place, never tag it", () => {
     const once = withKeywordUses(row, [story("चाकसू में हादसा", "", "Jaipur")], districtKeywordCandidates());
-    const twice = withKeywordUses(row, [story("चाकसू में हादसा", "", "Jaipur"), story("चाकसू में बारिश")], districtKeywordCandidates());
+    const many = withKeywordUses(row, [1, 2, 3, 4].map((i) => story(`चाकसू में हादसा ${i}`, "", "Jaipur")), districtKeywordCandidates());
     const pick = (r: DeskHandleRow) => pickHandlesExplained({ headline: "चाकसू में मेला", points: [], district: null, rajasthan: true, leaderPost: false }, rules, { subjects, desk: deskHandleRules([r]) });
-    const offered = pick(once);
+    const unused = pick(once);
+    expect(unused.handles.map((h) => h.handle)).not.toContain("ChaksuNews");
+    expect(unused.suggestions.map((h) => h.handle)).not.toContain("ChaksuNews");
+    const offered = pick(many);
     expect(offered.handles.map((h) => h.handle)).not.toContain("ChaksuNews");
     expect(offered.suggestions.map((h) => h.handle)).toContain("ChaksuNews");
-    const added = pick(twice);
-    expect(added.handles.map((h) => h.handle)).toContain("ChaksuNews");
-    expect(added.suggestions.map((h) => h.handle)).not.toContain("ChaksuNews");
   });
 });
 
@@ -126,16 +128,16 @@ describe("hashtag rule keywords", () => {
     expect(knownTagNames("#BhajanlalSharma", ctx)).toEqual(expect.arrayContaining(["Bhajanlal Sharma", "भजनलाल शर्मा"]));
     expect(knownTagNames("#IPL", ctx)).toBeNull();
     // A known tag ignores the story it went on
-    expect(tagRuleKeywords("#Jaisalmer", ["Kota", "कोटा"], ctx)).toEqual({ keywords: ["Jaisalmer", "जैसलमेर"], known: true });
+    expect(tagRuleKeywords("#Jaisalmer", ctx)).toEqual({ keywords: ["Jaisalmer", "जैसलमेर"], known: true });
   });
 
-  it("any other tag: the story's names, then its CamelCase words (4 letters or more, no stop words)", () => {
+  it("any other tag: only its CamelCase words (4 letters or more, no stop words, no places), never the story's names", () => {
     expect(tagWords("#RajasthanPanchayatElection2026")).toEqual(["Panchayat", "Election"]);
     expect(tagWords("#MSDhoni")).toEqual(["Dhoni"]);
     expect(tagWords("#bbhbh")).toEqual([]);
     expect(tagWords("#IPL")).toEqual([]);
-    expect(tagRuleKeywords("#JaswantYadav", ["Jaipur", "जयपुर"], ctx)).toEqual({ keywords: ["Jaipur", "जयपुर", "Jaswant", "Yadav"], known: false });
+    expect(tagRuleKeywords("#JaswantYadav", ctx)).toEqual({ keywords: ["Jaswant", "Yadav"], known: false });
     // Nothing to match on: the rule is saved inactive
-    expect(tagRuleKeywords("#RCA", [], ctx)).toEqual({ keywords: [], known: false });
+    expect(tagRuleKeywords("#RCA", ctx)).toEqual({ keywords: [], known: false });
   });
 });

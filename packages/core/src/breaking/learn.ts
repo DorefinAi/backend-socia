@@ -2,28 +2,35 @@
 // review). Pure parts only; packages/db learn.ts writes what these decide, at the moment a breaking post goes out
 // (Approve, Mark posted, Copy & Posted: never on an autosave), and the worker counts the posts behind each keyword.
 //
-// 1. Handles. A handle the desk typed (handle_directory source "desk") on a posted story learns, as keywords, ONLY
-//    the names the system already recognises in that story: its district, the towns and places of the places file,
-//    and the names of subject-handles.json found in the headline or points, each in Hindi and English where known.
-//    Never an ordinary word. A handle of the data files or a lookalike of one, a party's or an official's handle
-//    learns nothing (the same rules as POST /handles/desk: desk-handles.ts deskHandleKeywords), nor does a reporter's.
-//    A learned keyword makes the handle SUGGESTED; once DESK_LEARNED_POSTED_USES posted stories carrying the handle
-//    name the keyword, the handle is ADDED on its own (desk-handles.ts deskHandleRules), as Settings rows leave
-//    suggest-only after SETTINGS_POSTED_USES posts. A keyword found inside the handle string itself (@JhalawarNews →
-//    Jhalawar, झालावाड़: what POST /handles/desk gives) is added from the start, as before.
+// 1. Handles. A handle the DESK TYPED on a posted story (handle_directory source "desk"; never one the composer put on
+//    the post or offered: db learn.ts typedHandles) learns, as keywords, only names of its own (learning fix, 25 Nov
+//    2026, after @jpr_rural learned Air India and Hyderabad and @NitinNabin learned Punjab and Jaipur):
+//      - places only from the story's own district and place-line town, never every place in the body, and only
+//        when that place is in the handle's own district (handleDistricts: a district or its file code in the handle
+//        string, "@jpr_rural" → Jaipur). A handle with no district of its own (a person's, a party's, a national
+//        one) learns no place at all;
+//      - subjects only when the subject is the handle's own (its name is in the handle string).
+//    A handle of the data files or a lookalike of one (or of another directory handle: also a strict prefix of one,
+//    "@forest" of "@forestRajasthan"), a party's or an official's handle learns nothing, nor does a reporter's.
+//    A learned keyword is used only once DESK_LEARNED_POSTED_USES stories on which the desk typed the handle name it;
+//    then it is OFFERED. A place never makes the handle ADDED on its own; a subject does from DESK_LEARNED_AUTO_USES.
+//    A keyword found inside the handle string itself (@JhalawarNews → Jhalawar, झालावाड़: what POST /handles/desk
+//    gives) is added from the start, as before. A desk handle the desk keeps ignoring is offered no more
+//    (desk-handles.ts suggestionRetired).
 // 2. Hashtags. A tag an editor typed that no rule offered becomes an active topic rule (match_type "entity") at once.
 //    Its keywords: a tag naming a known district, place or subject gets that one's Hindi and English names
-//    (#Jaisalmer → Jaisalmer, जैसलमेर); any other tag the recognised names of the stories it was posted on plus
-//    its own CamelCase words (#JaswantYadav → Jaswant, Yadav). A tag with no usable keyword is saved inactive.
-//    Never the footer tags (nor a tag run on from one: "#RajasthanWithFirstIndiaJaipurPolice").
+//    (#Jaisalmer → Jaisalmer, जैसलमेर); any other tag only its own words that are not places and the subjects named
+//    inside it (#JaswantYadav → Jaswant, Yadav; never the story's places: #RajasthanPanchayatElection2026 learned
+//    Jaipur, Hanumangarh...). A tag with no usable keyword is saved inactive. Never the footer tags (nor a tag run on
+//    from one: "#RajasthanWithFirstIndiaJaipurPolice"), nor a tag that is a handle typed with a # ("#Balotrapolice").
 
 import { fold } from "../fold";
 import { Gazetteer, type GazetteerEntry } from "../gazetteer";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 import { NATIONAL_FOOTER, RAJASTHAN_FOOTER } from "./compose";
 import {
-  MAX_HANDLE_KEYWORDS, compactLatin, deskHandleKeywords, deskKeywordAuto, districtKeywordCandidates, fileLookalike, keywordsForHandle, usableHandleName,
-  type DeskHandleRow, type KeywordCandidate, type KeywordsWithheld,
+  MAX_HANDLE_KEYWORDS, compactLatin, deskHandleKeywords, deskKeywordAuto, deskKeywordOffered, districtKeywordCandidates, handleTypoOf, keywordsForHandle,
+  matchHandleKeywords, suggestionRetired, usableHandleName, type DeskHandleRow, type KeywordCandidate, type KeywordsWithheld, type SuggestStats,
 } from "./desk-handles";
 import type { PlaceBook } from "./places";
 import type { SubjectRules } from "./subjects";
@@ -126,18 +133,132 @@ export function mergeKeywords(existing: readonly string[], names: readonly strin
 /**
  * Why a desk handle may NOT learn keywords, or null when it may. The add rules of POST /handles/desk
  * (deskHandleKeywords: a data-file handle, a lookalike of one, a party's, an official's), with every handle of the
- * four directory files counted as a file handle (a reporter's included), and a lookalike of another handle the org's
- * directory has ("@JhalawarUpdatse" next to "@JhalawarUpdates").
+ * four directory files counted as a file handle (a reporter's included), and a typo or stub of another handle the
+ * org's directory or the files have (handleTypoOf: "@forest" next to "@forestRajasthan"). `protectedHandles` (the
+ * Settings-verified directory rows) are never typos; the files' handles never are either.
  */
 export function handleLearnWithheld(
   handle: string,
-  ctx: { candidates: readonly KeywordCandidate[]; fileHandles: Iterable<string>; directoryHandles?: Iterable<string> },
+  ctx: { candidates: readonly KeywordCandidate[]; fileHandles: Iterable<string>; directoryHandles?: Iterable<string>; protectedHandles?: Iterable<string> },
 ): KeywordsWithheld | null {
   const { withheld } = deskHandleKeywords(handle, { candidates: ctx.candidates, fileHandles: ctx.fileHandles });
   if (withheld) return withheld;
-  const self = handle.trim().replace(/^@+/, "").toLowerCase();
-  const others = [...(ctx.directoryHandles ?? [])].filter((h) => h.trim().replace(/^@+/, "").toLowerCase() !== self);
-  return fileLookalike(handle, others) !== null ? "lookalike" : null;
+  return handleLookalikeOf(handle, [...ctx.fileHandles, ...(ctx.directoryHandles ?? [])], [...ctx.fileHandles, ...(ctx.protectedHandles ?? [])]) !== null ? "lookalike" : null;
+}
+
+/**
+ * The other known handle this one is a typo or stub of, as written there (bare), or null (desk-handles.ts handleTypoOf:
+ * a stub, the same without "_" and trailing digits, or one edit at 8 letters or more). A handle in `protectedHandles`
+ * is never one. What the desk is pointed to instead ("did you mean").
+ */
+export function handleLookalikeOf(handle: string, known: Iterable<string>, protectedHandles: Iterable<string> = []): string | null {
+  return handleTypoOf(handle, known, protectedHandles);
+}
+
+// ─── Handles: which names are a handle's own ────────────────────────────────
+
+/** Not in the places file, but a place: a state's name is never a local handle's own keyword */
+const STATE_NAMES = new Set(["Rajasthan", "राजस्थान"].map((s) => key(s)));
+const districtName = (name: string) => RAJASTHAN_DISTRICTS.find((x) => compactLatin(x.name) === compactLatin(name))?.name ?? name;
+const bareHandle = (h: string) => h.trim().replace(/^@+/, "");
+
+/**
+ * The Rajasthan districts (their English names, as stories.district holds them) a handle is of: a district's name
+ * inside the handle string ("@JaipurDiscom1" → Jaipur, the matcher of POST /handles/desk) or a district's file-name
+ * code as a whole word of it ("@jpr_rural", "@JprRuralPolice" → Jaipur). None for a person's, party's or national handle.
+ */
+export function handleDistricts(handle: string, book: PlaceBook | null): string[] {
+  const out = new Set<string>();
+  for (const m of matchHandleKeywords(handle, (districtCandidates ??= districtKeywordCandidates()))) out.add(m.keywords[0]!);
+  if (book) {
+    const words = bareHandle(handle).split(/[^A-Za-z]+/).flatMap((p) => p.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+/g) ?? []);
+    for (const w of words) {
+      const d = w.length === 3 ? book.codes[w.toUpperCase()] : undefined;
+      if (d) out.add(districtName(d));
+    }
+  }
+  return [...out];
+}
+
+/**
+ * The districts a name is a place of, or null when it is not a place: a Rajasthan district (any spelling) → itself;
+ * a town → its districts; a national place or a state → [] (a place of no Rajasthan district). "Jaipur Discom",
+ * "DRM Jaipur", "Air India" are not places.
+ */
+export function placeDistricts(name: string, book: PlaceBook | null): string[] | null {
+  const k = key(name);
+  if (!k) return null;
+  if (STATE_NAMES.has(k)) return [];
+  const district = (districtCandidates ??= districtKeywordCandidates()).find((c) => key(c.latin) === k || c.keywords.some((w) => key(w) === k));
+  if (district) return [district.keywords[0]!];
+  const place = book?.hashtag(nfc(name)) ?? null;
+  if (!place) return null;
+  if (place.kind === "national") return [];
+  return place.districts.map((d) => districtName(d.name));
+}
+
+/**
+ * The districts whose places a handle may have as keywords: handleDistricts, except for a handle that is a subject's
+ * own (an institution, a person: its name is in the handle string), which has none, as POST /handles/desk gives such
+ * a handle its subject's names and not the district in it ("@RuhsJaipur" → RUHS, not Jaipur; "@JaipurDiscom1").
+ */
+export function handlePlaceDistricts(handle: string, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): string[] {
+  return handleOwnSubjectNames(handle, ctx.subjects).length ? [] : handleDistricts(handle, ctx.book);
+}
+
+/**
+ * Whether a keyword is a place OUTSIDE the districts the handle may have places of (handlePlaceDistricts): the
+ * pollution the learning fix stops and learn-cleanup removes. A handle with no district of its own (a person's, a
+ * party's, a national one, an institution's) has every place outside. Not a place: false.
+ */
+export function placeOutsideHandle(handle: string, keyword: string, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): boolean {
+  const of = placeDistricts(keyword, ctx.book);
+  if (of === null) return false;
+  const own = new Set(handlePlaceDistricts(handle, ctx));
+  return !of.some((d) => own.has(d));
+}
+
+/**
+ * The names a desk handle learns from a story it was typed on (learning fix 3): the story's district and its
+ * place-line town, only when they are in the handle's own district (handlePlaceDistricts), and the subjects named in
+ * the story that are the handle's own (the subject's name is in the handle string). Nothing else from the body.
+ */
+export function handleStoryNames(handle: string, story: LearnStory, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): string[] {
+  const out: string[] = [];
+  const own = new Set(handlePlaceDistricts(handle, ctx));
+  if (own.size) {
+    const ofDistrict = story.district ? (placeDistricts(story.district, ctx.book) ?? []).find((d) => own.has(d)) : undefined;
+    if (ofDistrict) out.push(...districtNames(ofDistrict, ctx.book));
+    const town = story.town && ctx.book ? ctx.book.lookup(story.town) : null;
+    const townDistrict = town && town.kind !== "national" ? (placeDistricts(town.hi, ctx.book) ?? []).find((d) => own.has(d)) : undefined;
+    if (town && townDistrict) out.push(...(town.kind === "town" ? [town.hi] : districtNames(townDistrict, ctx.book)));
+  }
+  const ownSubject = new Set(handleOwnSubjectNames(handle, ctx.subjects).map(key));
+  if (ownSubject.size) {
+    const text = [story.headline ?? "", story.body ?? ""].join("\n").normalize("NFC");
+    for (const m of ctx.subjects?.gazetteer.find(text) ?? []) {
+      const names = m.entry.data.names.length ? m.entry.data.names : [m.entry.name, ...m.entry.aliases];
+      if (names.some((n) => ownSubject.has(key(n)))) out.push(names.find((n) => !isHindi(n)) ?? "", names.find(isHindi) ?? "");
+    }
+  }
+  return uniqueNames(out);
+}
+
+/**
+ * Every name of the subjects that are the handle's own: a subject of subject-handles.json whose English name or
+ * keyword is inside the handle string ("@JaipurDiscom1" → Jaipur Discom, जयपुर डिस्कॉम, JVVNL...). None for most handles.
+ */
+export function handleOwnSubjectNames(handle: string, subjects: SubjectRules | null): string[] {
+  const candidates = subjects?.keywordCandidates ?? [];
+  const found = candidates.length ? keywordsForHandle(handle, candidates.filter((c) => c.kind === "subject")) : [];
+  if (!subjects || !found.length) return [];
+  const whole = new Set(found.map((f) => fold(nfc(f))));
+  const out = [...found];
+  for (const m of subjects.gazetteer.find(found.join(" । "))) {
+    if (!whole.has(m.matched)) continue;
+    out.push(...(m.entry.data.names.length ? m.entry.data.names : [m.entry.name, ...m.entry.aliases]));
+  }
+  return uniqueNames(out);
 }
 
 /** The text a story's keywords are counted in: headline, points, its district in both scripts, its town */
@@ -160,17 +281,61 @@ export function keywordPostedCounts(keywords: readonly string[], stories: readon
 }
 
 /**
- * A desk row ready for deskHandleRules: its keywords' posted counts (from the stories its posts went out on) and the
- * keywords found inside the handle string itself, which are added from the start.
+ * The keywords inside a handle string that are added from the start: a subject's names when the handle has one,
+ * otherwise the districts in it (deskHandleKeywords' rule without its withholds: "@JaipurDiscom1" → Jaipur Discom...,
+ * never Jaipur, so a learned "Jaipur" cannot put it on every Jaipur story).
  */
-export function withKeywordUses(row: DeskHandleRow, stories: readonly LearnStory[], candidates: readonly KeywordCandidate[]): DeskHandleRow {
-  return { ...row, keywordUses: keywordPostedCounts(row.aliases, stories), handleKeywords: candidates.length ? keywordsForHandle(row.handle, candidates) : [] };
+export function ownHandleKeywords(handle: string, candidates: readonly KeywordCandidate[]): string[] {
+  const matches = matchHandleKeywords(handle, candidates);
+  const subjects = matches.filter((m) => m.kind === "subject");
+  return uniqueNames((subjects.length ? subjects : matches).flatMap((m) => m.keywords), MAX_HANDLE_KEYWORDS);
 }
 
-/** A stable string of which desk keywords are added on their own: the worker rebuilds its rules when it changes */
+/** What the worker reads behind a desk handle (db composer.ts deskHandleEvidence) */
+export interface DeskHandleEvidence {
+  /** The stories of the org's live posts on which the desk itself typed the handle (post_decisions desk_added) */
+  stories: LearnStory[];
+  /** Its record as a desk suggestion */
+  suggest: SuggestStats;
+  /** The stories of ALL the org's live posts carrying the handle (the count of before the fix: an editor's keywords) */
+  postedStories?: LearnStory[];
+  /**
+   * The keywords the learning added (audit handle.keywords_learned after the row's last editor handle.update); absent,
+   * every keyword counts as learned
+   */
+  learned?: string[];
+}
+
+/**
+ * A desk row ready for deskHandleRules: its keywords' counts over the stories the desk typed it on, the keywords
+ * found inside the handle string itself (added from the start), which of its keywords name a subject and no place
+ * (the only learned ones that may be added on their own), its suggestion record, which keywords were learned (the
+ * rest are an editor's and work at once) and their counts over all its posts. `evidence` may be the stories alone.
+ */
+export function withKeywordUses(row: DeskHandleRow, evidence: readonly LearnStory[] | DeskHandleEvidence, candidates: readonly KeywordCandidate[]): DeskHandleRow {
+  const stories = "stories" in evidence ? evidence.stories : evidence;
+  const places = new Set(candidates.filter((c) => c.kind === "district").flatMap((c) => [c.latin, ...c.keywords]).map(key));
+  const subjectKeywords = new Set(candidates.filter((c) => c.kind === "subject").flatMap((c) => [c.latin, ...c.keywords]).map(key).filter((k) => !places.has(k)));
+  const full = "stories" in evidence ? evidence : null;
+  return {
+    ...row,
+    keywordUses: keywordPostedCounts(row.aliases, stories),
+    handleKeywords: candidates.length ? ownHandleKeywords(row.handle, candidates) : [],
+    subjectKeywords,
+    ...(full && { suggestStats: full.suggest }),
+    ...(full?.learned && { learnedKeywords: new Set(full.learned.map(key)) }),
+    ...(full?.postedStories && { postedKeywordUses: keywordPostedCounts(row.aliases, full.postedStories) }),
+  };
+}
+
+/** A stable string of which desk keywords are added on their own and which offered: the worker rebuilds its rules when it changes */
 export function deskAutoKey(rows: readonly DeskHandleRow[]): string {
   return rows
-    .map((r) => `${r.handle.toLowerCase()}=${r.aliases.filter((a) => deskKeywordAuto(r, a)).map(key).sort().join("+")}`)
+    .map((r) => {
+      const auto = r.aliases.filter((a) => deskKeywordAuto(r, a)).map(key).sort();
+      const offered = r.aliases.filter((a) => !deskKeywordAuto(r, a) && deskKeywordOffered(r, a)).map(key).sort();
+      return `${r.handle.toLowerCase()}=${auto.join("+")};${offered.join("+")};${suggestionRetired(r.suggestStats) ? "retired" : ""}`;
+    })
     .sort()
     .join(",");
 }
@@ -228,14 +393,36 @@ export function knownTagNames(tag: string, ctx: { book: PlaceBook | null; subjec
 }
 
 /**
- * A learned rule's keywords for a tag posted on a story: a known district, place or subject's own names; otherwise the
- * story's recognised names, then the tag's CamelCase words. At most MAX_RULE_KEYWORDS; [] means the rule is saved
- * inactive (nothing to match it on).
+ * A learned rule's keywords for a tag: a known district, place or subject's own names; otherwise only the tag's own
+ * CamelCase words that are not places, and the names of a subject whose name is inside the tag. Never the places of
+ * the story it went out on (learning fix 6). At most MAX_RULE_KEYWORDS; [] means the rule is saved inactive.
  */
-export function tagRuleKeywords(tag: string, names: readonly string[], ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): { keywords: string[]; known: boolean } {
+export function tagRuleKeywords(tag: string, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): { keywords: string[]; known: boolean } {
   const known = knownTagNames(tag, ctx);
   if (known) return { keywords: known, known: true };
-  return { keywords: uniqueNames([...names, ...tagWords(tag)], MAX_RULE_KEYWORDS), known: false };
+  const k = solidKey(tag);
+  const subjects = (ctx.subjects?.keywordCandidates ?? []).filter((c) => {
+    const name = compactLatin(c.latin);
+    return name.length >= 5 && !!k && k.includes(name) && placeDistricts(c.latin, ctx.book) === null;
+  });
+  const words = tagWords(tag).filter((w) => placeDistricts(w, ctx.book) === null);
+  return { keywords: uniqueNames([...words, ...subjects.flatMap((c) => c.keywords)], MAX_RULE_KEYWORDS), known: false };
+}
+
+/** The last word of a handle-shaped tag: a police station's, a DM's, a collector's */
+const HANDLE_TAG_ENDINGS = /(police|dm|collector)$/i;
+
+/**
+ * Whether a typed hashtag is really a handle written with a # ("#Balotrapolice" for @BalotraPolice): it ends in
+ * police, DM or collector, or it is a known handle's name (case, @ and underscores ignored). Never learned as a rule.
+ */
+export function tagLooksLikeHandle(tag: string, knownHandles: Iterable<string> = []): boolean {
+  const bare = nfc(tag).replace(/^#+/, "");
+  if (!bare || isHindi(bare)) return false;
+  if (HANDLE_TAG_ENDINGS.test(bare.replace(/[^A-Za-z]+$/, ""))) return true;
+  const k = compactLatin(bare);
+  for (const h of knownHandles) if (k && compactLatin(h) === k) return true;
+  return false;
 }
 
 // ─── Everything the learning needs, in one place ────────────────────────────
@@ -260,15 +447,54 @@ export class PostedLearner {
     this.fileHandles = new Set([...data.fileHandles].map((h) => h.trim().replace(/^@+/, "").toLowerCase()));
   }
 
+  /** The places file the learner reads */
+  get book(): PlaceBook {
+    return this.ctx.book;
+  }
+
   storyNames(story: LearnStory): string[] {
     return storyNames(story, this.ctx);
   }
 
-  handleWithheld(handle: string, directoryHandles: Iterable<string> = []): KeywordsWithheld | null {
-    return handleLearnWithheld(handle, { candidates: this.candidates, fileHandles: this.fileHandles, directoryHandles });
+  /** The names this handle learns from a story the desk typed it on (handleStoryNames) */
+  handleNames(handle: string, story: LearnStory): string[] {
+    return handleStoryNames(handle, story, this.ctx);
   }
 
-  tagKeywords(tag: string, names: readonly string[]): { keywords: string[]; known: boolean } {
-    return tagRuleKeywords(tag, names, this.ctx);
+  /** `protectedHandles`: the Settings-verified directory rows, never typos (nor are the files' handles) */
+  handleWithheld(handle: string, directoryHandles: Iterable<string> = [], protectedHandles: Iterable<string> = []): KeywordsWithheld | null {
+    return handleLearnWithheld(handle, { candidates: this.candidates, fileHandles: this.fileHandles, directoryHandles, protectedHandles });
+  }
+
+  /** The file or directory handle this one is a typo or stub of ("did you mean"), or null (handleTypoOf) */
+  handleLookalike(handle: string, directoryHandles: Iterable<string> = [], protectedHandles: Iterable<string> = []): string | null {
+    return handleLookalikeOf(handle, [...directoryHandles, ...this.fileHandles], [...this.fileHandles, ...protectedHandles]);
+  }
+
+  tagKeywords(tag: string): { keywords: string[]; known: boolean } {
+    return tagRuleKeywords(tag, this.ctx);
+  }
+
+  /** Every name of the subjects that are the handle's own (handleOwnSubjectNames) */
+  ownSubjectNames(handle: string): string[] {
+    return handleOwnSubjectNames(handle, this.ctx.subjects);
+  }
+
+  /** Whether a keyword is a place outside the handle's own district (placeOutsideHandle) */
+  placeOutside(handle: string, keyword: string): boolean {
+    return placeOutsideHandle(handle, keyword, this.ctx);
+  }
+
+  /** Whether a tag names a known district, place or subject (knownTagNames) */
+  tagKnown(tag: string): boolean {
+    return knownTagNames(tag, this.ctx) !== null;
+  }
+
+  /**
+   * Whether a typed tag is a handle written with a # (tagLooksLikeHandle), against the files' and the directory's
+   * handles. A tag naming a known place or subject never is: "#NarendraModi" is a topic although @narendramodi exists.
+   */
+  tagIsHandle(tag: string, directoryHandles: Iterable<string> = []): boolean {
+    return !this.tagKnown(tag) && tagLooksLikeHandle(tag, [...this.fileHandles, ...directoryHandles]);
   }
 }

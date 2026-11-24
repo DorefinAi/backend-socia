@@ -828,20 +828,10 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
   if (election && story.rajasthan) {
     noteByline();
     const own: HandlePick[] = [];
-    // The stated district's collector, else the one of the district the composer worked out (electionDistrict).
-    // P1 (owner, 25 Nov 2026): tagged on an ADMINISTRATIVE election story only (the poll's arrangements, the collector's
-    // orders); on party or result copy it is offered. On 23-24 Nov the desk removed @DcDmJaipur 12 of 13, @JodhpurDm 7 of
-    // 7 and @BikanerDm 4 of 4 times where it rode on the election tag alone.
+    // The stated district's collector, else the one of the district the composer worked out (electionDistrict)
     const dm = local ?? (electionDistrict ? rules.districts[districtKey(electionDistrict)] : undefined);
-    if (dm?.collector[0]) (cls === "administration" ? own : suggested).push({ handle: dm.collector[0], reason: "collector" });
-    // P1: the party the story is ABOUT, the one its headline or first point names, is tagged; a party named only further
-    // down is offered. "अजमेर जिला प्रमुख चुनाव भाजपा का कब्जा तय…" tags @BJP4Rajasthan and offers @INCRajasthan, which
-    // the desk removed on X. Both parties named up there are both tagged (the desk kept 14 of 16 such).
-    const subjectParties = namedParties(`${head}\n${story.points[0] ?? ""}`, parties, true);
-    for (const p of namedParties(all, parties, true)) {
-      const subject = subjectParties.some((s) => s.party === p.party);
-      (subject ? own : suggested).push({ handle: p.handle, reason: "party", title: p.name });
-    }
+    if (dm?.collector[0]) own.push({ handle: dm.collector[0], reason: "collector" });
+    for (const p of namedParties(all, parties, true)) own.push({ handle: p.handle, reason: "party", title: p.name });
     // A leader or institution the headline names, then the desk's own keyword handles
     namedSubjects(head, true);
     for (const p of picks) own.push({ handle: p.handle, reason: p.reason, ...(p.title && { title: p.title }) });

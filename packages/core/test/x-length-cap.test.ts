@@ -42,7 +42,7 @@ const SIROHI_FILE = "BTN_RJ_BREAKING_24NOV_2810_AM_CONTROL_ASHOK_SIR_BIG_KARARI_
 const SIROHI_AT = "2026-11-24T13:45:32Z";
 
 describe("P2: the draft fits X's 280", () => {
-  it("Sirohi 24 Nov: the party handles go back to the suggestions, second one first; the text and the hashtags stay", () => {
+  it("Sirohi 24 Nov: the party handles, second one first, then the collector go back to the suggestions; the text and the hashtags stay", () => {
     const uncapped = draft(SIROHI_FILE, SIROHI, SIROHI_AT, { xLimit: BREAKING_POST_MAX });
     expect(xLen(post(uncapped))).toBeGreaterThan(280);
     expect(uncapped.mentions).toEqual(expect.arrayContaining(["@INCRajasthan", "@BJP4Rajasthan"]));
@@ -51,11 +51,11 @@ describe("P2: the draft fits X's 280", () => {
     // Lines 1-2 as laid out without the cap: nothing more was cut
     expect(d.bodyText).toBe(uncapped.bodyText);
     expect(d.headlineCut).toBe(false);
-    expect(d.mentions).not.toContain("@INCRajasthan");
-    expect(d.mentions).not.toContain("@BJP4Rajasthan");
-    // The second party named goes first, then the first; both offered first in the list, reason "length"
-    expect(lengthMoves(d)).toEqual(["suggest:@BJP4Rajasthan", "suggest:@INCRajasthan"]);
-    expect(d.handleSuggestions.slice(0, 2).map((h) => h.handle)).toEqual(["BJP4Rajasthan", "INCRajasthan"]);
+    // Exactly what the desk posted on X: "#RajasthanWithFirstIndia #RajasthanPanchayatElection2026 #Congress #BJP"
+    expect(d.mentions).toEqual([]);
+    // The second party named goes first, then the first, then the collector; offered first in the list, reason "length"
+    expect(lengthMoves(d)).toEqual(["suggest:@BJP4Rajasthan", "suggest:@INCRajasthan", "suggest:@Dmsirohi"]);
+    expect(d.handleSuggestions.slice(0, 3).map((h) => h.handle)).toEqual(["BJP4Rajasthan", "INCRajasthan", "Dmsirohi"]);
     // The hashtags the desk kept on X stay on the post
     expect(d.hashtags).toEqual(uncapped.hashtags);
     expect(d.hashtags).toContain("#RajasthanPanchayatElection2026");

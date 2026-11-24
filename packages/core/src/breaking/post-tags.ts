@@ -410,11 +410,6 @@ export interface SuggestRuleEntry {
    * where a result bulletin used to tag nobody. Only a dated campaign can be one, so it always ends.
    */
   election?: boolean;
-  /**
-   * A regular expression over the same text that keeps the entry from firing when it matches (P1, 25 Nov 2026: a bar
-   * association or student union poll is not the panchayat election). Checked like `pattern`.
-   */
-  exclude?: string;
 }
 
 export interface SuggestRule {
@@ -424,8 +419,6 @@ export interface SuggestRule {
   end: string | null;
   /** An election campaign (SuggestRuleEntry.election): emitted, and it turns on the election handles */
   election?: boolean;
-  /** SuggestRuleEntry.exclude: the entry does not fire on text this matches */
-  exclude?: RegExp;
 }
 
 export interface SuggestRules {
@@ -494,18 +487,6 @@ export function parseSuggestRules(json: unknown, problem: (message: string) => v
     }
     const slow = slowPattern(pattern);
     if (slow) return fail(`${where} (${e.tag}): pattern is too slow (${slow}); it runs on every story, rewrite it without nested repeats`);
-    let exclude: RegExp | undefined;
-    if (e.exclude !== undefined) {
-      if (typeof e.exclude !== "string" || !e.exclude) return fail(`${where} (${e.tag}): "exclude" must be a non-empty pattern`);
-      if (e.exclude.length > MAX_PATTERN) return fail(`${where} (${e.tag}): exclude is ${e.exclude.length} characters, more than ${MAX_PATTERN}`);
-      try {
-        exclude = new RegExp(e.exclude, "u");
-      } catch (err) {
-        return fail(`${where} (${e.tag}): exclude does not compile: ${(err as Error).message}`);
-      }
-      const slowEx = slowPattern(exclude);
-      if (slowEx) return fail(`${where} (${e.tag}): exclude is too slow (${slowEx})`);
-    }
     // Spelled out, never defaulted: a missing kind is as much a typo as a misspelt one
     if (typeof e.kind !== "string" || !KNOWN_KINDS.has(e.kind)) return fail(`${where} (${e.tag}): kind must be "campaign" or "keyword", not ${JSON.stringify(e.kind)}`);
     const kind = e.kind;
@@ -516,7 +497,7 @@ export function parseSuggestRules(json: unknown, problem: (message: string) => v
     if (e.election !== undefined && typeof e.election !== "boolean") return fail(`${where} (${e.tag}): "election" must be true or false`);
     // An election tag goes on posts by itself: an evergreen one would never stop
     if (e.election && kind !== "campaign") return fail(`${where} (${e.tag}): only a dated "campaign" can be an election`);
-    rules.push({ tag: bareTag(e.tag), pattern, start: kind === "campaign" ? e.start! : null, end: kind === "campaign" ? e.end! : null, ...(e.election && { election: true }), ...(exclude && { exclude }) });
+    rules.push({ tag: bareTag(e.tag), pattern, start: kind === "campaign" ? e.start! : null, end: kind === "campaign" ? e.end! : null, ...(e.election && { election: true }) });
   });
   if (problems.length) throw new DataFileRejected("campaigns", problems);
   return { rules };
@@ -529,7 +510,7 @@ export const istDate = (at: Date): string => new Date(at.getTime() + 330 * 60_00
 export function suggestTags(text: string, rules: SuggestRules, at: Date): string[] {
   const day = istDate(at);
   const clean = stripLinks(text).normalize("NFC");
-  return rules.rules.filter((r) => (!r.start || (day >= r.start && day <= r.end!)) && fires(r, clean)).map((r) => r.tag);
+  return rules.rules.filter((r) => (!r.start || (day >= r.start && day <= r.end!)) && r.pattern.test(clean)).map((r) => r.tag);
 }
 
 /**
@@ -540,11 +521,8 @@ export function electionOf(text: string, rules: SuggestRules, at: Date | undefin
   if (!at) return null;
   const day = istDate(at);
   const clean = stripLinks(text).normalize("NFC");
-  return rules.rules.find((r) => r.election && r.start && day >= r.start && day <= r.end! && fires(r, clean))?.tag ?? null;
+  return rules.rules.find((r) => r.election && r.start && day >= r.start && day <= r.end! && r.pattern.test(clean))?.tag ?? null;
 }
-
-/** The rule's pattern matches the text and its exclusion, if any, does not */
-const fires = (r: SuggestRule, text: string): boolean => r.pattern.test(text) && !r.exclude?.test(text);
 
 // ─── the reference composer ──────────────────────────────────────────────────
 

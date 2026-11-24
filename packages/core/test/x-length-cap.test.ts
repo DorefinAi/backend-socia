@@ -92,6 +92,9 @@ describe("P2: the draft fits X's 280", () => {
   it("the cap is configurable and the tighter of xLimit and limit applies", () => {
     const d = draft(SIROHI_FILE, SIROHI, SIROHI_AT, { xLimit: 240 });
     expect(xLen(post(d))).toBeLessThanOrEqual(240);
+    // Hashtags never move for length (on X the desk keeps them; moving them lost 10 kept for 4 avoided): line 2 gives way
+    expect(d.hashtags).toEqual(draft(SIROHI_FILE, SIROHI, SIROHI_AT, { xLimit: BREAKING_POST_MAX }).hashtags);
+    expect(d.proposals.filter((p) => p.reason === "length" && p.kind === "hashtag")).toEqual([]);
     const e = draft(SIROHI_FILE, SIROHI, SIROHI_AT, { xLimit: BREAKING_POST_MAX, limit: 260 });
     expect(xLen(post(e))).toBeLessThanOrEqual(260);
   });

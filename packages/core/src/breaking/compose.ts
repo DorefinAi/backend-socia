@@ -950,45 +950,34 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // ── P2 (owner, 25 Nov 2026): the post fits X's 280 ──
   // 20 of 36 drafts were over on 23-24 Nov and the desk cut handles on X, the party pair first. Lines 1–2 are laid out at
   // the desk's length; while the whole post is over, the weakest tag-line item goes back to the suggestions (reason
-  // "length"), in this order: the second party handle, the other party handles, the collector, the topic hashtags
-  // (party tags, then the election tag), the other handles (police, government, desk). The city tags, the brand tag, the
+  // "length"), handles only, as the desk does on X: the second party handle, the other party handles, the collector, the
+  // other handles (police, government, desk). Hashtags never move: measured on X (23-24 Nov) moving the election and
+  // party tags avoided 4 removals and lost 10 kept tags, so line 2 gives way instead. The city tags, the brand tag, the
   // reporter byline and the subject and CM handles are never moved. Only when nothing movable is left is the text cut.
   const cap = Math.min(limit, xLimit);
   const lengthHandles: HandlePick[] = [];
-  const lengthTags: TagSuggestion[] = [];
-  const placedTag = (t: string) => headingPlace.tags.some((x) => x.toLowerCase() === t.toLowerCase());
-  const nextToMove = (): { handle: HandlePick } | { tag: string } | null => {
+  const nextToMove = (): HandlePick | null => {
     const last = <T,>(xs: readonly T[]) => xs.at(-1);
     const parties = handles.filter((h) => h.reason === "party");
-    if (parties.length >= 2) return { handle: last(parties)! };
-    if (parties.length) return { handle: parties[0]! };
+    if (parties.length >= 2) return last(parties)!;
+    if (parties.length) return parties[0]!;
     const dm = handles.find((h) => h.reason === "collector");
-    if (dm) return { handle: dm };
-    const topic = hashtags.slice(1).filter((t) => !placedTag(t));
-    const partyTag = last(topic.filter((t) => t.toLowerCase() !== `#${election ?? ""}`.toLowerCase()));
-    if (partyTag ?? topic[0]) return { tag: (partyTag ?? topic[0])! };
-    const other = last(handles.filter((h) => h.reason !== "reporter" && h.reason !== "subject" && h.reason !== "cm"));
-    return other ? { handle: other } : null;
+    if (dm) return dm;
+    return last(handles.filter((h) => h.reason !== "reporter" && h.reason !== "subject" && h.reason !== "cm")) ?? null;
   };
   let laid = layout(limit);
   while (xLen(assemblePostText(laid.bodyText, hashtags, mentions)) > cap) {
     const move = nextToMove();
     if (!move) break;
-    if ("handle" in move) {
-      handles = handles.filter((h) => h !== move.handle);
-      mentions = handles.map((h) => `@${h.handle}`);
-      lengthHandles.push({ ...move.handle, detail: "length" } as HandlePick);
-    } else {
-      hashtags.splice(hashtags.indexOf(move.tag), 1);
-      lengthTags.push({ tag: move.tag, source: PROPOSAL_SOURCES.campaign, reason: "length" });
-    }
+    handles = handles.filter((h) => h !== move);
+    mentions = handles.map((h) => `@${h.handle}`);
+    lengthHandles.push({ ...move, detail: "length" } as HandlePick);
     laid = layout(limit);
   }
   if (xLen(assemblePostText(laid.bodyText, hashtags, mentions)) > cap) laid = layout(cap);
   const { cutHead: headlineCut, bodyText } = laid;
   // What was moved for length is offered first, in the order it came off
   handleSuggestions.unshift(...lengthHandles);
-  offered.unshift(...lengthTags);
   const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && !hashtags.some((t) => t.toLowerCase() === o.tag.toLowerCase()) && !tagKeys(book, o.tag).some((k) => onPost.has(k)));
   const hashtagSuggestions = hashtagSuggestionItems.map((o) => o.tag);
   // The decision log's view of all of the above (brief §2.3): line 1's tags only when this composer put them there

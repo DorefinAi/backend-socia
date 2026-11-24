@@ -750,6 +750,14 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
       offered.push({ tag: `#${t}`, source: PROPOSAL_SOURCES.campaign, reason: "a campaign or keyword tag in campaigns.json matched" });
     }
   }
+  // P1 (owner, 25 Nov 2026): a party an election story names but is not about (its handle offered, handles.ts) has its
+  // hashtag offered too, never put on the post
+  if (election) {
+    for (const h of picked.suggestions) {
+      const r = h.reason === "party" ? parties.rules.find((x) => x.handle.toLowerCase() === h.handle.toLowerCase()) : undefined;
+      if (r?.hashtag) offered.push({ tag: `#${r.hashtag}`, source: PROPOSAL_SOURCES.campaign, reason: `an election story that names ${r.name} but is not about it` });
+    }
+  }
   const mentions = handles.map((h) => `@${h.handle}`);
 
   const townTag = story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : "";

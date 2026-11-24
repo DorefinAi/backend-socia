@@ -43,7 +43,7 @@ describe("rule 3: line 1 never names its city twice", () => {
     const d = draft(fileFor(null, "TNK"), ["टोंक", "टोंक में अवैध खनन पर बड़ी कार्रवाई", ...POINTS]);
     expect(line1(d)).toBe("टोंक में अवैध खनन पर बड़ी कार्रवाई");
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Tonk"]);
-    expect(d.headingPlace).toMatchObject({ placement: "trailing", source: "desk", district: "Tonk", card: "Tonk" });
+    expect(d.headingPlace).toMatchObject({ placement: "trailing", source: "desk", district: "Tonk", card: null });
     // Still the stated district: its police are picked as before
     expect(police(d).length).toBeGreaterThan(0);
   });
@@ -206,7 +206,7 @@ describe("review fixes and owner decisions of 23 Nov 2026", () => {
     expect(line1(d)).toBe("#आकोला: खेत में मिला शव");
     expect(allTags(d)).not.toContain("Alwar");
     expect(d.proposals.some((p) => p.item === "#Alwar")).toBe(false);
-    expect(d.headingPlace).toMatchObject({ placement: "copy", source: "copy", tags: [], card: null });
+    expect(d.headingPlace).toMatchObject({ placement: "copy", source: "copy", tags: [], card: "आकोला", cardHeadline: "आकोला: खेत में मिला शव" });
     // The same with the district from the file code
     const coded = draft(fileFor("VIKAS", "ALW"), ["#आकोला: खेत में मिला शव", ...POINTS]);
     expect(coded.proposals.some((p) => p.item === "#Alwar")).toBe(false);
@@ -226,7 +226,7 @@ describe("review fixes and owner decisions of 23 Nov 2026", () => {
     const d = draft(fileFor(null), ["उदयपुर के गोगुंदा से खबर", "उदयपुर SP डॉ.अमृता दुहन के निर्देशन में नशे के खिलाफ कार्रवाई", ...POINTS]);
     expect(line1(d).startsWith("उदयपुर SP")).toBe(true);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Udaipur", "#गोगुंदा"]);
-    expect(d.headingPlace).toMatchObject({ placement: "trailing", card: "गोगुंदा", town: "गोगुंदा" });
+    expect(d.headingPlace).toMatchObject({ placement: "trailing", card: null, town: "गोगुंदा" });
   });
 
   it("B4: spelling-tolerant town match: a nasal variant, and a town written as two words", () => {
@@ -241,7 +241,7 @@ describe("review fixes and owner decisions of 23 Nov 2026", () => {
     const nirmal = draft(fileFor("NIRMAL"), ["जयपुर में पर्यटन विभाग की बैठक", ...POINTS]);
     expect(line1(nirmal)).toBe("जयपुर में पर्यटन विभाग की बैठक");
     expect(nirmal.hashtags).toContain("#Jaipur");
-    expect(nirmal.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing", card: "Jaipur" });
+    expect(nirmal.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing", card: null });
     const ashvini = draft(fileFor("ASHVINI"), ["दिल्ली में संसद का शीतकालीन सत्र शुरू", ...POINTS]);
     expect(line1(ashvini)).toBe("दिल्ली में संसद का शीतकालीन सत्र शुरू");
     expect(ashvini.hashtags).toContain("#Delhi");

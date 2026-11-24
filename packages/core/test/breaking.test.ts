@@ -329,7 +329,7 @@ describe("composeBreaking", () => {
     expect(text.startsWith("कोटा में हिस्ट्रीशीटर")).toBe(true);
     expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia", "#Kota"]);
     // D1: the card leads with the city even when it is only in the tag line
-    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: "Kota" });
+    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: null });
     expect(text.endsWith("\n\n#RajasthanWithFirstIndia #Kota")).toBe(true);
     expect(d.mentions).toEqual([]);
     // "वारदात" still matches #RajasthanPolice — it is offered to the desk, not put on the post

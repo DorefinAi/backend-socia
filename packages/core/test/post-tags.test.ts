@@ -196,7 +196,7 @@ describe("12 Nov ACB file: a bureau reporter's file code picks no handle, and gi
     // names no district; here it names Dungarpur, as the desk wrote it
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Dungarpur"]);
-    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: "Dungarpur" });
+    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: null });
     expect(d.hashtagSuggestions).toContain("#ACB");
     expect(d.mentions).not.toContain("@jaipur_police");
     expect(d.mentions).not.toContain("@DungarpurP");
@@ -421,7 +421,7 @@ describe("b6 fix brief fixtures", () => {
     const { d } = file("चित्तौड़गढ़-उदयपुर हाईवे पर हादसा", ["दो वाहनों की भिड़ंत"], { place: "चित्तौड़गढ़" });
     expect(d.bodyText.startsWith("चित्तौड़गढ़-उदयपुर हाईवे पर हादसा")).toBe(true);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Chittorgarh"]);
-    expect(d.headingPlace).toMatchObject({ source: "desk", placement: "trailing", card: "Chittorgarh" });
+    expect(d.headingPlace).toMatchObject({ source: "desk", placement: "trailing", card: null });
     expect(everyTag(d)).not.toMatch(/#Udaipur\b/);
   });
 

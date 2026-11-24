@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  BRAND_RAJASTHAN, PlaceBook, composeBreaking, isDeskNote, isRajasthanStory, parseBreaking, pickReporter, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
+  BRAND_RAJASTHAN, PlaceBook, cardHeadlineOf, composeBreaking, isDeskNote, isRajasthanStory, parseBreaking, pickReporter, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
   parseReporterHandles, parseSubjectHandles, slotFromTags, type BreakingDraft,
 } from "../src";
 
@@ -262,5 +262,74 @@ describe("P8: two-line files keep their line 2; desk orders never reach the post
     ["मंत्री ने अधिकारियों से कहा, जल्द काम पूरा कराएं"],
   ])("a news line is never one: %s", (line) => {
     expect(isDeskNote(line)).toBe(false);
+  });
+});
+
+/** The card the desk's X cards show for a line 1 (independent of the composer): a lead run's last place, then the text, "#" off */
+function deskCard(line: string): string {
+  const run = /^((?:#[\p{L}\p{M}\p{N}_-]+\s*)+)[:：]\s*/u.exec(line);
+  const off = (t: string) => t.replace(/#/g, "").trim();
+  if (run) {
+    const tags = run[1]!.trim().split(/\s+/).map((t) => t.slice(1));
+    const last = [...tags].reverse().find((t) => book.hashtag(t) !== null || /[ऀ-ॿ]/u.test(t));
+    if (last) {
+      const p = book.hashtag(last);
+      const name = !p || p.kind === "town" || /[ऀ-ॿ]/u.test(last) ? last : p.districts[0]!.deskTag === last ? last : p.districts[0]!.name;
+      return `${name}: ${off(line.slice(run[0].length))}`;
+    }
+  }
+  const inline = /^((?:#[\p{L}\p{M}\p{N}_-]+\s+)+)(?=[^#\s])/u.exec(line);
+  if (inline && inline[1]!.trim().split(/\s+/).length > 1) return `${inline[1]!.trim().split(/\s+/).at(-1)!.slice(1)} ${off(line.slice(inline[0].length))}`;
+  return off(line);
+}
+
+describe("P6/P10: one place rule for the caption and the card", () => {
+  const cases: [string, string, string[], string, string | null][] = [
+    // [label, file, lines, line 1, tag-line city or null]
+    ["Kota: 'कोटा ग्रामीण…' keeps the word, no tag in line 1", "BTN_RJ_BREAKING_1029_24NOV_MS_CONTROL_Gul_big_FULL.txt", ["कोटा से खबर", "कोटा ग्रामीण की मंडाना थाना पुलिस ने दिल्ली-मुंबई एक्सप्रेसवे पर नाकाबंदी की", "आरोपियों को दबोचा"], "कोटा ग्रामीण की मंडाना थाना पुलिस ने दिल्ली-मुंबई एक्सप्रेसवे पर नाकाबंदी की", "#Kota"],
+    ["Jodhpur: 'जोधपुर पुलिस कमिश्नरेट में…'", "BTN_RJ_BREAKING_24NOV_2792_AM_CONTROL_RAJEEV_JDR_BIG_.txt", ["जोधपुर पुलिस कमिश्नरेट में कांस्टेबल प्रमोशन के लिए हुए साक्षात्कार", "पुलिस कमिश्नर ने खुद लिए इंटरव्यू"], "जोधपुर पुलिस कमिश्नरेट में कांस्टेबल प्रमोशन के लिए हुए साक्षात्कार", "#Jodhpur"],
+    ["Jamwaramgarh: the district inside 'जयपुर-जमवारामगढ़' is never prefixed again", "BTN_RJ_BREAKING_24NOV_2799_AM_CONTROL_JPR9_BIG_.txt", ["जमवारामगढ़ से खबर", "जयपुर-जमवारामगढ़ स्टेट हाईवे पर भीषण सड़क हादसा", "तेज रफ्तार डंपर ने मारी बाइक को टक्कर"], "जयपुर-जमवारामगढ़ स्टेट हाईवे पर भीषण सड़क हादसा", "#Jaipur"],
+    ["Churu: 'चूरू जिला प्रमुख के लिए…' → the tag (desk)", "BTN_RJ_BREAKING_2057_24NOV_mh_CONTROL_Sanjay_chr_big.txt", ["चूरू जिला प्रमुख के लिए कांग्रेस से आया बड़ा नाम", "प्रकाश बुड़ानिया होंगी उम्मीदवार"], "#Churu: जिला प्रमुख के लिए कांग्रेस से आया बड़ा नाम", null],
+    ["Churu: 'चूरू जिला परिषद में…' → the tag (desk 3 of 5)", fileFor(null, "CHR"), ["चूरू जिला परिषद में कांग्रेस का बहुमत", "भाजपा पीछे"], "#Churu: जिला परिषद में कांग्रेस का बहुमत", null],
+    ["Jodhpur: 'जोधपुर फर्जी कॉल सेंटर…' → the tag (desk)", "BTN_RJ_BREAKING_2127_24NOV_mh_CONTROL_rajeev_big.txt", ["जोधपुर", "जोधपुर फर्जी कॉल सेंटर से जुड़ा मामला", "बासनी में पकड़े गए युवक-युवतियों से पूछताछ जारी"], "#Jodhpur: फर्जी कॉल सेंटर से जुड़ा मामला", null],
+    ["Bundi: 'बूंदी के केशवरायपाटन में…' → '#Bundi #केशवरायपाटन में…' (desk)", fileFor(null, "BND"), ["बूंदी के केशवरायपाटन में कार्तिक पूर्णिमा पर उमड़ा श्रद्धा का सैलाब", "हजारों श्रद्धालु पहुंचे"], "#Bundi #केशवरायपाटन में कार्तिक पूर्णिमा पर उमड़ा श्रद्धा का सैलाब", null],
+    ["Churu: 'चूरू के सरदारशहर में…' → '#Churu #सरदारशहर में…' (desk)", fileFor(null, "CHR"), ["चूरू के सरदारशहर में हरियाणा का कुख्यात गैंगस्टर गिरफ्तार", "पुलिस ने घेराबंदी कर पकड़ा"], "#Churu #सरदारशहर में हरियाणा का कुख्यात गैंगस्टर गिरफ्तार", null],
+    ["Khairthal: 'खैरथल के किशनगढ़बास में…' in an ALW file (desk)", "BTN_RJ_BREAKING_2003_24NOV_mh_CONTROL_ALW21_big.txt", ["खैरथल के किशनगढ़बास में अतिक्रमण कार्रवाई को लेकर बवाल!", "दुकानदार और स्थानीय लोग लामबंद"], "#Khairthal #किशनगढ़बास में अतिक्रमण कार्रवाई को लेकर बवाल!", null],
+    ["Tonk: 'टोंक में…' keeps the word (desk 221 to 3)", fileFor(null, "TOK"), ["टोंक में अवैध खनन पर बड़ी कार्रवाई", "पुलिस मौके पर पहुंची"], "टोंक में अवैध खनन पर बड़ी कार्रवाई", "#Tonk"],
+    ["Udaipur: 'उदयपुर घूमने आई…' → '#Udaipur: घूमने आई…'", fileFor(null, "UDR"), ["उदयपुर घूमने आई पर्यटक की कार पलटी", "पुलिस मौके पर पहुंची"], "#Udaipur: घूमने आई पर्यटक की कार पलटी", null],
+    ["Udaipur: 'उदयपुर SP …' keeps the word", fileFor(null, "UDR"), ["उदयपुर SP के निर्देशन में नशे के खिलाफ कार्रवाई", "पुलिस मौके पर पहुंची"], "उदयपुर SP के निर्देशन में नशे के खिलाफ कार्रवाई", "#Udaipur"],
+  ];
+  it.each(cases)("%s", (_label, file, lines, l1, trailing) => {
+    const d = worker(file, lines);
+    expect(line1(d)).toBe(l1);
+    if (trailing) expect(d.hashtags).toContain(trailing);
+    // The card is line 1 as posted: never "Kota: ग्रामीण…", "Ajmer: जिला प्रमुख…", "जमवारामगढ़: जयपुर-जमवारामगढ़…"
+    expect(d.headingPlace.cardHeadline).toBe(deskCard(l1));
+  });
+
+  it("the card heading for each line 1 shape", () => {
+    expect(cardHeadlineOf(book, "#Churu: जिला प्रमुख के लिए नाम").text).toBe("Churu: जिला प्रमुख के लिए नाम");
+    expect(cardHeadlineOf(book, "#Kota #लाडपुरा: मंदिर में चोरी")).toEqual({ text: "लाडपुरा: मंदिर में चोरी", place: "लाडपुरा" });
+    expect(cardHeadlineOf(book, "#Jaipur: #BJP: नई घोषणा").text).toBe("Jaipur: BJP: नई घोषणा");
+    expect(cardHeadlineOf(book, "#BJP: नई घोषणा")).toEqual({ text: "BJP: नई घोषणा", place: null });
+    expect(cardHeadlineOf(book, "#SawaiMadhopur: बाघ दिखा").text).toBe("Sawai Madhopur: बाघ दिखा");
+    expect(cardHeadlineOf(book, "#UttarPradesh: बड़ा फैसला").text).toBe("Uttar Pradesh: बड़ा फैसला");
+    expect(cardHeadlineOf(book, "#Khairthal: बैठक").text).toBe("Khairthal: बैठक");
+    expect(cardHeadlineOf(book, "#Kotputli-Behror: बैठक").text).toBe("Kotputli-Behror: बैठक");
+    expect(cardHeadlineOf(book, "#Bundi #नैनवां में मां कंकाली की सवारी")).toEqual({ text: "नैनवां में मां कंकाली की सवारी", place: "नैनवां" });
+    expect(cardHeadlineOf(book, "कोटा ग्रामीण की मंडाना थाना पुलिस ने #ACB को सौंपा")).toEqual({ text: "कोटा ग्रामीण की मंडाना थाना पुलिस ने ACB को सौंपा", place: null });
+  });
+
+  it("an inferred city stays in the tag line and the card has no place in front (Ajmer: 'अजमेर जिला प्रमुख चुनाव…' as the desk posted)", () => {
+    const d = worker("BTN_RJ_BREAKING_1032_24NOV_MS_CONTROL_Shubham_big.txt", ["अजमेर जिला प्रमुख चुनाव भाजपा का कब्जा तय, चेहरे पर सस्पेंस बरकरार", "जिला परिषद में भाजपा के 19 सदस्य जीते"]);
+    expect(line1(d)).toBe("अजमेर जिला प्रमुख चुनाव भाजपा का कब्जा तय, चेहरे पर सस्पेंस बरकरार");
+    expect(d.headingPlace.cardHeadline).toBe(line1(d));
+    expect(d.headingPlace.card).toBeNull();
+  });
+
+  it("the desk's own tag run: the card is its last place and the text ('#Bharatpur #नदबई: …' → 'नदबई: …')", () => {
+    const d = worker(fileFor(null), ["#Bharatpur #नदबई: मारपीट में अधेड़ की मौत", "पुलिस मौके पर पहुंची"]);
+    expect(line1(d)).toBe("#Bharatpur #नदबई: मारपीट में अधेड़ की मौत");
+    expect(d.headingPlace.cardHeadline).toBe("नदबई: मारपीट में अधेड़ की मौत");
   });
 });

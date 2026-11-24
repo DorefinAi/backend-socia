@@ -65,6 +65,76 @@ function otherDistrictNamed(book: PlaceBook, story: Pick<BreakingComposeInput, "
   return other && other.name !== code.name ? other : null;
 }
 
+/**
+ * P6 (owner, 25 Nov 2026): what follows a district word that keeps the word in line 1 (no leading tag, the city in the tag
+ * line): a postposition or "जिले" ("टोंक में…", "करौली जिले से…"), a word that makes a name with the place ("कोटा ग्रामीण",
+ * "जोधपुर पुलिस कमिश्नरेट", "जयपुर नगर निगम", "कोटा विकास प्राधिकरण", "जयपुर डिस्कॉम"), a trip ("जयपुर दौरे पर"), a
+ * punctuation mark or the end. Chosen on the desk's 2,271 posts of 15–24 Nov (posted with the word and no tag, against the
+ * tag in place of the word): ग्रामीण 2:2 (owner), पुलिस 3:1, डिस्कॉम 6:0, दौरे 3:0, एयरपोर्ट 2:0, हाईकोर्ट 2:0, महोत्सव 2:1,
+ * जिले 5:3; and the place's own office holders ("उदयपुर SP", "जयपुर सांसद" 2:0, "अजमेर रेंज" 2:0). NOT here, so they become the tag: "जिला परिषद" 2:3 (+1 the desk wrote as inline tags) and "जिला प्रमुख" 3:3
+ * (all 3 desk EDITS went to the tag: "#Churu: जिला प्रमुख के लिए…").
+ */
+const KEEPS_PLACE_WORD = /^\s*(?:(?:में|के|की|का|से|पर|ने|को|तक|द्वारा|और|एवं|व|तथा|सहित|समेत|संग|भी|जिले|ग्रामीण|पुलिस|कमिश्नरेट|शहर|संभाग|नगर|देहात|डिस्कॉम|दौरे|दौरा|प्रवास|एयरपोर्ट|हाईकोर्ट|महोत्सव|SP|एसपी|IG|आईजी|कलेक्टर|सांसद|विधायक|रेंज)(?![\p{L}\p{M}\p{N}])|विकास\s+प्राधिकरण|जिला\s+प्रशासन|[,।!?:：|]|$)/u;
+
+/** P6: a town of `district` that `text` opens with ("केशवरायपाटन में…"), its Hindi name, its tag and the opening's length */
+function openingTown(book: PlaceBook, text: string, district: DistrictInfo): { hi: string; tag: string; length: number } | null {
+  const m = book.find(text)[0];
+  const p = m?.entry.data;
+  if (!p || p.kind !== "town" || !p.districts.some((d) => d.name === district.name)) return null;
+  const length = openingPlaceLength(text, [p.hi, p.tag]);
+  // A route keeps its words ("झुंझुनूं के चिड़ावा रोड टोल प्लाजा…"): no town tag in place of them
+  const route = !withoutRoutesAndBuildings(text).trimStart().startsWith(text.slice(0, length));
+  return length && !route ? { hi: p.hi, tag: p.tag, length } : null;
+}
+
+/** A hashtag as the card shows it, "#" and News stem aside: a town as written, a district or national place by name */
+const CARD_TAG = String.raw`#[\p{L}\p{M}\p{N}_]+(?:-[A-Za-z0-9]+)*`;
+const CARD_LEAD_RUN = new RegExp(String.raw`^((?:${CARD_TAG}\s*)+)[:：]\s*`, "u");
+const CARD_INLINE_RUN = new RegExp(String.raw`^((?:${CARD_TAG}\s+)+)(?=[^#\s])`, "u");
+
+/** The name a place hashtag takes on the card: a town or Hindi tag as written, a Latin district or national place as spoken */
+export function cardTagName(book: PlaceBook, tag: string): string {
+  const bare = tag.replace(/^#/, "").normalize("NFC");
+  const p = tagPlace(book, bare);
+  const d = p && p.kind !== "town" ? p.districts[0] : null;
+  if (!d || isDevanagari(bare)) return bare;
+  if (d.deskTag && d.deskTag.toLowerCase() === bare.toLowerCase()) return d.deskTag;
+  return cardName(d);
+}
+
+/**
+ * P6/P10 (owner, 25 Nov 2026; the desk's X cards of 23–24 Nov): the card heading for a line 1. A lead tag run ending in ":"
+ * with a place in it puts its LAST place in front ("#Kota #लाडपुरा: …" → "लाडपुरा: …", "#Jaipur: #BJP: …" → "Jaipur: BJP: …",
+ * "#Kotputli-Behror: …" → "Kotputli-Behror: …"); then line 1's text with every "#" taken off. A town tag standing in for its
+ * word keeps only the town ("#Bundi #नैनवां में…" → "नैनवां में…"). No such run: line 1 itself, "#" off, NO place in front.
+ * `place` is the place the card opens with, or null.
+ */
+export function cardHeadlineOf(book: PlaceBook, line1: string, labels: readonly string[] = HEADLINE_LABEL_WORDS): { text: string; place: string | null } {
+  const line = line1.normalize("NFC").replace(/\s+/g, " ").trim();
+  const strip = (t: string) => t.replace(/#(?=[\p{L}\p{M}\p{N}_])/gu, "").replace(/\s+/g, " ").trim();
+  const isPlace = (t: string) => tagPlace(book, t) !== null || deskPlaceTag(book, t, true, labels);
+  const m = CARD_LEAD_RUN.exec(line);
+  if (m) {
+    const run = [...m[1]!.matchAll(new RegExp(CARD_TAG, "gu"))].map((x) => x[0].slice(1));
+    const last = run.filter(isPlace).at(-1);
+    if (last) {
+      const place = cardTagName(book, last);
+      const rest = strip(line.slice(m[0].length));
+      return { text: rest ? `${place}: ${rest}` : place, place };
+    }
+  }
+  // A town tag in place of its word ("#Bundi #नैनवां में मां कंकाली…"): the run's last place, then the same text ("नैनवां में…")
+  const inline = CARD_INLINE_RUN.exec(line);
+  if (inline) {
+    const run = [...inline[1]!.matchAll(new RegExp(CARD_TAG, "gu"))].map((x) => x[0].slice(1));
+    if (run.length > 1 && run.every(isPlace)) {
+      const place = run.at(-1)!;
+      return { text: `${place} ${strip(line.slice(inline[0].length))}`.trim(), place };
+    }
+  }
+  return { text: strip(line), place: null };
+}
+
 /** R8: a place's name as the card shows it: a national one with its spaces ("UttarPradesh" → "Uttar Pradesh") */
 export function cardName(info: DistrictInfo): string {
   return info.rajasthan ? info.name : info.name.replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -205,8 +275,14 @@ export interface HeadingPlace {
    * The place the card heading starts with (D1): the town in Hindi when the post carries one, else the district's or
    * national place's name ("नैनवां", "Jodhpur", "Uttar Pradesh"), for lead, inline and trailing alike; the card drops the
    * word when the headline opens with it. Null for `copy` (the card reads the desk's own tag run) and `none`.
+   * Since P6 (25 Nov 2026): the place in front of cardHeadline, or null when the card has none.
    */
   card: string | null;
+  /**
+   * P6/P10: the card heading exactly, line 1 as posted with its tag syntax gone (cardHeadlineOf): what the desk's card
+   * draws unless the desk saved its own. Absent on drafts composed before 25 Nov 2026.
+   */
+  cardHeadline?: string;
 }
 
 export interface BreakingComposeInput {
@@ -903,34 +979,62 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // doubled; a headline opening with its district has the district tag in the tag line 221 times to 3 doubled, and 81
   // to 34 on 15–22 Nov). Spelling-tolerant (place-match.ts): "नैनवा" = "नैनवां", "बड़ी सादड़ी" = "बड़ीसादड़ी".
   let inlineLine: string | null = null;
+  // P6 (owner, 25 Nov 2026): line 1's headline after a lead run, when the headline's own place word gave way to the tag
+  let leadHeadline = headline;
+  // P6: the town a "<district> के <town>" headline names, written as its tag in place of the words ("#Bundi #केशवरायपाटन में…")
+  let headlineTown: { hi: string; tag: string } | null = null;
   if (placement === "lead" && tags.length) {
     const last = tags.at(-1)!;
     const townOpening = last === townTag ? openingPlaceLength(headline, [story.town ?? "", townTag.slice(1), book.hashtag(townTag.slice(1))?.hi ?? ""]) : 0;
     const first = tags[0] === townTag ? null : tagPlace(book, tags[0]!.slice(1));
-    const districtOpening = first && first.kind !== "town" && first.districts[0] ? openingPlaceLength(headline, placeSpellings(book, first.districts[0])) : 0;
+    const firstDistrict = first && first.kind !== "town" ? (first.districts[0] ?? null) : null;
+    const districtOpening = firstDistrict ? openingPlaceLength(headline, placeSpellings(book, firstDistrict)) : 0;
+    const after = headline.slice(districtOpening);
+    const ke = districtOpening ? /^\s+(?:के|की)\s+/u.exec(after) : null;
+    const town = ke && firstDistrict ? openingTown(book, after.slice(ke[0].length), firstDistrict) : null;
     if (townOpening && !placeWordInCompound(headline, townOpening)) {
       // "#Bundi #नैनवां में मां कंकाली…": the town tag in place of the word, the rest as written
       inlineLine = `${tags.join(" ")}${headline.slice(townOpening)}`;
       placement = "inline";
-    } else if (districtOpening) {
-      // "टोंक में अवैध खनन…": no leading tag, the headline as written, the city (and a town with it) in the tag line
+    } else if (districtOpening && placeWordInCompound(headline, districtOpening)) {
+      // R3: "जयपुर-जमवारामगढ़ स्टेट हाईवे…": a place inside a compound is never prefixed again: as written, the city in the tag line
       trailing.push(...tags);
       tags = [];
       placement = "trailing";
+    } else if (town && (!townTag || placeMatchKey(townTag.slice(1)) === placeMatchKey(town.tag) || placeMatchKey(story.town ?? "") === placeMatchKey(town.hi))) {
+      // P6, the desk's own edits: "बूंदी के केशवरायपाटन में…" → "#Bundi #केशवरायपाटन में…", "चूरू के सरदारशहर में…" → "#Churu #सरदारशहर में…"
+      headlineTown = town;
+      tags = [tags[0]!, townHashtag(town.tag)];
+      inlineLine = `${tags.join(" ")}${after.slice(ke![0].length + town.length)}`;
+      placement = "inline";
+    } else if (districtOpening && KEEPS_PLACE_WORD.test(after)) {
+      // "टोंक में अवैध खनन…", "कोटा ग्रामीण की मंडाना थाना…", "जोधपुर पुलिस कमिश्नरेट में…": the word stays, no leading tag,
+      // the city (and a town with it) in the tag line; the card is line 1 as written
+      trailing.push(...tags);
+      tags = [];
+      placement = "trailing";
+    } else if (districtOpening) {
+      // P6, the desk's own edits: a plain place word before a normal word becomes the tag ("चूरू जिला प्रमुख के लिए…" →
+      // "#Churu: जिला प्रमुख के लिए…", "जोधपुर फर्जी कॉल सेंटर…" → "#Jodhpur: फर्जी कॉल सेंटर…")
+      leadHeadline = after.replace(/^[\s,:：]+/u, "");
     }
   }
   if (trailing.length) hashtags.splice(1, 0, ...trailing.filter((t) => !hashtags.some((h) => h.toLowerCase() === t.toLowerCase())));
   const written = placement === "lead" || placement === "inline" ? tags : placement === "trailing" ? trailing : [];
   const townWritten = !!townTag && written.includes(townTag);
+  // P6/P10 (owner, 25 Nov 2026; the desk's own X cards of 23–24 Nov): the card is line 1 as posted. A lead run's LAST place
+  // goes in front ("#Kota #लाडपुरा: …" → "लाडपुरा: …"), every other "#" goes, and a line 1 with no lead run gets NO place in
+  // front (the old D1 "Kota:" before "कोटा ग्रामीण की…" broke 94 of 98 such cards). Decided here, once, with line 1.
+  const fullLine1 = inlineLine ?? `${tags.length && !deskRun ? `${tags.join(" ")}: ` : ""}${leadHeadline}`;
+  const cardText = cardHeadlineOf(book, fullLine1, headlineLabels);
   const headingPlace: HeadingPlace = {
     tags: [...written],
     district: placement === "copy" || placement === "none" ? null : (cityInfo?.name ?? null),
-    town: townWritten ? (story.town ?? null) : null,
+    town: headlineTown ? headlineTown.hi : townWritten ? (story.town ?? null) : null,
     source,
     placement,
-    // D1: the card always leads with the post's city: its town in Hindi when line 1 or the tag line carries one, else the
-    // district's (or national place's) English name. The desk's own place (copy) is read by the card itself.
-    card: placement === "copy" || placement === "none" ? null : townWritten ? townTag.slice(1) : cityInfo ? (cityInfo.deskTag ?? cardName(cityInfo)) : null,
+    card: cardText.place,
+    cardHeadline: cardText.text,
   };
 
   // ── added after every rule above has finished, as suggestions only: nothing above moves (brief §3.5, L7) ──
@@ -986,11 +1090,11 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // Room for lines 1–2: the limit less the footer and its blank line
   const room = limit - xLen(assemblePostText("x", hashtags, mentions)) + 1;
 
-  let line1 = inlineLine ?? prefix + headline;
+  let line1 = inlineLine ?? prefix + leadHeadline;
   let headlineCut = false;
   if (xLen(line1) > room) {
     headlineCut = true;
-    const cut = inlineLine === null ? cutOnWords(headline, room - xLen(prefix) - xLen(BREAKING_CUT)) : "";
+    const cut = inlineLine === null ? cutOnWords(leadHeadline, room - xLen(prefix) - xLen(BREAKING_CUT)) : "";
     line1 = cut ? `${prefix}${cut}${BREAKING_CUT}` : (cutOnWords(line1, room - xLen(BREAKING_CUT)) + BREAKING_CUT);
   }
   // Line 2 the desk's length whatever the headline (100–130), shorter only when the post's limit leaves less room,
@@ -1010,6 +1114,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   const where = placement === "trailing" ? "in the tag line" : placement === "inline" ? "in place of the headline's first word" : "in line 1";
   if (place && district && placed(`#${cityTagOf(place)}`)) proposals.push({ item: `#${cityTagOf(place)}`, kind: "hashtag", layer: "emit", source: districtSource(district.from, false), reason: `${place.name}, stated (${district.from}), ${where}` });
   if (source === "reporter_rule" && policy && placed(`#${cityTagOf(policy.district)}`)) proposals.push({ item: `#${cityTagOf(policy.district)}`, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}, ${where}` });
+  if (headlineTown && placed(townHashtag(headlineTown.tag)) && townHashtag(headlineTown.tag) !== townTag) proposals.push({ item: townHashtag(headlineTown.tag), kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.town, reason: `the town the headline names after its district (${headlineTown.hi}), ${where}` });
   if (townTag && placed(townTag)) proposals.push({ item: townTag, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.town, reason: `the town on the place line (${story.town}), ${where}` });
   if (legacy && cityInfo && placed(`#${cityTagOf(cityInfo)}`)) proposals.push({ item: `#${cityTagOf(cityInfo)}`, kind: "hashtag", layer: "emit", source: "district.city.legacy", reason: `${cityInfo.name}, the story's stored district (provenance unknown), ${where}` });
   if ((source === "file_code" || source === "inferred" || source === "fallback") && cityInfo) {

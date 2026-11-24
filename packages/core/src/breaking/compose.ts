@@ -995,7 +995,11 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   }
   // Line 2 the desk's length whatever the headline (100–130), shorter only when the post's limit leaves less room,
   // and dropped under the floor (crispPoints)
-  const body = headlineCut ? "" : crispPoints(story.points, breakingDots(plainHeadline(line1)), Math.min(bodyMax, room - xLen(line1) - 2));
+  const crisp = headlineCut ? "" : crispPoints(story.points, breakingDots(plainHeadline(line1)), Math.min(bodyMax, room - xLen(line1) - 2));
+  // P8 (owner, 25 Nov 2026): a file of a headline and one short line keeps that line ("सतीश पूनिया ने की अमित शाह से मुलाकात" /
+  // "भाजपा मुख्यालय में आज की मुलाकात"): the floor drops a CUT stub ("आमजन...."), never the whole of the points when they fit
+  const whole = story.points.map(trimPoint).filter(Boolean).join(", ");
+  const body = crisp || (headlineCut || !whole || xLen(whole) > room - xLen(line1) - 2 ? "" : whole);
   const bodyText = body ? `${line1}\n\n${body}` : line1;
   // The decision log's view of all of the above (brief §2.3): line 1's tags only when this composer put them there
   const proposals: Proposal[] = [];

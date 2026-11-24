@@ -104,7 +104,15 @@ const FULLSCREEN_ONLY = /(?:फुल\s*स्क्रीन\s*(?:कराव�
  * glued to the word) when it asks for a photo or fullscreen; or a line of at most 20 words that ENDS in the instruction.
  */
 export const isDeskNote = (line: string): boolean =>
-  NOTE_START_SPACED.test(line) || (NOTE_START.test(line) && DESK_INSTRUCTION.test(line)) || (FULLSCREEN_ONLY.test(line) && words(line) <= 20);
+  NOTE_START_SPACED.test(line) || (NOTE_START.test(line) && DESK_INSTRUCTION.test(line)) || (FULLSCREEN_ONLY.test(line) && words(line) <= 20) ||
+  (DESK_ORDER.test(line) && DESK_ORDER_SUBJECT.test(line) && words(line) <= 15);
+/**
+ * P8 (owner, 25 Nov 2026): a short line that ORDERS the control room ("ED के दफ्तर की फोटो के साथ फुल स्क्रीन कराए" leaked into
+ * a post as its headline): it names a photo, fullscreen, visual, graphic, video or byte, and ends in the order itself
+ * (कराएं / कराए / चलाएं / लगाएं / दिखाएं …). A news line that only mentions such a thing does not end that way.
+ */
+const DESK_ORDER = /(?:कराव?ें|कराएं|कराए|कराये|करायें|करवाएं|करवाए|करवावें|चलावें|चलाएं|चलाए|चलाये|लगावें|लगाएं|लगाए|दिखावें|दिखाएं|दिखाए)[\s।.!]*$/u;
+const DESK_ORDER_SUBJECT = /फोटो|फुल\s*स्क्रीन|स्क्रीन|full\s*screen|विजुअल|विज़ुअल|visual|ग्राफिक्स?|ग्राफिक|वीडियो|बाइट|byte/iu;
 /**
  * A line that does not finish its sentence: the next line continues it. A comma or a conjunction; or a stub of at most
  * two words ending in a postposition ("जयपुर के" / "बिरला ऑडिटोरियम में ...", one line broken in two: owner, 17 Nov

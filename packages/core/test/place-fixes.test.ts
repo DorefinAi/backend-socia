@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  BRAND_RAJASTHAN, PlaceBook, composeBreaking, isRajasthanStory, parseBreaking, pickReporter, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
+  BRAND_RAJASTHAN, PlaceBook, composeBreaking, isDeskNote, isRajasthanStory, parseBreaking, pickReporter, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
   parseReporterHandles, parseSubjectHandles, slotFromTags, type BreakingDraft,
 } from "../src";
 
@@ -226,5 +226,41 @@ describe("P11: a statewide list story infers no district", () => {
   it("a stated district stands on a list story (the place line)", () => {
     const d = worker(fileFor(null), ["कोटा से खबर", "कोटा, बूंदी और बारां में पंचायत चुनाव की मतगणना", "तीनों जिलों में भाजपा आगे"]);
     expect(d.headingPlace.district).toBe("Kota");
+  });
+});
+
+describe("P8: two-line files keep their line 2; desk orders never reach the post", () => {
+  it("'सतीश पूनिया ने की अमित शाह से मुलाकात' / 'भाजपा मुख्यालय में आज की मुलाकात': line 2 kept, as the desk posted it", () => {
+    const d = worker("btn_rj_breaking_6038_24nov_us_control_Ashvini_DL_BIG.txt", ["सतीश पूनिया ने की अमित शाह से मुलाकात", "भाजपा मुख्यालय में आज की मुलाकात"]);
+    expect(d.bodyText).toBe("#Delhi: सतीश पूनिया ने की अमित शाह से मुलाकात\n\nभाजपा मुख्यालय में आज की मुलाकात");
+  });
+
+  it("a long line 2 is still cut the desk's way, and a cut never leaves a stub", () => {
+    const d = worker(fileFor(null, "JPR"), ["सचिवालय में अहम बैठक", "मुख्य सचिव ने सभी विभागों के अधिकारियों के साथ बजट घोषणाओं की प्रगति की समीक्षा की और लंबित कार्यों को जल्द पूरा करने के निर्देश दिए", "कई जिलों के कलेक्टर भी वीसी से जुड़े"]);
+    const line2 = d.bodyText.split("\n\n")[1]!;
+    expect(line2.length).toBeGreaterThan(40);
+    expect(line2).toMatch(/\.\.\.\.?$/);
+  });
+
+  it("the ED order line ('…की फोटो के साथ फुल स्क्रीन कराए') is taken out; the headline is the news", () => {
+    const name = "BTN_RAJ_BREAKING_1301_23NOV_NDR_JNS_BIG_FULL.txt";
+    const p = parseBreaking(`BTN_RAJ_BREAKING_1301_23NOV_NDR_JNS_BIG_FULL\r\n\r\nED के दफ्तर की फोटो के साथ फुल स्क्रीन कराए\r\n\r\nशिखर अग्रवाल ACB प्रकरण !\r\nसूत्रों के अनुसार अब किसी भी वक्त हो सकती ED की एंट्री\r\n`, name, book);
+    expect(p.headline).toBe("शिखर अग्रवाल ACB प्रकरण !");
+    expect(p.deskNote).toBe("ED के दफ्तर की फोटो के साथ फुल स्क्रीन कराए");
+    expect(p.needsCheck).not.toContain("text_changed");
+    const d = worker(name, ["ED के दफ्तर की फोटो के साथ फुल स्क्रीन कराए", "शिखर अग्रवाल ACB प्रकरण !", "सूत्रों के अनुसार अब किसी भी वक्त हो सकती ED की एंट्री"]);
+    expect(d.bodyText).not.toMatch(/फुल स्क्रीन/);
+  });
+
+  it.each([["विजुअल के साथ खबर चलाएं"], ["सीएम की फोटो लगाएं"], ["ग्राफिक्स के साथ फुलस्क्रीन चलावें"]])("an order is a desk note: %s", (line) => {
+    expect(isDeskNote(line)).toBe(true);
+  });
+
+  it.each([
+    ["पुलिस ने वायरल वीडियो के आधार पर आरोपी को पकड़ा"],
+    ["फोटो खिंचवाने के दौरान हादसा"],
+    ["मंत्री ने अधिकारियों से कहा, जल्द काम पूरा कराएं"],
+  ])("a news line is never one: %s", (line) => {
+    expect(isDeskNote(line)).toBe(false);
   });
 });

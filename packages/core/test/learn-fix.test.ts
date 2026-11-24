@@ -209,11 +209,22 @@ describe("rule 6: a typed hashtag learns its own words, never places; a #handle 
     expect(tagRuleKeywords("#JaipurMetro", ctx)).toEqual({ keywords: ["Metro"], known: false });
     expect(learner.tagKeywords("#bbhbh")).toEqual({ keywords: [], known: false });
   });
-  it("#Balotrapolice (meant @BalotraPolice) and other handle-shaped tags are handles", () => {
-    for (const t of ["#Balotrapolice", "#Khirthalpolice", "#JaipurDM", "#TonkCollector"]) expect(tagLooksLikeHandle(t)).toBe(true);
-    expect(tagLooksLikeHandle("#jaipur_police", ["jaipur_police"])).toBe(true);
-    expect(tagLooksLikeHandle("#JaipurPoliceNews")).toBe(false);
-    for (const t of ["#RajasthanPanchayatElection2026", "#Jaisalmer", "#जयपुर"]) expect(tagLooksLikeHandle(t)).toBe(false);
+  it("#Balotrapolice (meant @BalotraPolice) is a handle: it is a known handle's name, case and _ ignored", () => {
+    expect(tagLooksLikeHandle("#Balotrapolice", ["BalotraPolice"])).toBe(true);
+    expect(tagLooksLikeHandle("#jaipur_police", ["jaipurpolice"])).toBe(true);
+    // @BalotraPolice is in district-handles.json: the learner knows it without the directory
+    expect(learner.tagIsHandle("#Balotrapolice")).toBe(true);
+    // <District>Police / DM / Collector only where such a handle exists
+    expect(tagLooksLikeHandle("#TonkCollector", ["TonkCollectorOffice"])).toBe(true);
+    expect(tagLooksLikeHandle("#TonkCollector", ["jaipur_police"])).toBe(false);
+    expect(tagLooksLikeHandle("#JaipurDM")).toBe(false);
+  });
+  it("a topic tag that merely ends in police, DM or collector is not a handle (#RajasthanPolice)", () => {
+    expect(learner.tagIsHandle("#RajasthanPolice")).toBe(false);
+    expect(learner.tagIsHandle("#RajasthanPolice", ["PoliceRajasthan", "jaipur_police"])).toBe(false);
+    expect(learner.tagIsHandle("#TrafficPolice")).toBe(false);
+    expect(tagLooksLikeHandle("#JaipurPoliceNews", ["jaipur_police"])).toBe(false);
+    for (const t of ["#RajasthanPanchayatElection2026", "#Jaisalmer", "#जयपुर"]) expect(learner.tagIsHandle(t)).toBe(false);
   });
   it("a tag naming a known subject is a topic even when a handle of that name exists (#NarendraModi)", () => {
     expect(learner.tagIsHandle("#NarendraModi", ["narendramodi"])).toBe(false);

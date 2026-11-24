@@ -350,10 +350,14 @@ describe("composeBreaking", () => {
     expect(xLen(text)).toBeLessThanOrEqual(280);
   });
 
-  it("cuts a headline only past the post's limit: 1,000 by default, or a limit the caller sets", () => {
+  it("cuts a headline only past the post's limit: X's 280 by default (P2), or the limit a caller sets", () => {
     const long = parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(40)}\nबिंदु`, "x_breaking.txt", book);
-    expect(composeBreaking(long, rules, book, { topics }).headlineCut).toBe(false);
-    const huge = composeBreaking(parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(80)}\nबिंदु`, "x_breaking.txt", book), rules, book, { topics });
+    const fitted = composeBreaking(long, rules, book, { topics });
+    expect(fitted.headlineCut).toBe(true);
+    expect(xLen(assemblePostText(fitted.bodyText, fitted.hashtags, fitted.mentions))).toBeLessThanOrEqual(280);
+    // Without the X cap (b8), up to the 1,000 sanity limit
+    expect(composeBreaking(long, rules, book, { topics, xLimit: BREAKING_POST_MAX }).headlineCut).toBe(false);
+    const huge = composeBreaking(parseBreaking(`जयपुर\n${"बहुत लंबी हेडलाइन ".repeat(80)}\nबिंदु`, "x_breaking.txt", book), rules, book, { topics, xLimit: BREAKING_POST_MAX });
     expect(huge.headlineCut).toBe(true);
     expect(xLen(assemblePostText(huge.bodyText, huge.hashtags, huge.mentions))).toBeLessThanOrEqual(BREAKING_POST_MAX);
     const capped = composeBreaking(long, rules, book, { topics, limit: 280 });
@@ -502,16 +506,21 @@ describe("the catchy cut (b8 crispPoints scoring)", () => {
   });
 });
 
-describe("the whole breaking post (b8 decisions §0.2: past 280 up to 1,000)", () => {
+describe("the whole breaking post (b8 decisions §0.2; since P2 it fits X's 280 unless a caller lifts xLimit)", () => {
   const points = Array.from({ length: 6 }, (_, i) => `बैठक में ${i} विभागों के अधिकारियों ने अपनी योजनाओं की प्रगति रिपोर्ट पेश की और लंबित कामों की जानकारी दी`);
 
-  it("keeps line 2 at 100–130 when a long headline and the tag line push the post past 280", () => {
+  it("keeps line 2 at 100–130 past 280 only when the caller lifts the X cap; by default the post fits 280", () => {
     const head = "जयपुर में राज्य सरकार के मंत्री ने विधानसभा में बजट घोषणाओं की समीक्षा बैठक में अधिकारियों को दिए सख्त निर्देश और समय पर काम पूरा करने को कहा";
-    const d = composeBreaking(parseBreaking(`जयपुर\n${head}\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics });
-    const line2 = d.bodyText.split("\n\n")[1]!;
+    const story = parseBreaking(`जयपुर\n${head}\n${points.join("\n")}`, "x_breaking.txt", book);
+    const long = composeBreaking(story, rules, book, { topics, xLimit: BREAKING_POST_MAX });
+    const line2 = long.bodyText.split("\n\n")[1]!;
     expect(xLen(line2)).toBeGreaterThanOrEqual(BREAKING_BODY_MIN);
     expect(xLen(line2)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
-    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(BREAKING_POST_MAX);
+    expect(xLen(assemblePostText(long.bodyText, long.hashtags, long.mentions))).toBeLessThanOrEqual(BREAKING_POST_MAX);
+    // P2: nothing movable on the tag line, so line 2 gives way (shorter, or dropped under the floor), never past 280
+    const d = composeBreaking(story, rules, book, { topics });
+    expect(xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions))).toBeLessThanOrEqual(280);
+    expect(d.bodyText.startsWith(long.bodyText.split("\n\n")[0]!)).toBe(true);
   });
 
   it("uses the bodyMax option as line 2's ceiling", () => {

@@ -1129,6 +1129,10 @@
     },
     {
       "tag": "DidwanaKuchaman",
+      "desk_tag": "Didwana",
+      "desk_tag_towns": [
+        "डीडवाना"
+      ],
       "hi": [
         "डीडवाना-कुचामन",
         "डीडवाना कुचामन",
@@ -1927,6 +1931,10 @@
     },
     {
       "tag": "KhairthalTijara",
+      "desk_tag": "Khairthal",
+      "desk_tag_towns": [
+        "खैरथल"
+      ],
       "hi": [
         "खैरथल-तिजारा",
         "खैरथल तिजारा"
@@ -2048,6 +2056,12 @@
     },
     {
       "tag": "KotputliBehror",
+      "desk_tag": "Kotputli-Behror",
+      "desk_tag_towns": [
+        "कोटपूतली",
+        "कोटपुतली",
+        "बहरोड़"
+      ],
       "hi": [
         "कोटपूतली-बहरोड़",
         "कोटपूतली बहरोड़",

@@ -19,6 +19,14 @@ export interface PlacesData {
     /** File-name codes: "SWM" */
     codes: string[];
     towns: { hi: string; tag: string }[];
+    /**
+     * P5 (owner, 25 Nov 2026): the city tag the desk writes for a merged district ("Khairthal" for KhairthalTijara,
+     * "Didwana", "Kotputli-Behror"). Used ONLY where the composer writes line 1's or the tag line's city tag; `tag` stays
+     * the district's key everywhere else (district-handles.json, districts.json, the handle lookup).
+     */
+    desk_tag?: string;
+    /** The Hindi towns the desk tag already names (खैरथल): with the desk tag, such a town takes no town tag of its own */
+    desk_tag_towns?: string[];
   }[];
 }
 
@@ -29,6 +37,10 @@ export interface DistrictInfo {
   tag: string;
   hi: string;
   rajasthan: boolean;
+  /** P5: the desk's own city tag for a merged district ("Khairthal"); absent for every other district */
+  deskTag?: string;
+  /** P5: the Hindi towns the desk tag names (खैरथल), NFC */
+  deskTagTowns?: string[];
 }
 
 export interface Place {
@@ -78,9 +90,22 @@ const NATIONAL: [string, string[]][] = [
   ["Pakistan", ["पाकिस्तान"]], ["China", ["चीन"]], ["Nepal", ["नेपाल"]], ["Bangladesh", ["बांग्लादेश"]], ["USA", ["अमेरिका"]],
   ["Russia", ["रूस"]], ["Ukraine", ["यूक्रेन"]], ["Israel", ["इजराइल", "इजरायल"]], ["Iran", ["ईरान"]], ["Afghanistan", ["अफगानिस्तान"]],
 ];
+/**
+ * The national places that are CITIES (P3, owner 25 Nov 2026): a national story naming one carries it as its city
+ * (D4: "#Delhi"). A state, region or country (#UttarPradesh, #Gujarat, #Nepal) is offered instead, one click, and the
+ * story is flagged "national_story".
+ */
+const NATIONAL_CITIES: ReadonlySet<string> = new Set([
+  "Delhi", "Lucknow", "Varanasi", "Mumbai", "Kolkata", "Patna", "Bhopal", "Indore", "Chandigarh", "Ahmedabad", "Gandhinagar", "Noida", "Gurugram",
+  "Agra", "Prayagraj", "Ayodhya", "Hyderabad", "Bengaluru", "Chennai", "Srinagar", "Jammu", "Dehradun", "Shimla", "Ranchi", "Mathura",
+]);
+/** Whether a national place is a city (NATIONAL_CITIES), not a state, region or country */
+export const isNationalCity = (info: DistrictInfo): boolean => !info.rajasthan && NATIONAL_CITIES.has(info.name);
 const NATIONAL_INFO: DistrictInfo[] = NATIONAL.map(([name, [hi]]) => ({ name, tag: name, hi: hi!, rajasthan: false }));
 
 const DEVANAGARI = /[ऀ-ॿ]/;
+/** A desk tag: English words joined by hyphens ("Khairthal", "Kotputli-Behror") */
+const DESK_TAG = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/;
 /** One key for a hashtag spelling: folded (nukta, case), with spaces, "_" and punctuation out */
 const tagKey = (tag: string) => fold(tag).replace(/[\s_]+/g, "");
 
@@ -125,7 +150,12 @@ export function parsePlacesData(json: unknown, problem: (message: string) => voi
       const townTag = ((t.tag as string | undefined) || t.hi).normalize("NFC").replace(/^#/, "").trim();
       towns.push({ hi: t.hi.normalize("NFC"), tag: townTag });
     });
-    districts.push({ tag, hi, codes: own, towns });
+    // P5: a malformed desk tag is dropped (the district keeps its own tag), never the district
+    const deskTag = typeof d.desk_tag === "string" ? d.desk_tag.trim().replace(/^#/, "") : "";
+    const okDeskTag = DESK_TAG.test(deskTag);
+    if (d.desk_tag !== undefined && !okDeskTag) problem(`${where} ${tag}: desk_tag must be an English hashtag without # (ignored)`);
+    const deskTowns = texts(d.desk_tag_towns).map((x) => x.normalize("NFC")).filter((x) => DEVANAGARI.test(x));
+    districts.push({ tag, hi, codes: own, towns, ...(okDeskTag && { desk_tag: deskTag, desk_tag_towns: deskTowns }) });
   });
   return { version: Number(root.version ?? 1), districts };
 }
@@ -146,7 +176,10 @@ export class PlaceBook {
   private readonly matchKeys = new Set<string>();
 
   constructor(data: PlacesData) {
-    this.districts = data.districts.map((d) => ({ name: NAME_OF_TAG.get(d.tag.toLowerCase()) ?? d.tag, tag: d.tag, hi: d.hi[0] ?? d.tag, rajasthan: true }));
+    this.districts = data.districts.map((d) => ({
+      name: NAME_OF_TAG.get(d.tag.toLowerCase()) ?? d.tag, tag: d.tag, hi: d.hi[0] ?? d.tag, rajasthan: true,
+      ...(d.desk_tag && { deskTag: d.desk_tag, deskTagTowns: d.desk_tag_towns ?? [] }),
+    }));
     for (const info of [...this.districts, ...NATIONAL_INFO]) this.byName.set(info.name, info);
     data.districts.forEach((d, i) => {
       const info = this.districts[i]!;
@@ -171,6 +204,8 @@ export class PlaceBook {
     for (const info of this.districts) {
       const place = this.lookup(info.hi) ?? { kind: "district" as const, hi: info.hi, tag: info.tag, districts: [info] };
       for (const t of [info.tag, info.name]) this.byTag.set(tagKey(t), place);
+      // P5: the desk's tag for a merged district ("#Khairthal", "#Kotputli-Behror") reads as that district
+      if (info.deskTag) this.byTag.set(tagKey(info.deskTag), place);
     }
     for (const [i, [, [hi]]] of NATIONAL.entries()) {
       const info = NATIONAL_INFO[i]!;
@@ -184,7 +219,7 @@ export class PlaceBook {
       }
     }
     for (const d of data.districts) for (const t of d.towns) this.matchKeys.add(placeMatchKey(t.tag));
-    for (const info of [...this.districts, ...NATIONAL_INFO]) { this.matchKeys.add(placeMatchKey(info.tag)); this.matchKeys.add(placeMatchKey(info.name)); }
+    for (const info of [...this.districts, ...NATIONAL_INFO]) { this.matchKeys.add(placeMatchKey(info.tag)); this.matchKeys.add(placeMatchKey(info.name)); if (info.deskTag) this.matchKeys.add(placeMatchKey(info.deskTag)); }
     this.gazetteer = new Gazetteer<Place>(
       [...this.places.entries()]
         .filter(([key, place]) => !NOT_IN_TEXT.has(key) && !(place.kind === "town" && place.districts.length > 1))

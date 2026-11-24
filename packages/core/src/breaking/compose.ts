@@ -22,7 +22,7 @@ import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, 
 import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
 import { PARTY, deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, withoutRoutesAndBuildings, type DistrictFrom } from "./parse";
-import { openingPlaceLength, placeWordInCompound } from "./place-match";
+import { openingPlaceLength, placeMatchKey, placeWordInCompound } from "./place-match";
 import {
   EMPTY_NORMALISER, EMPTY_SUGGEST_RULES, HASHTAG, emittable, isDevanagari, explicit, inferred, isVideoHeadline, normaliseTag, stripLinks, suggestTags, videoLabelBrand, electionOf,
   BRAND_RAJASTHAN, type PlaceKind, type PlaceKindLookup, type Sourced, type SuggestRules, type TagNormaliser,
@@ -59,6 +59,22 @@ function windowDistrict(book: PlaceBook, lines: readonly string[]): DistrictInfo
 /** R8: a place's name as the card shows it: a national one with its spaces ("UttarPradesh" → "Uttar Pradesh") */
 export function cardName(info: DistrictInfo): string {
   return info.rajasthan ? info.name : info.name.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+/**
+ * P5 (owner, 25 Nov 2026): the city tag the composer WRITES for a district, without the "#": the desk's own tag for a
+ * merged district ("Khairthal", "Didwana", "Kotputli-Behror"), else its tag ("KhairthalTijara" stays the key for the
+ * handle lookup and every data file). Only line 1's, the tag line's and the offered city tags use it.
+ */
+export function cityTagOf(info: DistrictInfo): string {
+  return info.deskTag ?? info.tag;
+}
+
+/** P5: the town is one the district's desk tag already names (खैरथल for #Khairthal), so it takes no tag of its own */
+function deskTagNamesTown(info: DistrictInfo | null | undefined, town: string | null | undefined): boolean {
+  if (!info?.deskTag || !town) return false;
+  const key = placeMatchKey(town);
+  return (info.deskTagTowns ?? []).some((t) => placeMatchKey(t) === key);
 }
 
 /** Every spelling of a district or national place: the places file's, and rajasthan.ts's other names ("Didwana", "बांसवाडा") */
@@ -731,10 +747,10 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   }
   const offered: TagSuggestion[] = [];
   // A video post's desk rule: offered first, never a leading tag
-  if (policy?.layer === "suggest") offered.push({ tag: `#${policy.district.tag}`, source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}; a video post takes no leading tag` });
+  if (policy?.layer === "suggest") offered.push({ tag: `#${cityTagOf(policy.district)}`, source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}; a video post takes no leading tag` });
   // An inferred district (§2.8) is offered first among the suggestions and goes nowhere else
   if (district?.provenance === "inferred" && !(policy && policy.district.name === district.value.name)) {
-    offered.push({ tag: `#${district.value.tag}`, source: districtSource(district.from, true), reason: `${district.value.name}, inferred from the ${district.from === "reporter" ? "reporter's district" : district.from}: not stated in the copy` });
+    offered.push({ tag: `#${cityTagOf(district.value)}`, source: districtSource(district.from, true), reason: `${district.value.name}, inferred from the ${district.from === "reporter" ? "reporter's district" : district.from}: not stated in the copy` });
   }
   for (const t of pickCategoryTags({ headline: story.headline, points: story.points, rajasthan }, topics, [footer])) {
     offered.push({ tag: t, source: PROPOSAL_SOURCES.topic, reason: "the org's topic rule matched the copy" });
@@ -742,7 +758,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // District tags in the headline that were not taken as stated (two different districts: a conflict) are offered
   if (!place) {
     for (const d of headlineTags) {
-      offered.push({ tag: `#${d.tag}`, source: PROPOSAL_SOURCES.headlineConflict, reason: `the headline tags ${d.name} beside another district` });
+      offered.push({ tag: `#${cityTagOf(d)}`, source: PROPOSAL_SOURCES.headlineConflict, reason: `the headline tags ${d.name} beside another district` });
     }
   }
   if (at) {
@@ -752,12 +768,13 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   }
   const mentions = handles.map((h) => `@${h.handle}`);
 
-  const townTag = story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : "";
+  // P5: with a merged district's desk tag, the town that tag names takes no town tag ("#Khairthal:", not "#Khairthal #खैरथल:")
+  const townTag = story.town && story.town !== place?.hi && !deskTagNamesTown(place, story.town) ? townHashtag(book.townTag(story.town) ?? story.town) : "";
   const lineOne = place ?? (policy?.layer === "emit" ? policy.district : null);
   // A tag the headline already carries without a colon ("#Jaipur जयपुर में…", "…#JaipurNews") is not added again
   // in front of it (desk fixes 14 Nov, point 6)
   const headlineTagKeys = copyTagKeys(book, [headline]);
-  let tags = [lineOne ? `#${lineOne.tag}` : "", townTag].filter((t) => t && !tagKeys(book, t).some((k) => headlineTagKeys.has(k)));
+  let tags = [lineOne ? `#${cityTagOf(lineOne)}` : "", townTag].filter((t) => t && !tagKeys(book, t).some((k) => headlineTagKeys.has(k)));
 
   // ── The city (b9, owner rules and decisions of 23 Nov 2026) ──
   // Rule 1: every post carries at least one city hashtag, in this order (the first that applies wins):
@@ -813,7 +830,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
             : null;
     if (pick) {
       [cityInfo, source] = pick;
-      const tag = `#${cityInfo.tag}`;
+      const tag = `#${cityTagOf(cityInfo)}`;
       // A video post takes no leading tag. The reporter's desk rule and the file code lead line 1, as the desk wrote them
       // (Navin's JPR files went out "#Jaipur: ..."); a district from the text and a stored one of unknown
       // provenance go in the tag line
@@ -833,7 +850,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
         .filter((d): d is DistrictInfo => !!d)
         .filter((d, i, all) => all.findIndex((x) => x.name === d.name) === i)
         .slice(0, 3);
-      for (const d of likely) cityOffers.push({ tag: `#${d.tag}`, source: "district.city.candidate", reason: `a story naming no place: ${d.name} is one of the likeliest (one click)` });
+      for (const d of likely) cityOffers.push({ tag: `#${cityTagOf(d)}`, source: "district.city.candidate", reason: `a story naming no place: ${d.name} is one of the likeliest (one click)` });
     }
   }
   // Rule 3: line 1 never names its city twice (the desk, Sep–Nov exports: a town tag in place of the word 62 times to 6
@@ -867,7 +884,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     placement,
     // D1: the card always leads with the post's city: its town in Hindi when line 1 or the tag line carries one, else the
     // district's (or national place's) English name. The desk's own place (copy) is read by the card itself.
-    card: placement === "copy" || placement === "none" ? null : townWritten ? townTag.slice(1) : cityInfo ? cardName(cityInfo) : null,
+    card: placement === "copy" || placement === "none" ? null : townWritten ? townTag.slice(1) : cityInfo ? (cityInfo.deskTag ?? cardName(cityInfo)) : null,
   };
 
   // ── added after every rule above has finished, as suggestions only: nothing above moves (brief §3.5, L7) ──
@@ -941,13 +958,13 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   const cityTags = new Set(headingPlace.tags.map((t) => t.toLowerCase()));
   const placed = (tag: string) => cityTags.has(tag.toLowerCase());
   const where = placement === "trailing" ? "in the tag line" : placement === "inline" ? "in place of the headline's first word" : "in line 1";
-  if (place && district && placed(`#${place.tag}`)) proposals.push({ item: `#${place.tag}`, kind: "hashtag", layer: "emit", source: districtSource(district.from, false), reason: `${place.name}, stated (${district.from}), ${where}` });
-  if (source === "reporter_rule" && policy && placed(`#${policy.district.tag}`)) proposals.push({ item: `#${policy.district.tag}`, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}, ${where}` });
+  if (place && district && placed(`#${cityTagOf(place)}`)) proposals.push({ item: `#${cityTagOf(place)}`, kind: "hashtag", layer: "emit", source: districtSource(district.from, false), reason: `${place.name}, stated (${district.from}), ${where}` });
+  if (source === "reporter_rule" && policy && placed(`#${cityTagOf(policy.district)}`)) proposals.push({ item: `#${cityTagOf(policy.district)}`, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.reporterPolicy, reason: `${policyReason}, ${where}` });
   if (townTag && placed(townTag)) proposals.push({ item: townTag, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.town, reason: `the town on the place line (${story.town}), ${where}` });
-  if (legacy && cityInfo && placed(`#${cityInfo.tag}`)) proposals.push({ item: `#${cityInfo.tag}`, kind: "hashtag", layer: "emit", source: "district.city.legacy", reason: `${cityInfo.name}, the story's stored district (provenance unknown), ${where}` });
+  if (legacy && cityInfo && placed(`#${cityTagOf(cityInfo)}`)) proposals.push({ item: `#${cityTagOf(cityInfo)}`, kind: "hashtag", layer: "emit", source: "district.city.legacy", reason: `${cityInfo.name}, the story's stored district (provenance unknown), ${where}` });
   if ((source === "file_code" || source === "inferred" || source === "fallback") && cityInfo) {
     const why = source === "file_code" ? `the file name's district code (${cityInfo.name}): a tag only, no handle` : source === "inferred" ? `${cityInfo.name}, the district the copy names` : `no place in the copy: the head office (${cityInfo.name})`;
-    proposals.push({ item: `#${cityInfo.tag}`, kind: "hashtag", layer: "emit", source: `district.city.${source}`, reason: `every post carries a city: ${why}, ${where}` });
+    proposals.push({ item: `#${cityTagOf(cityInfo)}`, kind: "hashtag", layer: "emit", source: `district.city.${source}`, reason: `every post carries a city: ${why}, ${where}` });
   }
   proposals.push({ item: footer, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.brand, reason: rajasthan ? "a Rajasthan story" : "a story from outside Rajasthan" });
   for (const t of hashtags.slice(1)) if (!placed(t)) proposals.push({ item: t, kind: "hashtag", layer: "emit", source: PROPOSAL_SOURCES.campaign, reason: `an election story (#${election})` });

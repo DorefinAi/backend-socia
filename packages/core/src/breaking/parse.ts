@@ -325,6 +325,23 @@ export function leadDistrict(book: PlaceBook, headline: string): DistrictInfo | 
   return null;
 }
 
+/**
+ * P11 (owner, 25 Nov 2026): a statewide list story, a ranking or a roundup ("सीकर ने 90 अंकों के साथ…, झुंझुनूं 86…,
+ * कोटपूतली-बहरोड़ तीसरे…"): the lines given (the first two points) name three or more Rajasthan districts (routes and buildings
+ * aside). No district is inferred from those lines; a district the headline itself names still is.
+ */
+export const LIST_STORY_DISTRICTS = 3;
+export function isListStory(book: PlaceBook, lines: readonly string[]): boolean {
+  const named = new Set<string>();
+  for (const line of lines) {
+    for (const m of book.find(withoutRoutesAndBuildings(line))) {
+      const d = m.entry.data;
+      if (d.kind === "district" && d.districts[0]?.rajasthan) named.add(d.districts[0].name);
+    }
+  }
+  return named.size >= LIST_STORY_DISTRICTS;
+}
+
 /** A district tag in the headline is explicit only when it is the one district tagged: two are a conflict, offered */
 function taggedDistrict(book: PlaceBook, headline: string): DistrictInfo | null {
   const tags = headlineDistrictTags(book, headline);
@@ -677,9 +694,10 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
       national = !!district && !district.rajasthan;
     }
   }
-  // Everything below is INFERRED (b6 fix brief P0): stored for the queue and its filters, only ever offered
+  // Everything below is INFERRED (b6 fix brief P0): stored for the queue and its filters, only ever offered. Points that list
+  // three or more districts (P11: a ranking) give none: "सीकर ने 90 अंकों के साथ…" is one entry of the list
   if (!district) {
-    const inText = placeInText(book, headline, hint) ?? placeInText(book, points.slice(0, 2).join(" । "), hint);
+    const inText = placeInText(book, headline, hint) ?? (isListStory(book, points.slice(0, 2)) ? null : placeInText(book, points.slice(0, 2).join(" । "), hint));
     if (inText && !inText.national) {
       district = inText.district;
       from = "text";

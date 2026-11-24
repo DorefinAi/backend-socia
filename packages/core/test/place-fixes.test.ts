@@ -203,3 +203,28 @@ describe("P9: file codes; the copy's opening district beats any reporter's code"
     expect(police(d).length).toBeGreaterThan(0);
   });
 });
+
+describe("P11: a statewide list story infers no district", () => {
+  const ranking = ["अक्टूबर की स्कूल शिक्षा Ranking में जिलों के प्रदर्शन में बड़ा उतार-चढ़ाव !", "सीकर ने 90 अंकों के साथ प्रदेश में पहला स्थान हासिल किया", "झुंझुनूं 86 अंकों के साथ दूसरे और कोटपूतली-बहरोड़ तीसरे स्थान पर"];
+
+  it("the school ranking (Sikar first of three): no #Sikar, no city tag, flagged no_city, #Jaipur offered first", () => {
+    const d = worker("btn_rj_breaking_6034_24nov_us_control_Dimple_karari_big.txt", ranking);
+    expect(tagsOf(d)).not.toContain("Sikar");
+    expect(d.headingPlace).toMatchObject({ placement: "none", district: null });
+    expect(d.cityFlag).toBe("no_city");
+    expect(d.hashtagSuggestions[0]).toBe("#Jaipur");
+    expect(d.hashtagSuggestions).not.toContain("#Sikar");
+    expect(d.warnings.join(" ")).toMatch(/statewide list/);
+    expect(parseBreaking(`x\r\n${ranking.join("\r\n")}\r\n`, "btn_rj_breaking_6034_24nov_us_control_Dimple_karari_big.txt", book).district).toBeNull();
+  });
+
+  it("two districts named are no list: the text's district is still the post's city", () => {
+    const d = worker(fileFor("KARARI"), ["सीकर में तेज बारिश", "झुंझुनूं में भी गिरे ओले"]);
+    expect(tagsOf(d)).toContain("Sikar");
+  });
+
+  it("a stated district stands on a list story (the place line)", () => {
+    const d = worker(fileFor(null), ["कोटा से खबर", "कोटा, बूंदी और बारां में पंचायत चुनाव की मतगणना", "तीनों जिलों में भाजपा आगे"]);
+    expect(d.headingPlace.district).toBe("Kota");
+  });
+});

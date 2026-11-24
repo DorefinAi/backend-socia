@@ -65,6 +65,20 @@ export interface DistrictHandleEntry {
    * reporter's suggestion) but NEVER picked: the preferred entry is the only one Socia chooses.
    */
   alternate?: boolean;
+  /**
+   * P4 (owner, 25 Nov 2026), police entries of a district with two forces only: the towns (Hindi, any places-file
+   * spelling) whose police stations this force holds, and the words that name it ("कोटा ग्रामीण", "पुलिस कमिश्नरेट").
+   * Only towns the data can vouch for are listed; a town in neither list leaves the choice to the desk (both offered).
+   */
+  towns?: string[];
+  words?: string[];
+}
+
+/** One police force of a district with several, as the force choice reads it (folded) */
+export interface PoliceForce {
+  handle: string;
+  towns: string[];
+  words: string[];
 }
 
 /** district-handles.json */
@@ -79,7 +93,7 @@ export interface HandlesData {
 export interface HandleRules {
   state: { government: string[]; cm: string[]; police: string[] };
   /** Keyed by districtKey() of the district */
-  districts: Record<string, { police: string[]; collector: string[] }>;
+  districts: Record<string, { police: string[]; collector: string[]; forces?: PoliceForce[] }>;
   /**
    * Every handle in the file, verified or not, lowercase without the @: the desk-added handles rule never
    * tags these or their lookalikes (desk-handles.ts)
@@ -120,6 +134,11 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
       if (!ROLES.has(String(e!.role))) fail(`${where}[${i}]: role must be police, collector, govt or cm`);
       if (typeof e!.verified !== "boolean") fail(`${where}[${i}]: "verified" must be true or false`);
       if (e!.alternate !== undefined && typeof e!.alternate !== "boolean") fail(`${where}[${i}]: "alternate" must be true or false`);
+      for (const k of ["towns", "words"] as const) {
+        const v = e![k];
+        if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !fold(x)))) fail(`${where}[${i}]: "${k}" must be a list of names`);
+        if (v !== undefined && e!.role !== "police") fail(`${where}[${i}]: only a police entry has "${k}"`);
+      }
       return e as DistrictHandleEntry;
     });
   };
@@ -158,13 +177,18 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
     if (!key) fail(`districts.${name}: a district must be keyed by its English name`);
     // "Sawai Madhopur" and "SawaiMadhopur" are one district: merge, never let the later spelling
     // silently replace the earlier one's verified handles
-    const d = rules.districts[key] ?? { police: [] as string[], collector: [] as string[] };
+    const d: HandleRules["districts"][string] = rules.districts[key] ?? { police: [] as string[], collector: [] as string[] };
     for (const [i, e] of entries(list, `districts.${name}`).entries()) {
       all.add(bare(e).toLowerCase());
       if (e.role === "police" || e.role === "collector") bound.add(bare(e).toLowerCase());
       if (!typed(e, `districts.${name}[${i}]`)) continue;
-      if (e.verified && !e.alternate && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) d[e.role].push(bare(e));
+      if (e.verified && !e.alternate && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) {
+        d[e.role].push(bare(e));
+        if (e.role === "police") (d.forces ??= []).push({ handle: bare(e), towns: (e.towns ?? []).map(fold), words: (e.words ?? []).map(fold) });
+      }
     }
+    // A force list matters only where a district has two forces and the file says which is which
+    if (d.forces && (d.forces.length < 2 || d.forces.every((f) => !f.towns.length && !f.words.length))) delete d.forces;
     rules.districts[key] = d;
   }
   return rules;
@@ -394,6 +418,67 @@ function policeHqActs(text: string): boolean {
   return false;
 }
 
+/** Whether folded text holds a folded name as whole words */
+const namesPhrase = (foldedText: string, name: string): boolean => !!name && ` ${foldedText} `.includes(` ${name} `);
+
+/** P4: which of a district's forces a story belongs to, or none (then every force is offered) */
+export interface ForceChoice {
+  handle: string | null;
+  offer: string[];
+  why: string;
+}
+
+/**
+ * P4 (owner, 25 Nov 2026): the force of a district with two (Jaipur and Jodhpur commissionerate / rural, Kota city /
+ * rural, Khairthal / Bhiwadi). First the words that name a force anywhere in the copy ("कोटा ग्रामीण की मंडाना थाना
+ * पुलिस", "पुलिस कमिश्नरेट"), then the place-line town or a town the headline or first point names, against each
+ * force's own list. Words or towns of two forces, or a town in neither list: unclear, so both are offered and neither
+ * tagged. No town at all: the first force (the HQ city), as before. On 23-24 Nov the desk removed @jaipur_police 12
+ * times, 8 of them on Jaipur-rural towns.
+ */
+export function choosePoliceForce(forces: readonly PoliceForce[], copy: { headline: string; points: readonly string[]; town?: string | null }): ForceChoice {
+  const all = forces.map((f) => f.handle);
+  const text = fold([copy.headline, ...copy.points].join(" "));
+  const named = forces.filter((f) => f.words.some((w) => namesPhrase(text, w)));
+  if (named.length === 1) return { handle: named[0]!.handle, offer: [], why: "the copy names this force" };
+  if (named.length > 1) return { handle: null, offer: all, why: "the copy names more than one force" };
+  const head = fold([copy.headline, copy.points[0] ?? ""].join(" "));
+  const town = copy.town ? fold(copy.town) : "";
+  const inArea = (f: PoliceForce) => f.towns.find((t) => t === town || namesPhrase(head, t));
+  const placed = forces.filter((f) => inArea(f) !== undefined);
+  if (placed.length === 1) return { handle: placed[0]!.handle, offer: [], why: `${inArea(placed[0]!)!.normalize("NFC")} is in this force's area` };
+  if (placed.length > 1) return { handle: null, offer: all, why: "the copy names towns of more than one force" };
+  if (town) return { handle: null, offer: all, why: `which force holds ${copy.town} is not in the data` };
+  return { handle: forces[0]!.handle, offer: [], why: "no town named: the district HQ's force" };
+}
+
+/** "पुलिस कमिश्नरेट", "पुलिस कमिश्नर", "SP", "थाना पुलिस": the headline names a district police force itself */
+const FORCE_NAMES: [string, ...string[]][] = [
+  ["पुलिस", "कमिश्नरेट"], ["कमिश्नरेट"], ["पुलिस", "कमिश्नर"], ["पुलिस", "आयुक्त"], ["पुलिस", "आयुक्तालय"], ["पुलिस", "अधीक्षक"],
+  ["एसपी"], ["sp"], ["थाना", "पुलिस"], ["जिला", "पुलिस"],
+].map((w) => w.map(fold) as [string, ...string[]]);
+
+/**
+ * P4: a story ABOUT the district's police: its headline names the force (a commissionerate, its commissioner, the SP,
+ * a thana's police), not another force ("ACB एसपी"), another district's ("बूंदी SP") or a former officer. Such a story
+ * tags the force whatever its class ("जोधपुर पुलिस कमिश्नरेट में कांस्टेबल प्रमोशन…" → @CP_Jodhpur, added by the desk on X).
+ */
+function namesOwnForce(headline: string, elsewhere: (word: string) => boolean): boolean {
+  for (const clause of headline.normalize("NFC").split(CLAUSE)) {
+    const t = fold(clause).split(" ").filter(Boolean);
+    for (let i = 0; i < t.length; i++) {
+      if (!FORCE_NAMES.some((w) => w.every((x, j) => t[i + j] === x))) continue;
+      let k = i - 1;
+      if (POSSESSIVE.has(t[k] ?? "")) k -= 1;
+      if (DISTRICT_WORD.has(t[k] ?? "")) k -= 1;
+      if ((t[k] !== undefined && elsewhere(t[k]!)) || (k >= 1 && elsewhere(`${t[k - 1]} ${t[k]}`))) continue;
+      if (FORMER.has(t[i - 1] ?? "") || OTHER_FORCE.has(t[i - 1] ?? "")) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Police and department subjects are tagged only when acting, as the district police are; people and the rest when named */
 const ONLY_ACTING: ReadonlySet<string> = new Set(["police", "department"]);
 /** A police or administrative venue: where a protest or a delegation goes (§3.2) */
@@ -427,6 +512,8 @@ export interface HandlePickInput {
   unknownBureauCode?: string | null;
   /** Whether a word names a district other than the story's (from the places file); none: never */
   elsewhere?: (word: string) => boolean;
+  /** The Hindi town of the place line, when there is one: picks the police force of a district with two (P4) */
+  town?: string | null;
 }
 
 /** Why a handle is on the draft or offered: shown as the suggestion's entity */
@@ -606,20 +693,33 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     const h = handles?.[0];
     if (h) picks.push({ handle: h, reason, inHeadline, ...(title && { title }) });
   };
+  const suggested: HandlePick[] = [];
   /**
-   * The district's own force. Four districts have two verified ones — a city commissionerate and a rural
-   * SP (Jaipur, Jodhpur, Kota, Khairthal-Tijara) — and which one a story belongs to is decided by the
-   * police-station town, a list the desk has not confirmed yet. The first is used and the draft says so,
-   * because otherwise nothing would tell the desk a rural story went out tagging the city force.
+   * The district's force (P4). Four districts have two verified ones (Jaipur, Jodhpur, Kota, Khairthal-Tijara); the
+   * file's towns and words decide which (choosePoliceForce). When they cannot, both are offered and neither tagged, and
+   * the draft says so. A district with two forces and no lists keeps the first, with a warning.
    */
-  const addDistrictPolice = (inHeadline: boolean) => {
-    if (!local?.police.length) return;
-    add(local.police, "police", inHeadline);
+  const policeChoice = (): ForceChoice | null => {
+    if (!local?.police.length) return null;
+    if (local.forces) return choosePoliceForce(local.forces, { headline: head, points: story.points, town: story.town });
     if (local.police.length > 1) {
       warnings.push(`${district} has ${local.police.length} police handles (@${local.police.join(", @")}); @${local.police[0]} was used — check the town`);
     }
+    return { handle: local.police[0]!, offer: [], why: "" };
   };
-  const suggested: HandlePick[] = [];
+  const addDistrictPolice = (inHeadline: boolean) => {
+    if (picks.some((p) => p.reason === "police")) return;
+    const c = policeChoice();
+    if (!c) return;
+    if (c.handle) {
+      picks.push({ handle: c.handle, reason: "police", inHeadline, ...(local?.forces && { detail: `district.police: ${c.why}` }) });
+      return;
+    }
+    for (const h of c.offer) suggested.push({ handle: h, reason: "police", detail: `${district} has two police forces: ${c.why}` });
+    warnings.push(`${district} has two police forces and ${c.why}; both are offered, neither tagged`);
+  };
+  // P4: the headline names the district's force itself (a commissionerate, the SP, a thana's police)
+  const forceNamed = story.rajasthan && namesOwnForce(head, story.elsewhere ?? (() => false));
   /** A subject to the post, or to the suggestions when its entry is suggest_only (seasonal: @CeoRajasthan) */
   const addSubject = (m: GazetteerMatch<SubjectData>, inHeadline: boolean) => {
     const d = m.entry.data;
@@ -750,7 +850,11 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     for (const m of mine) out.push(byline(m));
     return done(out);
   };
-  if (cls === "soft") return withBylines(dedupe(deskPicks));
+  if (cls === "soft") {
+    // P4: a soft story about the force itself ("पुलिस कमिश्नरेट में दीपोत्सव") still tags that force
+    if (forceNamed) addDistrictPolice(true);
+    return withBylines(dedupe([...picks.map(({ inHeadline: _drop, ...p }) => p), ...deskPicks]));
+  }
 
   if (cls === "incident") {
     // ── incident: the district police, alone ────────────────────────────────
@@ -809,9 +913,11 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     // collectorate) is different: of 41 such posts the desk tagged the party on 40 and ALSO the police on 27
     // (§3.2). Additive, and a suggestion — the desk is itself inconsistent here — never a reclassification.
     if (story.rajasthan && VENUE.test(all)) {
-      const police = local?.police[0];
-      if (police) suggested.push({ handle: police, reason: "police" });
+      const c = policeChoice();
+      for (const police of c ? (c.handle ? [c.handle] : c.offer) : []) suggested.push({ handle: police, reason: "police" });
     }
+    // P4: a story about the force itself that names no party ("जोधपुर पुलिस कमिश्नरेट में कांस्टेबल प्रमोशन…") tags it
+    if (forceNamed && !namesAnyParty(all, parties)) addDistrictPolice(true);
   } else if (cls === "government" || cls === "other") {
     // ── government and other: whatever the copy names, else nobody ──────────
     //
@@ -826,7 +932,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     const headActs = agentsActing(head, story.elsewhere).ours;
     const bodyActs = agentsActing(body, story.elsewhere).ours;
     // The police acting on a non-incident story: "पुलिस ने निकाली तिरंगा यात्रा"
-    if (headActs.has("police") || bodyActs.has("police")) addDistrictPolice(headActs.has("police"));
+    if (headActs.has("police") || bodyActs.has("police") || forceNamed) addDistrictPolice(headActs.has("police") || forceNamed);
     if (headActs.has("collector") || bodyActs.has("collector")) add(local?.collector, "collector", headActs.has("collector"));
     // Police headquarters is a state institution: "DGP ने ली अधिकारियों की बैठक" tagged @PoliceRajasthan
     if (policeHqActs(head)) add(rules.state.police, "state_police", true);

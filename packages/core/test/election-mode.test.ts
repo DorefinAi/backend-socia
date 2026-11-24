@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   BRAND_RAJASTHAN, DataFileRejected, PlaceBook, composeBreaking, electionOf, namedParties, parseBreaking, parseHandleRules, parsePartyHandles,
-  parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules, pickReporters, slotFromTags, type BreakingDraft,
+  parsePlacesData, parseReporterHandles, parseSubjectHandles, parseSuggestRules, pickReporters, slotFromTags, suggestTags, type BreakingDraft,
 } from "../src";
 
 const cfg = (f: string) => JSON.parse(readFileSync(new URL(`../../../apps/worker/config/${f}`, import.meta.url), "utf8"));
@@ -85,6 +85,38 @@ describe("an election story on counting day", () => {
     const d = draft("BTN_RJ_BREAKING_20NOV_2714_AM_CONTROL_LAXMAN_BKN_BIG_.txt", BIKANER, AFTER);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Bikaner"]);
     expect(handles(d)).not.toContain("incrajasthan");
+  });
+});
+
+// P1 rework (owner, 25 Nov 2026): per keyword, measured on 15-24 Nov (X caption where matched, else the desk's post), only
+// "मतदान केंद्र" lost (kept 25, removed 25): it is offered, not emitted. The emit window ends with the last poll (उप प्रधान,
+// 28 Nov). Collector and parties follow the emitted tag as before.
+describe("P1 rework: the losing keyword offered, the 28 Nov window", () => {
+  it("'मतदान केंद्र' alone offers the tag and no longer emits it or the election handles", () => {
+    const text = "मतदान केंद्र पर सुरक्षा के पुख्ता इंतजाम";
+    expect(electionOf(text, suggestRules, COUNTING_DAY)).toBeNull();
+    expect(suggestTags(text, suggestRules, COUNTING_DAY)).toContain("RajasthanPanchayatElection2026");
+    // Another trigger in the same copy still makes it an election story
+    expect(electionOf(`${text}\nमतगणना कल`, suggestRules, COUNTING_DAY)).toBe("RajasthanPanchayatElection2026");
+  });
+  it("a party's result word keeps matching inside a longer word ('जीतती'): a word edge measured as a loss", () => {
+    expect(electionOf("भाजपा की जीत पक्की", suggestRules, COUNTING_DAY)).toBe("RajasthanPanchayatElection2026");
+    expect(electionOf("जहां कांग्रेस जीतती है वहां", suggestRules, COUNTING_DAY)).toBe("RajasthanPanchayatElection2026");
+  });
+  it("emits through 28 Nov, the last poll, and not after", () => {
+    expect(electionOf("कांग्रेस 24 पर आगे", suggestRules, new Date("2026-11-28T09:30:00Z"))).toBe("RajasthanPanchayatElection2026");
+    expect(electionOf("कांग्रेस 24 पर आगे", suggestRules, new Date("2026-11-29T09:30:00Z"))).toBeNull();
+  });
+  it("Ajmer 24 Nov keeps the 20 Nov shape: tag, collector, both parties and their hashtags (the 280 cap trims when short)", () => {
+    const d = draft("BTN_RJ_BREAKING_1032_24NOV_MS_CONTROL_Shubham_big.txt", [
+      "अजमेर जिला प्रमुख चुनाव भाजपा का कब्जा तय, चेहरे पर सस्पेंस बरकरार",
+      "जिला परिषद में भाजपा के 19 सदस्य जीते, 9 महिला सदस्य शामिल",
+      "कांग्रेस में भी सस्पेंस बरकरार, कमलेश गुर्जर के नाम की चर्चा",
+    ], new Date("2026-11-24T12:15:41Z"));
+    expect(d.hashtags).toEqual(expect.arrayContaining(["#RajasthanPanchayatElection2026", "#BJP", "#Congress"]));
+    // On the post, or moved to the suggestions for length (P2): the election shape chose all three
+    const chosen = d.proposals.filter((p) => p.layer === "emit" || p.reason === "length").map((p) => p.item.toLowerCase());
+    expect(chosen).toEqual(expect.arrayContaining(["@dmajmer", "@bjp4rajasthan", "@incrajasthan"]));
   });
 });
 

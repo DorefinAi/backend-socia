@@ -178,11 +178,18 @@ describe("what each class tags", () => {
   });
 
   it("says which force it used where a district has two of them", () => {
-    // Jaipur, Jodhpur, Kota and Khairthal-Tijara each have a city and a rural force, and which one a
-    // story belongs to needs a town list the desk has not confirmed. The draft carries the ambiguity.
+    // Jaipur, Jodhpur, Kota and Khairthal-Tijara each have two forces; the file's towns and words decide (P4, 25 Nov
+    // 2026). No town named: the HQ force, and the handle says why
     const jaipur = pickHandlesExplained(story("जयपुर में युवक की हत्या"), rules, { subjects, parties });
     expect(jaipur.handles.map((h) => h.handle)).toEqual(["jaipur_police"]);
-    expect(jaipur.warnings.join(" ")).toMatch(/Jaipur has 2 police handles/);
+    expect(jaipur.handles[0]!.detail).toMatch(/no town named/);
+    expect(pickHandlesExplained(story("चौमूं में युवक की हत्या"), rules, { subjects, parties }).handles.map((h) => h.handle)).toEqual(["JprRuralPolice"]);
+    // Two forces and no lists in the file: the first, with a warning
+    const bare = parseHandleRules({ version: 2, state: [], districts: { Jaipur: [
+      { handle: "@jaipur_police", handle_type: "district", role: "police", verified: true },
+      { handle: "@JprRuralPolice", handle_type: "district", role: "police", verified: true },
+    ] } });
+    expect(pickHandlesExplained(story("जयपुर में युवक की हत्या"), bare, { subjects, parties }).warnings.join(" ")).toMatch(/Jaipur has 2 police handles/);
     // A district with one force says nothing
     expect(pickHandlesExplained(story("युवक की हत्या", { district: "Sirohi" }), rules, { subjects, parties }).warnings).toEqual([]);
   });

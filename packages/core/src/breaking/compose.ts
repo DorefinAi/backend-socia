@@ -11,7 +11,7 @@
 
 import { fold } from "../fold";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
-import { assemblePostText, cutOnGraphemes, cutOnWords } from "../compose";
+import { X_LIMIT, assemblePostText, cutOnGraphemes, cutOnWords } from "../compose";
 import type { HashtagGazetteer } from "../hashtags";
 import { xLen } from "../xtext";
 import { pickCategoryTags } from "./categories";
@@ -21,6 +21,7 @@ import { EMPTY_PARTY_RULES, partyOfLeader, type PartyRules } from "./parties";
 import { EMPTY_REPORTER_RULES, pickReporter, reporterDistrict, reporterProfile, type ReporterMatch, type ReporterRules } from "./reporters";
 import { EMPTY_BEAT_RULES, reporterPrior, type BeatRules } from "./prior";
 import { officeSuggestions } from "./offices";
+import { stateCapitalStory } from "./capital";
 import { PARTY, deskPlacePrefix, headlineDistrictTags, inferHeadlineDistrict, isExplicitDistrict, parseBreaking, placeOfTag, withoutRoutesAndBuildings, type DistrictFrom } from "./parse";
 import { openingPlaceLength, placeWordInCompound } from "./place-match";
 import {
@@ -247,8 +248,13 @@ export interface BreakingComposeOptions {
    * HEADLINE_LABEL_WORDS; matched per word, without case or nukta.
    */
   headlineLabels?: readonly string[];
-  /** The longest whole post (default BREAKING_POST_MAX: the composer does not squeeze a post to 280) */
+  /** The longest whole post, a sanity limit (default BREAKING_POST_MAX) */
   limit?: number;
+  /**
+   * X's weighted limit the composed post must fit (default X_LIMIT, 280; P2, owner 25 Nov 2026): tag-line items move to the
+   * suggestions first (reason "length"), and only then is the text cut. The tighter of this and `limit` applies.
+   */
+  xLimit?: number;
   /** Line 2's longest length (default BREAKING_BODY_MAX) */
   bodyMax?: number;
 }
@@ -349,8 +355,9 @@ export const BREAKING_BODY_MAX = 130;
 /** A line 2 shorter than this is a stub ("आमजन....") and the post goes without it */
 export const BREAKING_BODY_FLOOR = 40;
 /**
- * The longest whole breaking post, a sanity limit (b8 decisions §0.2): the composer does not squeeze a post to 280,
- * since the desk posts by hand and the account posts long. Copy & Posted and corrections check against it too.
+ * The longest whole breaking post, a sanity limit (b8 decisions §0.2). Copy & Posted and corrections check against it.
+ * Since P2 (owner, 25 Nov 2026) the composed draft itself fits X's 280 (BreakingComposeOptions.xLimit): the account is
+ * capped at 280 and the desk was cutting handles by hand on X.
  */
 export const BREAKING_POST_MAX = 1000;
 
@@ -627,7 +634,7 @@ export function rankHandleSuggestions(list: readonly HandlePick[], types: Readon
 export function composeBreaking(story: BreakingComposeInput, rules: HandleRules, book: PlaceBook, opts: BreakingComposeOptions = {}): BreakingDraft {
   const {
     version = "0", topics = null, subjects = EMPTY_SUBJECT_RULES, desk = EMPTY_DESK_HANDLE_RULES,
-    reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = BREAKING_POST_MAX, bodyMax = BREAKING_BODY_MAX,
+    reporters = EMPTY_REPORTER_RULES, parties = EMPTY_PARTY_RULES, limit = BREAKING_POST_MAX, xLimit = X_LIMIT, bodyMax = BREAKING_BODY_MAX,
     normaliser = EMPTY_NORMALISER, suggestRules = EMPTY_SUGGEST_RULES, at, beats = EMPTY_BEAT_RULES, reporterPrior: reporterPriorOn = true,
     headlineLabels = HEADLINE_LABEL_WORDS,
   } = opts;
@@ -676,7 +683,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     // "panchayat election based, not reporter based"): the headline's or the text's district, never the reporter's own
     electionDistrict: election && district && district.from !== "reporter" ? district.value.name : null,
   });
-  const handles = picked.handles;
+  let handles = picked.handles;
   // The headline's district tags (two districts: a conflict when none was taken as stated)
   const headlineTags = place ? [] : headlineDistrictTags(book, story.rawHeadline ?? story.headline);
   const headline = story.headline.normalize("NFC").replace(/\s+/g, " ").trim();
@@ -750,7 +757,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
       offered.push({ tag: `#${t}`, source: PROPOSAL_SOURCES.campaign, reason: "a campaign or keyword tag in campaigns.json matched" });
     }
   }
-  const mentions = handles.map((h) => `@${h.handle}`);
+  let mentions = handles.map((h) => `@${h.handle}`);
 
   const townTag = story.town && story.town !== place?.hi ? townHashtag(book.townTag(story.town) ?? story.town) : "";
   const lineOne = place ?? (policy?.layer === "emit" ? policy.district : null);
@@ -917,23 +924,62 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   for (const t of [...tags, ...trailing]) for (const k of tagKeys(book, t)) onPost.add(k);
   // D4: a national story with no city offers its three likeliest first, one click each
   offered.unshift(...cityOffers);
+  // P7 (owner, 25 Nov 2026): a Rajasthan state-capital story (CM, CS, secretariat, the High Court, the assembly) that carries
+  // no city offers #Jaipur first, as the desk adds it by hand; never applied, never on copy naming another state or country
+  const capital = rajasthan && headingPlace.placement === "none" ? book.district(HEAD_OFFICE_DISTRICT) : null;
+  if (capital && stateCapitalStory(text, book)) {
+    offered.unshift({ tag: `#${capital.tag}`, source: "district.capital", reason: "a state-capital story (CM, CS, secretariat, High Court, assembly) naming no city: offered" });
+  }
+  const prefix = tags.length && !deskRun && inlineLine === null ? `${tags.join(" ")}: ` : "";
+  /** Lines 1–2 within `lim` for the tag line as it stands: the headline cut only when it alone overflows, line 2 the desk's length */
+  const layout = (lim: number) => {
+    // Room for lines 1–2: the limit less the footer and its blank line
+    const room = lim - xLen(assemblePostText("x", hashtags, mentions)) + 1;
+    let line1 = inlineLine ?? prefix + headline;
+    let cutHead = false;
+    if (xLen(line1) > room) {
+      cutHead = true;
+      const cut = inlineLine === null ? cutOnWords(headline, room - xLen(prefix) - xLen(BREAKING_CUT)) : "";
+      line1 = cut ? `${prefix}${cut}${BREAKING_CUT}` : (cutOnWords(line1, room - xLen(BREAKING_CUT)) + BREAKING_CUT);
+    }
+    // Line 2 the desk's length whatever the headline (100–130), shorter only when the post's limit leaves less room,
+    // and dropped under the floor (crispPoints)
+    const body = cutHead ? "" : crispPoints(story.points, breakingDots(plainHeadline(line1)), Math.min(bodyMax, room - xLen(line1) - 2));
+    return { line1, cutHead, bodyText: body ? `${line1}\n\n${body}` : line1 };
+  };
+  // ── P2 (owner, 25 Nov 2026): the post fits X's 280 ──
+  // 20 of 36 drafts were over on 23-24 Nov and the desk cut handles on X, the party pair first. Lines 1–2 are laid out at
+  // the desk's length; while the whole post is over, the weakest tag-line item goes back to the suggestions (reason
+  // "length"), handles only, as the desk does on X: the second party handle, the other party handles, the collector, the
+  // other handles (police, government, desk). Hashtags never move: measured on X (23-24 Nov) moving the election and
+  // party tags avoided 4 removals and lost 10 kept tags, so line 2 gives way instead. The city tags, the brand tag, the
+  // reporter byline and the subject and CM handles are never moved. Only when nothing movable is left is the text cut.
+  const cap = Math.min(limit, xLimit);
+  const lengthHandles: HandlePick[] = [];
+  const nextToMove = (): HandlePick | null => {
+    const last = <T,>(xs: readonly T[]) => xs.at(-1);
+    const parties = handles.filter((h) => h.reason === "party");
+    if (parties.length >= 2) return last(parties)!;
+    if (parties.length) return parties[0]!;
+    const dm = handles.find((h) => h.reason === "collector");
+    if (dm) return dm;
+    return last(handles.filter((h) => h.reason !== "reporter" && h.reason !== "subject" && h.reason !== "cm")) ?? null;
+  };
+  let laid = layout(limit);
+  while (xLen(assemblePostText(laid.bodyText, hashtags, mentions)) > cap) {
+    const move = nextToMove();
+    if (!move) break;
+    handles = handles.filter((h) => h !== move);
+    mentions = handles.map((h) => `@${h.handle}`);
+    lengthHandles.push({ ...move, detail: "length" } as HandlePick);
+    laid = layout(limit);
+  }
+  if (xLen(assemblePostText(laid.bodyText, hashtags, mentions)) > cap) laid = layout(cap);
+  const { cutHead: headlineCut, bodyText } = laid;
+  // What was moved for length is offered first, in the order it came off
+  handleSuggestions.unshift(...lengthHandles);
   const hashtagSuggestionItems = offered.filter((o, i) => offered.findIndex((x) => x.tag.toLowerCase() === o.tag.toLowerCase()) === i && !hashtags.some((t) => t.toLowerCase() === o.tag.toLowerCase()) && !tagKeys(book, o.tag).some((k) => onPost.has(k)));
   const hashtagSuggestions = hashtagSuggestionItems.map((o) => o.tag);
-  const prefix = tags.length && !deskRun && inlineLine === null ? `${tags.join(" ")}: ` : "";
-  // Room for lines 1–2: the limit less the footer and its blank line
-  const room = limit - xLen(assemblePostText("x", hashtags, mentions)) + 1;
-
-  let line1 = inlineLine ?? prefix + headline;
-  let headlineCut = false;
-  if (xLen(line1) > room) {
-    headlineCut = true;
-    const cut = inlineLine === null ? cutOnWords(headline, room - xLen(prefix) - xLen(BREAKING_CUT)) : "";
-    line1 = cut ? `${prefix}${cut}${BREAKING_CUT}` : (cutOnWords(line1, room - xLen(BREAKING_CUT)) + BREAKING_CUT);
-  }
-  // Line 2 the desk's length whatever the headline (100–130), shorter only when the post's limit leaves less room,
-  // and dropped under the floor (crispPoints)
-  const body = headlineCut ? "" : crispPoints(story.points, breakingDots(plainHeadline(line1)), Math.min(bodyMax, room - xLen(line1) - 2));
-  const bodyText = body ? `${line1}\n\n${body}` : line1;
   // The decision log's view of all of the above (brief §2.3): line 1's tags only when this composer put them there
   const proposals: Proposal[] = [];
   const stated = place && district ? districtSource(district.from, false) : null;

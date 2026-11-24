@@ -3,6 +3,7 @@
   "_handle_type_note": "Every entry carries \"handle_type\", one of \"institution\" (the owner's \"organisation\"), \"person\", \"district\" or \"police\" (reporter directory changes v2, R2; \"police\" added by owner decision P3, 15 Nov 2026): every district police and collector is \"district\"; in `state`, @RajGovOfficial and @RajCMO (the CM's office) are \"institution\", @PoliceRajasthan \"police\", @BhajanlalBjp \"person\". An entry without a valid one is rejected alone. The reporter prior offers institutions only: never police, collector, admin or district; a declared beat offers institutions and persons only (P6).",
   "generated": "2026-10-30",
   "district_list_note": "41 districts: 33 pre-2023 + 8 of the 2023 districts kept (Balotra, Beawar, Deeg, Didwana-Kuchaman, Khairthal-Tijara, Kotputli-Behror, Phalodi, Salumber) after the 28 Dec 2024 cabinet decision abolished Dudu, Kekri, Shahpura, Neem Ka Thana, Gangapur City, Jaipur Rural, Jodhpur Rural, Anupgarh, Sanchore.",
+  "_police_force_note": "P4 (owner, 25 Nov 2026): towns/words pick this force on a story of the district (core choosePoliceForce). Listed only where the force holds the town's police station with confidence; a town in neither list (हरमाड़ा, कालवाड़, बगरू, बस्सी, आंधी, चाकसू, बिंदायका, लाडपुरा, तिजारा, कोटकासिम…) leaves the choice to the desk: both offered, neither tagged. Desk evidence 23-24 Nov: @jaipur_police removed on चौमूं, कालाडेरा, जोबनेर, जमवारामगढ़ copy, @JprRuralPolice added; 'कोटा ग्रामीण की मंडाना थाना पुलिस' wants @spkotarural.",
   "state": [
     {
       "handle": "@RajGovOfficial",
@@ -261,7 +262,9 @@
         "role": "collector",
         "verified": true,
         "source": "https://jankalyanapi.rajasthan.gov.in//PublicPortal/DepartmentWebsite/GetDepartmentDetailByDptCode?dptCode=31&isOtherDept=false",
-        "note": "linked as the office's X account (https://twitter.com/DMChittorgarh) on official site https://chittorgarh.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Chittorgarh', bio: \"Official Handle of District Collector and District Magistrate, #Chittorgarh, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/DmChittorgarh]"
+        "note": "linked as the office's X account (https://twitter.com/DMChittorgarh) on official site https://chittorgarh.rajasthan.gov.in/ (portal API = source); profile name 'District Collector & Magistrate, Chittorgarh', bio: \"Official Handle of District Collector and District Magistrate, #Chittorgarh, #Rajasthan.\", no Government badge [https://api.fxtwitter.com/DmChittorgarh]",
+        "offer_on_local": true,
+        "offer_note": "P7 (owner, 25 Nov 2026): offered (never tagged by this flag) on Chittorgarh local stories without a reporter byline that are not crime: the desk added @DmChittorgarh by hand 17 times on X on 23-24 Nov (temple events, mandi, schools, power cuts). This is already the collector handle, so administration stories still tag it."
       }
     ],
     "Churu": [
@@ -397,7 +400,41 @@
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=2043381156339724649&token=4ybgypo67cpnxm2&lang=en",
-        "note": "Police Commissionerate Jaipur (city); X embed endpoint: author 'Jaipur Police' @jaipur_police, verified_type=Government (tweet https://x.com/jaipur_police/status/2043381156339724649); profile name 'Jaipur Police', bio: \"Official Handle of Jaipur Police \", X grey Government badge [https://api.fxtwitter.com/jaipur_police]"
+        "note": "Police Commissionerate Jaipur (city); X embed endpoint: author 'Jaipur Police' @jaipur_police, verified_type=Government (tweet https://x.com/jaipur_police/status/2043381156339724649); profile name 'Jaipur Police', bio: \"Official Handle of Jaipur Police \", X grey Government badge [https://api.fxtwitter.com/jaipur_police]",
+        "towns": [
+          "सांगानेर",
+          "आमेर",
+          "झोटवाड़ा",
+          "मानसरोवर",
+          "मालवीय नगर",
+          "वैशाली नगर",
+          "मुरलीपुरा",
+          "विद्याधर नगर",
+          "जगतपुरा",
+          "प्रताप नगर",
+          "सोडाला",
+          "शास्त्री नगर",
+          "जवाहर नगर",
+          "बजाज नगर",
+          "गांधी नगर",
+          "करधनी",
+          "ब्रह्मपुरी",
+          "रामगंज",
+          "गलता गेट",
+          "चित्रकूट"
+        ],
+        "words": [
+          "पुलिस कमिश्नरेट",
+          "कमिश्नरेट",
+          "पुलिस कमिश्नर",
+          "पुलिस आयुक्त",
+          "पुलिस आयुक्तालय",
+          "डीसीपी",
+          "DCP",
+          "एडीसीपी",
+          "ADCP",
+          "जयपुर कमिश्नरेट"
+        ]
       },
       {
         "handle": "@JprRuralPolice",
@@ -405,7 +442,34 @@
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JprRuralPolice",
-        "note": "Jaipur Rural (Gramin) police district, SP Jaipur Rural; still a police district although the Jaipur Rural revenue district was abolished Dec 2024; profile name 'Jaipur Rural Police', bio: \"Official Handle of (Jaipur Rural Police ) Our motto ~ सेवार्थ कटिबद्धता ( Committed to Serve) For Emergency #Dial 100/11\", X grey Government badge [https://api.fxtwitter.com/JprRuralPolice]"
+        "note": "Jaipur Rural (Gramin) police district, SP Jaipur Rural; still a police district although the Jaipur Rural revenue district was abolished Dec 2024; profile name 'Jaipur Rural Police', bio: \"Official Handle of (Jaipur Rural Police ) Our motto ~ सेवार्थ कटिबद्धता ( Committed to Serve) For Emergency #Dial 100/11\", X grey Government badge [https://api.fxtwitter.com/JprRuralPolice]",
+        "towns": [
+          "चौमूं",
+          "चौमू",
+          "सामोद",
+          "कालाडेरा",
+          "गोविंदगढ़",
+          "रेनवाल",
+          "किशनगढ़ रेनवाल",
+          "जोबनेर",
+          "फुलेरा",
+          "सांभर",
+          "साम्भर",
+          "सांभर लेक",
+          "साम्भर लेक",
+          "जमवारामगढ़",
+          "जमवा रामगढ़",
+          "मनोहरपुर",
+          "शाहपुरा",
+          "अमरसर"
+        ],
+        "words": [
+          "जयपुर ग्रामीण",
+          "जयपुर देहात",
+          "ग्रामीण पुलिस",
+          "ग्रामीण एसपी",
+          "ग्रामीण SP"
+        ]
       },
       {
         "handle": "@DcDmJaipur",
@@ -495,7 +559,36 @@
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=1935584688858390881&token=4owtgyfx5bakrx&lang=en",
-        "note": "Police Commissionerate Jodhpur (city); X embed endpoint: author 'Jodhpur Police' @CP_Jodhpur, verified_type=Government (tweet https://x.com/CP_Jodhpur/status/1935584688858390881); profile name 'Jodhpur Police', bio: \"Official handle of Police Commissionerate Jodhpur. Our motto सेवार्थ कटिबद्धता (Committed to Serve). Don't report crime \", X grey Government badge [https://api.fxtwitter.com/CP_Jodhpur]"
+        "note": "Police Commissionerate Jodhpur (city); X embed endpoint: author 'Jodhpur Police' @CP_Jodhpur, verified_type=Government (tweet https://x.com/CP_Jodhpur/status/1935584688858390881); profile name 'Jodhpur Police', bio: \"Official handle of Police Commissionerate Jodhpur. Our motto सेवार्थ कटिबद्धता (Committed to Serve). Don't report crime \", X grey Government badge [https://api.fxtwitter.com/CP_Jodhpur]",
+        "towns": [
+          "कुड़ी भगतासनी",
+          "मंडोर",
+          "मण्डोर",
+          "बनाड़",
+          "बासनी",
+          "सरदारपुरा",
+          "शास्त्री नगर",
+          "रातानाडा",
+          "पावटा",
+          "चौपासनी",
+          "प्रताप नगर",
+          "महामंदिर",
+          "उदयमंदिर",
+          "सूरसागर",
+          "देवनगर"
+        ],
+        "words": [
+          "पुलिस कमिश्नरेट",
+          "कमिश्नरेट",
+          "पुलिस कमिश्नर",
+          "पुलिस आयुक्त",
+          "पुलिस आयुक्तालय",
+          "डीसीपी",
+          "DCP",
+          "एडीसीपी",
+          "ADCP",
+          "जोधपुर कमिश्नरेट"
+        ]
       },
       {
         "handle": "@JdprRuralPolice",
@@ -503,7 +596,34 @@
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/JdprRuralPolice",
-        "note": "Jodhpur Rural police district (SP Jodhpur Rural); old @SPOJodhpurRural is dormant (10 posts); profile name 'Jodhpur Rural Police', bio: \"Official handle of JodhpurRural Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report cr\", X grey Government badge [https://api.fxtwitter.com/JdprRuralPolice]"
+        "note": "Jodhpur Rural police district (SP Jodhpur Rural); old @SPOJodhpurRural is dormant (10 posts); profile name 'Jodhpur Rural Police', bio: \"Official handle of JodhpurRural Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report cr\", X grey Government badge [https://api.fxtwitter.com/JdprRuralPolice]",
+        "towns": [
+          "पीपाड़",
+          "पीपाड़ शहर",
+          "पीपाड़ सिटी",
+          "शेरगढ़",
+          "बिलाड़ा",
+          "भोपालगढ़",
+          "ओसियां",
+          "ओसियाँ",
+          "तिंवरी",
+          "बालेसर",
+          "सेखाला",
+          "चामू",
+          "आसोप",
+          "बोरुंदा",
+          "बोरुन्दा",
+          "देचू",
+          "मथानिया",
+          "बावड़ी"
+        ],
+        "words": [
+          "जोधपुर ग्रामीण",
+          "जोधपुर देहात",
+          "ग्रामीण पुलिस",
+          "ग्रामीण एसपी",
+          "ग्रामीण SP"
+        ]
       },
       {
         "handle": "@JodhpurDm",
@@ -539,7 +659,17 @@
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/KhairthalPolice",
-        "note": "New district (2023): Khairthal-Tijara district police; profile name 'KHAIRTHAL POLICE', bio: \"Official Twitter account of Khairthal Police. plz do not report crime here . In case of emergency #Dial 100 . # सेवार्थ_\", X grey Government badge [https://api.fxtwitter.com/KhairthalPolice]"
+        "note": "New district (2023): Khairthal-Tijara district police; profile name 'KHAIRTHAL POLICE', bio: \"Official Twitter account of Khairthal Police. plz do not report crime here . In case of emergency #Dial 100 . # सेवार्थ_\", X grey Government badge [https://api.fxtwitter.com/KhairthalPolice]",
+        "towns": [
+          "खैरथल",
+          "किशनगढ़बास",
+          "किशनगढ़ बास",
+          "मुंडावर",
+          "मुण्डावर"
+        ],
+        "words": [
+          "खैरथल पुलिस"
+        ]
       },
       {
         "handle": "@Bhiwadipolice",
@@ -547,7 +677,16 @@
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/BhiwadiPolice",
-        "note": "Bhiwadi police district (SP Bhiwadi) covers the Bhiwadi/Tijara side of Khairthal-Tijara; profile name 'Bhiwadi Police', bio: \"Official account of Bhiwadi Police. For emergency call Control Room 01493-221100/294100/100/112/87648 74393 गोपनीय सूचना\", X grey Government badge [https://api.fxtwitter.com/BhiwadiPolice]"
+        "note": "Bhiwadi police district (SP Bhiwadi) covers the Bhiwadi/Tijara side of Khairthal-Tijara; profile name 'Bhiwadi Police', bio: \"Official account of Bhiwadi Police. For emergency call Control Room 01493-221100/294100/100/112/87648 74393 गोपनीय सूचना\", X grey Government badge [https://api.fxtwitter.com/BhiwadiPolice]",
+        "towns": [
+          "भिवाड़ी",
+          "टपूकड़ा",
+          "चौपानकी",
+          "खुशखेड़ा"
+        ],
+        "words": [
+          "भिवाड़ी पुलिस"
+        ]
       },
       {
         "handle": "@DistrictCo95708",
@@ -565,7 +704,32 @@
         "role": "police",
         "verified": true,
         "source": "https://cdn.syndication.twimg.com/tweet-result?id=2024405564386922698&token=4wnuvigx7vonnif&lang=en",
-        "note": "Kota City Police (SP Kota City); X embed endpoint: author 'Kota City Police' @KotaPolice, verified_type=Government (tweet https://x.com/KotaPolice/status/2024405564386922698); profile name 'Kota City Police', bio: \"Official handle of Kota City Police .\", X grey Government badge [https://api.fxtwitter.com/KotaPolice]"
+        "note": "Kota City Police (SP Kota City); X embed endpoint: author 'Kota City Police' @KotaPolice, verified_type=Government (tweet https://x.com/KotaPolice/status/2024405564386922698); profile name 'Kota City Police', bio: \"Official handle of Kota City Police .\", X grey Government badge [https://api.fxtwitter.com/KotaPolice]",
+        "towns": [
+          "कुन्हाड़ी",
+          "नयापुरा",
+          "गुमानपुरा",
+          "विज्ञान नगर",
+          "महावीर नगर",
+          "दादाबाड़ी",
+          "जवाहर नगर",
+          "तलवंडी",
+          "बोरखेड़ा",
+          "उद्योग नगर",
+          "भीमगंजमंडी",
+          "आरकेपुरम",
+          "किशोरपुरा",
+          "कैथूनीपोल",
+          "मकबरा",
+          "अनंतपुरा"
+        ],
+        "words": [
+          "कोटा शहर",
+          "कोटा सिटी",
+          "सिटी एसपी",
+          "शहर एसपी",
+          "सिटी SP"
+        ]
       },
       {
         "handle": "@spkotarural",
@@ -573,7 +737,33 @@
         "role": "police",
         "verified": true,
         "source": "https://api.fxtwitter.com/SPKotaRural",
-        "note": "Kota Rural Police (SP Kota Rural); profile name 'kota rural police', bio: \"Official handle of kota rural Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crim\", X grey Government badge [https://api.fxtwitter.com/SPKotaRural]"
+        "note": "Kota Rural Police (SP Kota Rural); profile name 'kota rural police', bio: \"Official handle of kota rural Police, #Rajasthan. Our motto ~ सेवार्थ कटिबद्धता (Committed to Serve). Do not report crim\", X grey Government badge [https://api.fxtwitter.com/SPKotaRural]",
+        "towns": [
+          "दीगोद",
+          "पीपल्दा",
+          "इटावा",
+          "रामगंजमंडी",
+          "रामगन्जमण्डी",
+          "सांगोद",
+          "कनवास",
+          "चेचट",
+          "कैथून",
+          "सुल्तानपुर",
+          "खातोली",
+          "मंडाना",
+          "मण्डाना",
+          "मोड़क",
+          "अयाना",
+          "बूढ़ादीत",
+          "सीमलिया"
+        ],
+        "words": [
+          "कोटा ग्रामीण",
+          "कोटा देहात",
+          "ग्रामीण पुलिस",
+          "ग्रामीण एसपी",
+          "ग्रामीण SP"
+        ]
       },
       {
         "handle": "@Dcdmkota",

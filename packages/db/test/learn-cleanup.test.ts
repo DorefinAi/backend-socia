@@ -70,7 +70,10 @@ const snapshot = (): CleanupSnapshot => ({
     h("forestraj", "forestRajasthan", []),
     h("khirthal", "Khirthalpolice", []),
     h("khairthal", "khairthalpolice", []),
-    h("jhalawar", "JhalawarUpdates", ["Jhalawar", "झालावाड़"]),
+    // An editor typed Kota on it in Settings: explicit config, kept although it is outside Jhalawar
+    h("jhalawar", "JhalawarUpdates", ["Jhalawar", "झालावाड़", "Kota"]),
+    // Mumbai and Tonk were learned, then an editor saved the row in Settings with them: the editor's now
+    h("kotadesk", "KotaNewsDesk", ["Kota", "कोटा", "Mumbai", "Tonk"]),
     h("rep", "@satyatv99", ["SATYA"], "reporter"),
     h("unverified", "OldDeskRow", ["Mumbai"], "desk", null),
   ],
@@ -89,6 +92,8 @@ const snapshot = (): CleanupSnapshot => ({
     learned("jpr", "@jpr_rural", [...JPR_ADDED_1, ...JPR_ADDED_2], JPR_ADDED_3, "2026-11-23T06:49:22.104Z"),
     learned("discom", "@JaipurDiscom1", DISCOM_BEFORE, DISCOM_ADDED, "2026-11-22T06:49:22.104Z"),
     learned("nitin", "@NitinNabin", [], NITIN_ADDED, "2026-11-22T06:49:22.104Z"),
+    learned("kotadesk", "@KotaNewsDesk", ["Kota", "कोटा"], ["Mumbai", "Tonk"], "2026-11-22T06:49:22.104Z"),
+    { org_id: ORG, action: "handle.update", entity_type: "handle", entity_id: "kotadesk", before: null, after: null, at: "2026-11-23T00:00:00Z" },
     ruleLearned("panchayat"), ruleLearned("balotra"), ruleLearned("bbhbh"), ruleLearned("jaisalmer"), ruleLearned("modi"), ruleLearned("edited"),
     { org_id: ORG, action: "hashtag_rule.update", entity_type: "hashtag_rule", entity_id: "edited", before: null, after: null, at: "2026-11-23T00:00:00Z" },
   ],
@@ -122,8 +127,13 @@ describe("learn-cleanup: the plan", () => {
     for (const id of ["hbh", "nwr", "forest", "khirthal"]) expect(of(plan.changes, "handle.keywords_restored", id)).toBeUndefined();
   });
 
+  it("keeps an editor's aliases: typed in Settings, or learned and then saved by an editor (handle.update)", () => {
+    expect(of(plan.changes, "handle.keywords_restored", "jhalawar")).toBeUndefined();
+    expect(of(plan.changes, "handle.keywords_restored", "kotadesk")).toBeUndefined();
+  });
+
   it("leaves clean, reporter and unverified rows alone", () => {
-    for (const id of ["jhalawar", "rep", "unverified", "forestraj", "nwrailways", "khairthal"]) expect(plan.changes.filter((c) => c.id === id && c.kind !== "handle.merged")).toEqual([]);
+    for (const id of ["jhalawar", "kotadesk", "rep", "unverified", "forestraj", "nwrailways", "khairthal"]) expect(plan.changes.filter((c) => c.id === id && c.kind !== "handle.merged")).toEqual([]);
   });
 
   it("takes the places out of #RajasthanPanchayatElection2026 and keeps it on with its own words", () => {

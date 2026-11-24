@@ -302,23 +302,34 @@ export interface DeskHandleEvidence {
   stories: LearnStory[];
   /** Its record as a desk suggestion */
   suggest: SuggestStats;
+  /** The stories of ALL the org's live posts carrying the handle (the count of before the fix: an editor's keywords) */
+  postedStories?: LearnStory[];
+  /**
+   * The keywords the learning added (audit handle.keywords_learned after the row's last editor handle.update); absent,
+   * every keyword counts as learned
+   */
+  learned?: string[];
 }
 
 /**
  * A desk row ready for deskHandleRules: its keywords' counts over the stories the desk typed it on, the keywords
  * found inside the handle string itself (added from the start), which of its keywords name a subject and no place
- * (the only learned ones that may be added on their own), and its suggestion record. `evidence` may be the stories alone.
+ * (the only learned ones that may be added on their own), its suggestion record, which keywords were learned (the
+ * rest are an editor's and work at once) and their counts over all its posts. `evidence` may be the stories alone.
  */
 export function withKeywordUses(row: DeskHandleRow, evidence: readonly LearnStory[] | DeskHandleEvidence, candidates: readonly KeywordCandidate[]): DeskHandleRow {
   const stories = "stories" in evidence ? evidence.stories : evidence;
   const places = new Set(candidates.filter((c) => c.kind === "district").flatMap((c) => [c.latin, ...c.keywords]).map(key));
   const subjectKeywords = new Set(candidates.filter((c) => c.kind === "subject").flatMap((c) => [c.latin, ...c.keywords]).map(key).filter((k) => !places.has(k)));
+  const full = "stories" in evidence ? evidence : null;
   return {
     ...row,
     keywordUses: keywordPostedCounts(row.aliases, stories),
     handleKeywords: candidates.length ? ownHandleKeywords(row.handle, candidates) : [],
     subjectKeywords,
-    ...("stories" in evidence && { suggestStats: evidence.suggest }),
+    ...(full && { suggestStats: full.suggest }),
+    ...(full?.learned && { learnedKeywords: new Set(full.learned.map(key)) }),
+    ...(full?.postedStories && { postedKeywordUses: keywordPostedCounts(row.aliases, full.postedStories) }),
   };
 }
 

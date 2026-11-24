@@ -6,7 +6,7 @@ import { PlaceBook, PostedLearner, deskKeywordAuto, deskKeywordOffered, district
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DbHandle } from "../src/client";
-import { deskSuggestionStats, dictionaryFingerprint, handlePostedStories } from "../src/composer";
+import { deskLearnedAliases, deskSuggestionStats, dictionaryFingerprint, handlePostedStories } from "../src/composer";
 import { recordProposal } from "../src/decisions";
 import { copyPosted, markPosted, updateDraft, claimDraft } from "../src/desk";
 import { audit } from "../src/audit";
@@ -106,6 +106,8 @@ run("learning from posted breaking stories", () => {
     expect(r.aliases.map((k) => [k, deskKeywordAuto(r, k), deskKeywordOffered(r, k)])).toEqual([["Jaipur", true, true], ["जयपुर", true, true], ["चाकसू", false, true]]);
     // Nobody was offered this handle as a suggestion
     expect(Object.fromEntries(await deskSuggestionStats(h.db, s.org.id, ["@JaipurLocalNews"]))).toEqual({ jaipurlocalnews: { offered: 0, accepted: 0 } });
+    // Its aliases were learned (audit handle.keywords_learned, no editor change since): they wait for evidence
+    expect(Object.fromEntries(await deskLearnedAliases(h.db, s.org.id, ["@JaipurLocalNews"]))).toEqual({ jaipurlocalnews: ["Jaipur", "जयपुर", "चाकसू"] });
   });
 
   it("typed hashtags become topic rules at once (an unknown one off until its 2nd story); footer, offered and an editor's own tags do not", async () => {

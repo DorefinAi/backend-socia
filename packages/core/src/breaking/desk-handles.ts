@@ -320,6 +320,17 @@ export interface DeskHandleRow {
   subjectKeywords?: ReadonlySet<string>;
   /** How often the desk was offered this handle as a suggestion (post_decisions, source "desk") and took it */
   suggestStats?: SuggestStats;
+  /**
+   * The row's keywords (fold() form) the LEARNING added (audit handle.keywords_learned with no editor handle.update
+   * since): only these wait for desk-typed evidence. Every other keyword was typed by an editor in Settings (or given
+   * at the desk add) and works at once, as before the learning fix. Absent: every keyword counts as learned.
+   */
+  learnedKeywords?: ReadonlySet<string>;
+  /**
+   * For each keyword (fold()), how many stories of ALL the org's live posts carrying the handle name it (the count of
+   * before the learning fix): what an editor's keyword leaves suggest-only on. Absent: keywordUses.
+   */
+  postedKeywordUses?: ReadonlyMap<string, number>;
 }
 
 /** A handle's suggestion record: offered (accepted + ignored) and accepted */
@@ -342,26 +353,32 @@ export const SUGGEST_RETIRE_RATE = 0.05;
 
 const foldKey = (s: string) => fold(s.normalize("NFC"));
 const inHandle = (row: Pick<DeskHandleRow, "handleKeywords">, k: string) => !!row.handleKeywords?.some((h) => foldKey(h) === k);
+const learnedKeyword = (row: Pick<DeskHandleRow, "learnedKeywords">, k: string) => !row.learnedKeywords || row.learnedKeywords.has(k);
 
 /**
  * Whether a desk row's keyword is added on its own (true) or at most offered (deskHandleRules' rule, see DeskHandleRow).
  * A row read without its posts (no keywordUses) keeps the old rule: every keyword is added. Otherwise a keyword inside
- * the handle string is added from the start; a learned one only if it names a subject (never a place) and
+ * the handle string is added from the start; an editor's keyword (not learned) after DESK_LEARNED_POSTED_USES posted
+ * stories name it, as before the learning fix; a learned one only if it names a subject (never a place) and
  * DESK_LEARNED_AUTO_USES desk-typed stories name it.
  */
-export function deskKeywordAuto(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords" | "subjectKeywords">, keyword: string): boolean {
+export function deskKeywordAuto(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords" | "subjectKeywords" | "learnedKeywords" | "postedKeywordUses">, keyword: string): boolean {
   if (!row.keywordUses) return true;
   const k = foldKey(keyword);
   if (inHandle(row, k)) return true;
+  if (!learnedKeyword(row, k)) return ((row.postedKeywordUses ?? row.keywordUses).get(k) ?? 0) >= DESK_LEARNED_POSTED_USES;
   if (!row.subjectKeywords?.has(k)) return false;
   return (row.keywordUses.get(k) ?? 0) >= DESK_LEARNED_AUTO_USES;
 }
 
-/** Whether a desk row's keyword is used at all (added or offered): inside the handle, or on DESK_LEARNED_POSTED_USES desk-typed stories */
-export function deskKeywordOffered(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords">, keyword: string): boolean {
+/**
+ * Whether a desk row's keyword is used at all (added or offered): inside the handle, an editor's keyword (at once), or a
+ * learned one on DESK_LEARNED_POSTED_USES desk-typed stories
+ */
+export function deskKeywordOffered(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords" | "learnedKeywords">, keyword: string): boolean {
   if (!row.keywordUses) return true;
   const k = foldKey(keyword);
-  return inHandle(row, k) || (row.keywordUses.get(k) ?? 0) >= DESK_LEARNED_POSTED_USES;
+  return inHandle(row, k) || !learnedKeyword(row, k) || (row.keywordUses.get(k) ?? 0) >= DESK_LEARNED_POSTED_USES;
 }
 
 /** A handle the desk has been offered SUGGEST_RETIRE_OFFERS times and took on under SUGGEST_RETIRE_RATE of them: offered no more */

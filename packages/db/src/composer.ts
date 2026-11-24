@@ -5,7 +5,7 @@
 import { RuleComposer, handleGazetteer, hashtagGazetteer, type DeskHandleEvidence, type HashtagRule, type LearnStory, type MatchType, type SuggestStats } from "@socia/core";
 import { and, count, eq, isNotNull, max, notInArray, sql } from "drizzle-orm";
 import type { Db } from "./client";
-import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs, postDecisions, postDrafts, publishedPosts, stories } from "./schema";
+import { REPORTER_SOURCE, auditLog, handleDirectory, hashtagRules, orgs, postDecisions, postDrafts, publishedPosts, stories } from "./schema";
 
 /** A fingerprint of both dictionaries: any edit, add or delete changes it */
 export async function dictionaryFingerprint(db: Db, orgId: string): Promise<string> {
@@ -89,13 +89,15 @@ const OUTCOMES = sql`jsonb_array_elements(CASE WHEN jsonb_typeof(pd.item_outcome
  * story once per handle: what a desk handle's learned keywords are counted against (core learn.ts keywordPostedCounts,
  * learning fix 4). A post where the composer emitted the handle, or the desk took it from the suggestions, is not
  * evidence: counting those let a handle feed on its own picks. Keyed by the lower-cased bare handle; a handle that is
- * not a plain X handle has none.
+ * not a plain X handle has none. `{ deskTyped: false }`: every live post carrying the handle, as before the learning
+ * fix (what an editor's own keywords are still counted against).
  */
-export async function handlePostedStories(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, LearnStory[]>> {
+export async function handlePostedStories(db: Db, orgId: string, handles: readonly string[], opts: { deskTyped?: boolean } = {}): Promise<Map<string, LearnStory[]>> {
   const keys = [...new Set(handles.map((h) => h.trim().replace(/^@+/, "").toLowerCase()))];
   const out = new Map<string, LearnStory[]>(keys.map((k) => [k, []]));
   const plain = keys.filter((k) => PLAIN_HANDLE.test(k));
   if (!plain.length) return out;
+  const deskTyped = opts.deskTyped ?? true;
   const res = await db.execute<{ handle: string; headline: string | null; body: string | null; district: string | null; town: string | null }>(sql`
     SELECT DISTINCT ON (h.handle, s.id) h.handle, s.headline, s.body, s.district, s.town
     FROM unnest(ARRAY[${sql.join(plain.map((k) => sql`${k}`), sql`, `)}]::text[]) AS h(handle)
@@ -103,14 +105,43 @@ export async function handlePostedStories(db: Db, orgId: string, handles: readon
       ON p.org_id = ${orgId} AND p.recalled_at IS NULL
      AND strpos(lower(p.text), '@' || h.handle) > 0
      AND p.text ~* ('(^|[^A-Za-z0-9_])@' || h.handle || '([^A-Za-z0-9_]|$)')
-    JOIN ${postDecisions} pd ON pd.draft_id = p.draft_id
     JOIN ${postDrafts} d ON d.id = p.draft_id
     JOIN ${stories} s ON s.id = d.story_id
+    ${deskTyped
+      ? sql`JOIN ${postDecisions} pd ON pd.draft_id = p.draft_id
     WHERE EXISTS (
       SELECT 1 FROM ${OUTCOMES} AS o
       WHERE o->>'kind' = 'handle' AND o->>'outcome' = 'desk_added' AND lower(ltrim(o->>'item', '@')) = h.handle
-    )`);
+    )`
+      : sql``}`);
   for (const r of res.rows) out.get(r.handle)?.push({ headline: r.headline, body: r.body, district: r.district, town: r.town });
+  return out;
+}
+
+/**
+ * The keywords the LEARNING added to each desk handle (audit handle.keywords_learned, its `added`), counting only
+ * learning after the row's last editor change in Settings (handle.update: a PATCH saves the whole alias list, so what
+ * an editor left in it is the editor's). Every other alias is explicit config and works at once. Keyed like
+ * handlePostedStories; a handle with no learning has [].
+ */
+export async function deskLearnedAliases(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, string[]>> {
+  const keys = [...new Set(handles.map((h) => h.trim().replace(/^@+/, "").toLowerCase()))];
+  const out = new Map<string, string[]>(keys.map((k) => [k, []]));
+  if (!keys.length) return out;
+  const res = await db.execute<{ handle: string; added: unknown }>(sql`
+    SELECT lower(ltrim(hd.handle, '@')) AS handle, a.after->'added' AS added
+    FROM ${auditLog} a
+    JOIN ${handleDirectory} hd ON hd.id::text = a.entity_id AND hd.org_id = a.org_id
+    WHERE a.org_id = ${orgId} AND a.entity_type = 'handle' AND a.action = 'handle.keywords_learned' AND hd.source = 'desk'
+      AND lower(ltrim(hd.handle, '@')) = ANY(ARRAY[${sql.join(keys.map((k) => sql`${k}`), sql`, `)}]::text[])
+      AND a.at > coalesce((
+        SELECT max(u.at) FROM ${auditLog} u
+        WHERE u.org_id = a.org_id AND u.entity_type = 'handle' AND u.entity_id = a.entity_id AND u.action = 'handle.update'
+      ), '-infinity'::timestamptz)`);
+  for (const r of res.rows) {
+    const added = Array.isArray(r.added) ? r.added.filter((x): x is string => typeof x === "string") : [];
+    out.get(r.handle)?.push(...added);
+  }
   return out;
 }
 
@@ -138,10 +169,16 @@ export async function deskSuggestionStats(db: Db, orgId: string, handles: readon
 }
 
 /**
- * What the worker reads behind each desk handle (core withKeywordUses): the stories the desk typed it on and its
- * record as a suggestion. Keyed like handlePostedStories.
+ * What the worker reads behind each desk handle (core withKeywordUses): the stories the desk typed it on, its record
+ * as a suggestion, which of its aliases the learning added, and the stories of all its posts (an editor's aliases).
+ * Keyed like handlePostedStories.
  */
 export async function deskHandleEvidence(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, DeskHandleEvidence>> {
-  const [stories, stats] = await Promise.all([handlePostedStories(db, orgId, handles), deskSuggestionStats(db, orgId, handles)]);
-  return new Map([...stories].map(([k, s]) => [k, { stories: s, suggest: stats.get(k) ?? { offered: 0, accepted: 0 } }]));
+  const [stories, stats, learned, posted] = await Promise.all([
+    handlePostedStories(db, orgId, handles), deskSuggestionStats(db, orgId, handles), deskLearnedAliases(db, orgId, handles),
+    handlePostedStories(db, orgId, handles, { deskTyped: false }),
+  ]);
+  return new Map(
+    [...stories].map(([k, s]) => [k, { stories: s, suggest: stats.get(k) ?? { offered: 0, accepted: 0 }, learned: learned.get(k) ?? [], postedStories: posted.get(k) ?? [] }]),
+  );
 }

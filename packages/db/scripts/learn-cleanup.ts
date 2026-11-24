@@ -54,8 +54,8 @@ const learner = new PostedLearner({
   ],
 });
 
-/** The audit rows the plan reads: what the learning wrote, and any editor change to a hashtag rule */
-const AUDIT_ACTIONS = ["handle.keywords_learned", "hashtag.rule_learned"];
+/** The audit rows the plan reads: what the learning wrote, an editor's change to a handle, and any editor change to a hashtag rule */
+const AUDIT_ACTIONS = ["handle.keywords_learned", "hashtag.rule_learned", "handle.update"];
 
 async function snapshotFrom(tx: Executor): Promise<CleanupSnapshot> {
   const handles = await tx.execute<CleanupHandleRow & Record<string, unknown>>(sql`SELECT id, org_id, handle, aliases, source, verified_at FROM handle_directory WHERE platform = 'x' ORDER BY created_at`);

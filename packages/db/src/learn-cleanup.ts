@@ -2,11 +2,12 @@
 // learn.ts). Planned from a snapshot of handle_directory, hashtag_rules and the learning's audit rows; the plan is
 // pure, so it can be checked against exported JSON without a database (scripts/learn-cleanup.ts --from-json).
 //
-//   - Desk handles: every alias the learning added (audit handle.keywords_learned) that is not the handle's own
-//     (a place in its own district, or its own subject: core handleStoryNames' rule) goes, and so does any alias that
-//     is a place outside the handle's own district (a person's, party's, national or institution's handle keeps no
-//     place). A keyword inside the handle string (core ownHandleKeywords) always stays. What is left is the pre-pollution value plus the learning that was
-//     right (@jpr_rural keeps जोबनेर, loses Air India). verified_at is bumped: the worker's reload stamp.
+//   - Desk handles: every alias the learning added (audit handle.keywords_learned after the row's last editor
+//     handle.update) that is not the handle's own (a place in its own district, or its own subject: core
+//     handleStoryNames' rule; a person's, party's, national or institution's handle keeps no learned place) goes. An
+//     alias an editor typed in Settings is explicit config and always stays, as does a keyword inside the handle
+//     string (core ownHandleKeywords). What is left is the pre-pollution value plus the learning that was right
+//     (@jpr_rural keeps जोबनेर, loses Air India). verified_at is bumped: the worker's reload stamp.
 //   - Junk handles (RETIRED_HANDLES: offered 100+ times, never taken, or a stub of a real handle) are retired the way
 //     the directory marks a handle unusable: verified_at NULL (never suggested, never learned; the desk's add asks an
 //     editor to verify it again). Their aliases are cleared.
@@ -67,7 +68,7 @@ export interface CleanupAuditRow {
 export interface CleanupSnapshot {
   handles: CleanupHandleRow[];
   rules: CleanupRuleRow[];
-  /** handle.keywords_learned and hashtag.rule_learned rows, and any hashtag_rule.* (an editor's change) */
+  /** handle.keywords_learned and hashtag.rule_learned rows, and the editors' handle.update and hashtag_rule.* rows */
   audit: CleanupAuditRow[];
 }
 
@@ -109,8 +110,9 @@ export function keptAliases(
   return aliases.filter((a) => {
     const k = nfcKey(a);
     if (inHandle.has(k)) return true;
-    if (learner.placeOutside(handle, a)) return false;
+    // Not learned: an editor's alias (or the desk add's), explicit config
     if (!learnedAdded.has(k)) return true;
+    if (learner.placeOutside(handle, a)) return false;
     // Learned: only a place in its own district (not outside, checked above) or its own subject
     return placeDistricts(a, learner.book) !== null || ownSubject.has(k);
   });
@@ -140,7 +142,9 @@ export function planLearnCleanup(snap: CleanupSnapshot, learner: PostedLearner):
     const after = new Map<string, string[]>();
     for (const h of desk) {
       if (done.has(h.id)) continue;
-      const learned = audit.filter((a) => a.action === "handle.keywords_learned" && a.entity_id === h.id);
+      // Learning before the row's last editor change in Settings is the editor's now (a PATCH saves the whole list)
+      const edited = Math.max(-Infinity, ...audit.filter((a) => a.action === "handle.update" && a.entity_id === h.id).map(at));
+      const learned = audit.filter((a) => a.action === "handle.keywords_learned" && a.entity_id === h.id && at(a) > edited);
       const learnedAdded = new Set(learned.flatMap((a) => strings((a.after as { added?: unknown } | null)?.added)).map(nfcKey));
       const kept = keptAliases(h.handle, h.aliases, learnedAdded, learner);
       after.set(h.id, kept);
@@ -159,7 +163,9 @@ export function planLearnCleanup(snap: CleanupSnapshot, learner: PostedLearner):
       if (!target) continue;
       for (const h of desk.filter((x) => low(x.handle) === low(from) && !done.has(x.id))) {
         const base = after.get(target.id) ?? target.aliases;
-        const moved = keptAliases(target.handle, (after.get(h.id) ?? h.aliases).filter((a) => !base.some((b) => nfcKey(b) === nfcKey(a))), new Set(), learner);
+        const incoming = (after.get(h.id) ?? h.aliases).filter((a) => !base.some((b) => nfcKey(b) === nfcKey(a)));
+        // The typo's aliases are new to the right handle: kept only when they are its own, like learned ones
+        const moved = keptAliases(target.handle, incoming, new Set(incoming.map(nfcKey)), learner);
         const merged = [...base, ...moved].slice(0, 30);
         changes.push({
           kind: "handle.merged", orgId, id: h.id, handle: `@${bare(h.handle)}`, aliases: [...h.aliases],

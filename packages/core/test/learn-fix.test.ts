@@ -52,6 +52,35 @@ describe("rule 2: a learned place never makes a handle tagged on its own", () =>
   });
 });
 
+describe("an editor's aliases (Settings) work at once; only learned ones wait for desk-typed evidence", () => {
+  // @KotaNewsDesk: Kota typed by an editor; रामगंजमंडी typed by an editor; चौमूं learned
+  const row: DeskHandleRow = { handle: "KotaNewsDesk", entityName: "KotaNewsDesk", aliases: ["Kota", "रामगंजमंडी", "चौमूं"] };
+  const evidence = (posted: LearnStory[], typed: LearnStory[] = []) => ({ stories: typed, suggest: { offered: 0, accepted: 0 }, learned: ["चौमूं"], postedStories: posted });
+  const offered = (r: DeskHandleRow) => r.aliases.map((k) => [deskKeywordOffered(r, k), deskKeywordAuto(r, k)]);
+
+  it("with no posts at all: the editor's keywords are offered, the learned one is not used", () => {
+    const r = withKeywordUses(row, evidence([]), candidates);
+    expect(offered(r)).toEqual([[true, true], [true, false], [false, false]]);
+    expect(pick("रामगंजमंडी में बारिश", "Kota", [r]).suggestions.map((h) => h.handle)).toContain("KotaNewsDesk");
+    expect(pick("चौमूं में बारिश", "Jaipur", [r]).suggestions.map((h) => h.handle)).not.toContain("KotaNewsDesk");
+  });
+  it("an editor's keyword is added on its own after 2 posted stories of any kind (as before the fix), a place included", () => {
+    const posted = [story("रामगंजमंडी में मेला", "", "Kota"), story("रामगंजमंडी में जाम", "", "Kota")];
+    const r = withKeywordUses(row, evidence(posted), candidates);
+    expect(offered(r)[1]).toEqual([true, true]);
+    expect(pick("रामगंजमंडी में बारिश", "Kota", [r]).handles.map((h) => h.handle)).toContain("KotaNewsDesk");
+  });
+  it("a learned keyword still needs 2 desk-typed stories, and as a place is never added", () => {
+    const typed = [story("चौमूं में मेला", "", "Jaipur"), story("चौमूं में जाम", "", "Jaipur")];
+    const r = withKeywordUses(row, evidence(typed, typed), candidates);
+    expect(offered(r)[2]).toEqual([true, false]);
+  });
+  it("without the learned list (stories only), every keyword counts as learned: the strict rule", () => {
+    const r = withKeywordUses(row, [], candidates);
+    expect(offered(r)).toEqual([[true, true], [false, false], [false, false]]);
+  });
+});
+
 describe("rule 3: places only from the story's own district and town, only the handle's own", () => {
   it("knows a handle's district from its name or its file code; a person's or a stub's has none", () => {
     expect(handleDistricts("@jpr_rural", book)).toEqual(["Jaipur"]);

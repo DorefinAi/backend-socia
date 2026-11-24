@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   DESK_LEARNED_AUTO_USES, DESK_LEARNED_POSTED_USES, PlaceBook, PostedLearner, SUGGEST_RETIRE_OFFERS, deskAutoKey, deskHandleRules, deskKeywordAuto, deskKeywordOffered,
-  districtKeywordCandidates, handleDistricts, handleLookalikeOf, handleStoryNames, handleTypoOf, mergeKeywords, parseHandleRules, parsePlacesData, parseSubjectHandles,
+  districtKeywordCandidates, handleDistricts, handleIsLocal, handleLookalikeOf, handleStoryNames, handleTypoOf, mergeKeywords, parseHandleRules, parsePlacesData, parseSubjectHandles,
   pickHandlesExplained, placeDistricts, placeOutsideHandle, strictHandlePrefix, suggestionRetired, tagLooksLikeHandle, tagRuleKeywords, withKeywordUses,
   type DeskHandleRow, type LearnStory,
 } from "../src";
@@ -96,10 +96,31 @@ describe("rule 3: places only from the story's own district and town, only the h
     expect(handleStoryNames("@jpr_rural", story("झालावाड़ में हादसा", "", "Jhalawar", "झालावाड़"), ctx)).toEqual([]);
     expect(handleStoryNames("@jpr_rural", story("हनुमानगढ़ में बारिश", "", "Hanumangarh"), ctx)).toEqual([]);
   });
-  it("@NitinNabin (a person) never learns Delhi, Telangana, Punjab or Jaipur", () => {
+  it("@NitinNabin marked a person (entity_type) never learns a place: not Delhi, Telangana, Punjab or Jaipur", () => {
     for (const [d, t] of [["Delhi", "दिल्ली"], ["Jaipur", "जयपुर"], [null, null]] as const) {
-      expect(handleStoryNames("@NitinNabin", story("दिल्ली, तेलंगाना और पंजाब में बैठक", "जयपुर से अमित शाह", d, t), ctx)).toEqual([]);
+      expect(handleStoryNames("@NitinNabin", story("दिल्ली, तेलंगाना और पंजाब में बैठक", "जयपुर से अमित शाह", d, t), ctx, "person")).toEqual([]);
     }
+    for (const type of ["party", "organisation"]) expect(handleStoryNames("@SomeDesk", story("चाकसू में हादसा", "", "Jaipur"), ctx, type)).toEqual([]);
+  });
+  it("an unknown (local) handle learns only the story's own Rajasthan district and town, never the body's places", () => {
+    // The API test's case: @ChaksuNews typed on a Jaipur story whose headline opens with its town
+    expect(handleStoryNames("@ChaksuNews", story("चाकसू में हादसा", "", "Jaipur"), ctx)).toEqual(["Jaipur", "जयपुर", "चाकसू"]);
+    expect(handleStoryNames("@ChaksuNews", story("हादसा", "दिल्ली, तेलंगाना, हैदराबाद और कोटा की टीम", "Jaipur", "चाकसू"), ctx)).toEqual(["Jaipur", "जयपुर", "चाकसू"]);
+    // Unflagged @NitinNabin is local by definition: the own district of a Jaipur story, never Delhi or Punjab
+    expect(handleStoryNames("@NitinNabin", story("जयपुर में बैठक", "दिल्ली और पंजाब के नेता", "Jaipur", "जयपुर"), ctx)).toEqual(["Jaipur", "जयपुर"]);
+    // A story outside Rajasthan gives no place; neither does one with no district or town
+    expect(handleStoryNames("@ChaksuNews", story("दिल्ली में बैठक", "", "Delhi", "दिल्ली"), ctx)).toEqual([]);
+    expect(handleStoryNames("@ChaksuNews", story("तेज बारिश", "कोटा में", null, null), ctx)).toEqual([]);
+    // A handle naming a place outside Rajasthan is national: no place
+    expect(handleIsLocal("@DelhiUpdates", ctx)).toBe(false);
+    expect(handleStoryNames("@DelhiUpdates", story("चाकसू में हादसा", "", "Jaipur"), ctx)).toEqual([]);
+  });
+  it("a local handle's learned places are stored, offered only from 2 desk-typed posts, and never tag it alone", () => {
+    const base: DeskHandleRow = { handle: "ChaksuNews", entityName: "ChaksuNews", aliases: ["Jaipur", "जयपुर", "चाकसू"] };
+    const one = withKeywordUses(base, [story("चाकसू में हादसा", "", "Jaipur")], candidates);
+    expect(one.aliases.map((k) => deskKeywordOffered(one, k))).toEqual([false, false, false]);
+    const two = withKeywordUses(base, [story("चाकसू में हादसा", "", "Jaipur"), story("चाकसू में मेला", "", "Jaipur")], candidates);
+    expect(two.aliases.map((k) => [deskKeywordOffered(two, k), deskKeywordAuto(two, k)])).toEqual([[true, false], [true, false], [true, false]]);
   });
   it("@JaipurDiscom1 learns only its own subject's names, never Mumbai, IndiGo, Jodhpur or Tonk", () => {
     const names = handleStoryNames("@JaipurDiscom1", story("मालपुरा में JVVNL की कटौती", "मुंबई की IndiGo उड़ान, जोधपुर", "Tonk", "मालपुरा"), ctx);
@@ -237,13 +258,15 @@ describe("G6: re-running the learning over decisions-like posts", () => {
   ];
   const directory = ["jpr_rural", "JaipurDiscom1", "NitinNabin", "forest", "forestRajasthan", "laxmanraghav", "satyatv99", "satyatv99_news", "hbh", "nwr", "NWRailways"];
 
-  it("no handle learns a keyword outside its own district or name", () => {
+  it("no handle learns a keyword outside its own district or name, or (a local handle) the stories it was typed on", () => {
     const learned = new Map<string, string[]>(directory.map((h) => [h, []]));
+    const allowed = new Map<string, Set<string>>(directory.map((h) => [h, new Set(handleDistricts(h, book))]));
     for (const r of rows) {
       for (const [h, outcome] of r.handles) {
         if (outcome !== "desk_added") continue;
         const handle = h.replace(/^@/, "");
         if (learner.handleWithheld(handle, directory)) continue;
+        for (const p of [r.district, r.town]) for (const d of (p ? placeDistricts(p, book) : null) ?? []) allowed.get(handle)!.add(d);
         const names = learner.handleNames(handle, story(r.text, "", r.district, r.town));
         learned.set(handle, mergeKeywords(learned.get(handle) ?? [], names).keywords);
       }
@@ -251,12 +274,17 @@ describe("G6: re-running the learning over decisions-like posts", () => {
     for (const [handle, keywords] of learned) {
       const own = new Set(learner.ownSubjectNames(handle));
       for (const k of keywords) {
-        expect(placeOutsideHandle(handle, k, ctx), `${handle} ← ${k}`).toBe(false);
+        const of = placeDistricts(k, book);
+        expect(of === null || of.some((d) => allowed.get(handle)!.has(d)), `${handle} ← ${k}`).toBe(true);
         expect(placeDistricts(k, book) !== null || own.has(k), `${handle} ← ${k} is neither its place nor its subject`).toBe(true);
       }
     }
     expect(learned.get("jpr_rural")).toEqual(["Jaipur", "जयपुर", "जोबनेर", "चौमूं"]);
     expect(learned.get("JaipurDiscom1")).toEqual(expect.arrayContaining(["JVVNL"]));
-    for (const h of ["NitinNabin", "forest", "laxmanraghav", "satyatv99", "hbh", "nwr"]) expect(learned.get(h), h).toEqual([]);
+    // Unflagged local handles take the own places of the stories the desk typed them on, nothing from the bodies
+    expect(learned.get("laxmanraghav")).toEqual(["Bikaner", "बीकानेर"]);
+    expect(learned.get("hbh")).toEqual(["Tonk", "टोंक"]);
+    // Typed only on a Delhi story (outside Rajasthan); a lookalike; a data-file handle
+    for (const h of ["NitinNabin", "forest", "nwr"]) expect(learned.get(h), h).toEqual([]);
   });
 });

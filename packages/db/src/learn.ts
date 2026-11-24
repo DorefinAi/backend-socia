@@ -136,7 +136,7 @@ async function learnHandles(
   const keys = typedHandles(draft, await proposedHandles(tx, draft.id));
   if (!keys.length) return;
   const rows = await tx
-    .select({ id: handleDirectory.id, handle: handleDirectory.handle, aliases: handleDirectory.aliases })
+    .select({ id: handleDirectory.id, handle: handleDirectory.handle, aliases: handleDirectory.aliases, type: handleDirectory.entityType })
     .from(handleDirectory)
     .where(
       and(
@@ -157,7 +157,7 @@ async function learnHandles(
     done.add(handle.toLowerCase());
     const withheld = learner.handleWithheld(row.handle, directory, curated);
     const like = withheld === "lookalike" ? learner.handleLookalike(row.handle, directory, curated) : null;
-    const names = story ? learner.handleNames(row.handle, story) : [];
+    const names = story ? learner.handleNames(row.handle, story, row.type) : [];
     const { keywords, added } = withheld ? { keywords: row.aliases, added: [] } : mergeKeywords(row.aliases, names, MAX_HANDLE_KEYWORDS);
     report.handles.push({ handle, added, keywords: keywords.length, withheld, ...(like && { like: `@${like}` }), names });
     if (!added.length) continue;

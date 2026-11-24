@@ -2,13 +2,17 @@
 // The decisions are core learn.ts; this writes them, at the moment a breaking post goes out (Approve, Mark posted,
 // Copy & Posted call learnFromPost next to the hashtag staging), and once over old posts (scripts/learn-tags-backfill).
 //
-//   - A desk handle (handle_directory source "desk", verified) on the post learns the names the system recognises in
-//     the story as keywords, unless the add rules withhold them (a data-file handle or lookalike, a party's, an
-//     official's, a reporter's). verified_at is bumped so the worker's dictionary fingerprint reloads the rows.
+//   - A desk handle (handle_directory source "desk", verified) that the DESK TYPED on the post (typedHandles: not one
+//     the composer put on it or offered, which only fed the composer back its own picks) learns its own names in the
+//     story as keywords (core handleStoryNames: the story's district and town when in the handle's own district, its
+//     own subject), unless the add rules withhold them (a data-file handle or lookalike, a typo or stub of another
+//     directory handle, a party's, an official's, a reporter's). verified_at is bumped so the worker's dictionary
+//     fingerprint reloads the rows.
 //   - A hashtag an editor typed that no rule offered becomes an active topic rule (match_type "entity"), or adds to
 //     the one this loop made for it before; never a footer tag, never a second rule for a tag an editor's rule has
-//     (any case). A tag with nothing to match on is saved inactive, and one that names no known place or subject stays
-//     inactive until it has gone out on UNKNOWN_TAG_POSTS (2) different stories. hashtag_staging keeps its row; promoted_at is set.
+//     (any case). A tag with nothing to match on is saved inactive,
+//     and one that names no known place or subject stays inactive until it has gone out on UNKNOWN_TAG_POSTS (2)
+//     different stories. hashtag_staging keeps its row; promoted_at is set.
 //
 // Every change is audited (handle.keywords_learned, hashtag.rule_learned). It all runs in a savepoint: if learning
 // fails, the post still goes out and the failure is logged.
@@ -17,7 +21,7 @@ import { LEARNED_RULE_PRIORITY, MAX_HANDLE_KEYWORDS, MAX_RULE_KEYWORDS, NATIONAL
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { audit } from "./audit";
 import type { Executor } from "./client";
-import { auditLog, composerCityTags, handleDirectory, hashtagRules, hashtagStaging, postDrafts, stories } from "./schema";
+import { auditLog, composerCityTags, handleDirectory, hashtagRules, hashtagStaging, postDecisions, postDrafts, stories } from "./schema";
 
 /** Who the change is recorded as: the person who posted, or (actorId null) a named script */
 export interface LearnWho {
@@ -32,7 +36,8 @@ export type LearnedTagAction = "created" | "updated" | "unchanged" | "duplicate"
 export interface LearnedReport {
   draftId: string;
   names: string[];
-  handles: { handle: string; added: string[]; keywords: number; withheld: string | null }[];
+  /** `like`: the known handle a typo or stub was withheld for ("did you mean"); `names`: what the handle could learn here */
+  handles: { handle: string; added: string[]; keywords: number; withheld: string | null; like?: string | null; names?: string[] }[];
   tags: { tag: string; action: LearnedTagAction; active: boolean; keywords: string[]; ruleId: string | null }[];
 }
 
@@ -40,10 +45,36 @@ export interface LearnLogger {
   error: (obj: Record<string, unknown>, msg: string) => void;
 }
 
-type Draft = Pick<typeof postDrafts.$inferSelect, "id" | "orgId" | "storyId" | "handlePick" | "hashtags" | "hashtagSuggestions" | "mentions">;
+type Draft = Pick<typeof postDrafts.$inferSelect, "id" | "orgId" | "storyId" | "handlePick" | "hashtags" | "hashtagSuggestions" | "mentions"> & {
+  /** The older mention suggestions (offered, never typed), when the caller read them */
+  mentionSuggestions?: unknown;
+};
 
 const bare = (s: string) => s.trim().replace(/^[#@]+/, "");
 const DEVANAGARI = /[ऀ-ॿ]/;
+
+/** The handles of a draft's mention_suggestions ([{ handle: "@JDAJaipur", ... }]); anything else gives none */
+function suggestedMentions(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((m) => (m && typeof m === "object" && typeof (m as { handle?: unknown }).handle === "string" ? (m as { handle: string }).handle : "")).filter(Boolean);
+}
+
+/**
+ * The handles the DESK typed on the post (learning fix 1), lower-case without the @: its mentions minus every handle
+ * the composer put on it or offered (handle_pick handles and suggested, mention_suggestions) and minus every handle the
+ * decision log's proposals hold (`proposed`, any layer). A handle the composer emitted or the desk accepted from the
+ * suggestions is never learned from: that only fed the composer back its own picks (@jpr_rural, @JaipurDiscom1).
+ */
+export function typedHandles(draft: Pick<Draft, "mentions" | "handlePick" | "mentionSuggestions">, proposed: readonly string[] = []): string[] {
+  const offered = [
+    ...(draft.handlePick?.handles ?? []).map((h) => h.handle),
+    ...(draft.handlePick?.suggested ?? []).map((h) => h.handle),
+    ...suggestedMentions(draft.mentionSuggestions),
+    ...proposed,
+  ];
+  const known = new Set(offered.map((h) => bare(h).toLowerCase()).filter(Boolean));
+  return [...new Set(draft.mentions.map((m) => bare(m).toLowerCase()).filter((k) => k && !known.has(k)))];
+}
 
 /**
  * The tags an editor typed on the post that no rule offered (stagePostedHashtags' rule), keyed lower-case without the #.
@@ -75,7 +106,8 @@ export async function learnFromPost(tx: Executor, who: LearnWho, draft: Draft, l
       const [story] = await sp.select({ headline: stories.headline, body: stories.body, district: stories.district, town: stories.town }).from(stories).where(eq(stories.id, draft.storyId));
       const names = story ? learner.storyNames(story satisfies LearnStory) : [];
       const report: LearnedReport = { draftId: draft.id, names, handles: [], tags: [] };
-      await learnHandles(sp, who, draft, names, learner, report);
+      const directory = (await sp.select({ handle: handleDirectory.handle }).from(handleDirectory).where(and(eq(handleDirectory.orgId, who.orgId), eq(handleDirectory.platform, "x")))).map((r) => r.handle);
+      await learnHandles(sp, who, draft, story ?? null, directory, learner, report);
       await learnHashtags(sp, who, draft, names, learner, report);
       return report;
     });
@@ -85,8 +117,15 @@ export async function learnFromPost(tx: Executor, who: LearnWho, draft: Draft, l
   }
 }
 
-async function learnHandles(tx: Executor, who: LearnWho, draft: Draft, names: string[], learner: PostedLearner, report: LearnedReport): Promise<void> {
-  const keys = [...new Set(draft.mentions.map((m) => bare(m).toLowerCase()).filter(Boolean))];
+/** The handles the decision log says the composer proposed for this draft (emitted or offered), as written there */
+async function proposedHandles(tx: Executor, draftId: string): Promise<string[]> {
+  const [row] = await tx.select({ proposals: postDecisions.proposals }).from(postDecisions).where(eq(postDecisions.draftId, draftId));
+  return (row?.proposals ?? []).filter((p) => p.kind === "handle").map((p) => p.item);
+}
+
+async function learnHandles(tx: Executor, who: LearnWho, draft: Draft, story: LearnStory | null, directory: string[], learner: PostedLearner, report: LearnedReport): Promise<void> {
+  if (!draft.mentions.length) return;
+  const keys = typedHandles(draft, await proposedHandles(tx, draft.id));
   if (!keys.length) return;
   const rows = await tx
     .select({ id: handleDirectory.id, handle: handleDirectory.handle, aliases: handleDirectory.aliases })
@@ -103,15 +142,16 @@ async function learnHandles(tx: Executor, who: LearnWho, draft: Draft, names: st
     .orderBy(handleDirectory.createdAt)
     .for("update");
   if (!rows.length) return;
-  const directory = (await tx.select({ handle: handleDirectory.handle }).from(handleDirectory).where(and(eq(handleDirectory.orgId, who.orgId), eq(handleDirectory.platform, "x")))).map((r) => r.handle);
   const done = new Set<string>();
   for (const row of rows) {
     const handle = `@${bare(row.handle)}`;
     if (done.has(handle.toLowerCase())) continue;
     done.add(handle.toLowerCase());
     const withheld = learner.handleWithheld(row.handle, directory);
+    const like = withheld === "lookalike" ? learner.handleLookalike(row.handle, directory) : null;
+    const names = story ? learner.handleNames(row.handle, story) : [];
     const { keywords, added } = withheld ? { keywords: row.aliases, added: [] } : mergeKeywords(row.aliases, names, MAX_HANDLE_KEYWORDS);
-    report.handles.push({ handle, added, keywords: keywords.length, withheld });
+    report.handles.push({ handle, added, keywords: keywords.length, withheld, ...(like && { like: `@${like}` }), names });
     if (!added.length) continue;
     // verified_at doubles as the directory's change stamp (dictionaryFingerprint): bumping it reloads the worker's rows
     await tx

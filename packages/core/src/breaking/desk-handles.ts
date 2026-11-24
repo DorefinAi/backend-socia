@@ -312,17 +312,71 @@ export interface DeskHandleRow {
   keywordUses?: ReadonlyMap<string, number>;
   /** The keywords found inside the handle string itself (keywordsForHandle): added on their own from the start */
   handleKeywords?: readonly string[];
+  /**
+   * The row's keywords (fold() form) that name a subject of subject-handles.json and no place: the only learned
+   * keywords that may ever be added on their own. A place (district, town, national place) a handle learned stays
+   * offered only, unless it is in `handleKeywords` (learning fix, 25 Nov 2026: @jpr_rural was put on every Jaipur story).
+   */
+  subjectKeywords?: ReadonlySet<string>;
+  /** How often the desk was offered this handle as a suggestion (post_decisions, source "desk") and took it */
+  suggestStats?: SuggestStats;
 }
 
-/** A learned desk keyword is added on its own once this many posted stories carrying the handle name it (as SETTINGS_POSTED_USES) */
-export const DESK_LEARNED_POSTED_USES = 2;
+/** A handle's suggestion record: offered (accepted + ignored) and accepted */
+export interface SuggestStats {
+  offered: number;
+  accepted: number;
+}
 
-/** Whether a desk row's keyword is added on its own (true) or only offered (deskHandleRules' rule, see DeskHandleRow) */
-export function deskKeywordAuto(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords">, keyword: string): boolean {
+/**
+ * A learned desk keyword is OFFERED once this many posted stories on which the desk itself typed the handle name it
+ * (as SETTINGS_POSTED_USES); before that it is not used at all (learning fix 4).
+ */
+export const DESK_LEARNED_POSTED_USES = 2;
+/** A learned keyword that names a subject (never a place) is ADDED on its own from this many such stories */
+export const DESK_LEARNED_AUTO_USES = 3;
+/** A desk handle offered this many times... */
+export const SUGGEST_RETIRE_OFFERS = 20;
+/** ...and taken by the desk on fewer than this share of them is no longer offered (@hbh: 0 of 123) */
+export const SUGGEST_RETIRE_RATE = 0.05;
+
+const foldKey = (s: string) => fold(s.normalize("NFC"));
+const inHandle = (row: Pick<DeskHandleRow, "handleKeywords">, k: string) => !!row.handleKeywords?.some((h) => foldKey(h) === k);
+
+/**
+ * Whether a desk row's keyword is added on its own (true) or at most offered (deskHandleRules' rule, see DeskHandleRow).
+ * A row read without its posts (no keywordUses) keeps the old rule: every keyword is added. Otherwise a keyword inside
+ * the handle string is added from the start; a learned one only if it names a subject (never a place) and
+ * DESK_LEARNED_AUTO_USES desk-typed stories name it.
+ */
+export function deskKeywordAuto(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords" | "subjectKeywords">, keyword: string): boolean {
   if (!row.keywordUses) return true;
-  const k = fold(keyword.normalize("NFC"));
-  if (row.handleKeywords?.some((h) => fold(h.normalize("NFC")) === k)) return true;
-  return (row.keywordUses.get(k) ?? 0) >= DESK_LEARNED_POSTED_USES;
+  const k = foldKey(keyword);
+  if (inHandle(row, k)) return true;
+  if (!row.subjectKeywords?.has(k)) return false;
+  return (row.keywordUses.get(k) ?? 0) >= DESK_LEARNED_AUTO_USES;
+}
+
+/** Whether a desk row's keyword is used at all (added or offered): inside the handle, or on DESK_LEARNED_POSTED_USES desk-typed stories */
+export function deskKeywordOffered(row: Pick<DeskHandleRow, "keywordUses" | "handleKeywords">, keyword: string): boolean {
+  if (!row.keywordUses) return true;
+  const k = foldKey(keyword);
+  return inHandle(row, k) || (row.keywordUses.get(k) ?? 0) >= DESK_LEARNED_POSTED_USES;
+}
+
+/** A handle the desk has been offered SUGGEST_RETIRE_OFFERS times and took on under SUGGEST_RETIRE_RATE of them: offered no more */
+export function suggestionRetired(stats: SuggestStats | null | undefined): boolean {
+  return !!stats && stats.offered >= SUGGEST_RETIRE_OFFERS && stats.accepted < stats.offered * SUGGEST_RETIRE_RATE;
+}
+
+/** Shortest handle that counts as a strict prefix of a longer one ("@nwr" of "@NWRailways", "@forest" of "@forestRajasthan") */
+export const LOOKALIKE_PREFIX_LETTERS = 3;
+
+/** Whether handle `a` is a strict prefix of handle `b` (case and @ ignored), LOOKALIKE_PREFIX_LETTERS letters or more */
+export function strictHandlePrefix(a: string, b: string): boolean {
+  const x = a.trim().replace(/^@+/, "").toLowerCase();
+  const y = b.trim().replace(/^@+/, "").toLowerCase();
+  return x.length >= LOOKALIKE_PREFIX_LETTERS && y.length > x.length && y.startsWith(x);
 }
 
 export interface DeskHandleData {
@@ -350,7 +404,10 @@ export const EMPTY_DESK_HANDLE_RULES: DeskHandleRules = { gazetteer: new Gazette
  * Desk-added handles ready to match. Left out, so never suggested: a row with no keywords, and (should its
  * keywords have been set some other way) a party's or an official's handle. pickHandles() also skips the files'
  * handles and their lookalikes. A row's keywords that are added on their own (deskKeywordAuto) and the ones only
- * offered (learned, not yet on DESK_LEARNED_POSTED_USES posted stories) are two entries.
+ * offered (deskKeywordOffered: learned, on DESK_LEARNED_POSTED_USES desk-typed stories, and not added) are two
+ * entries; a learned keyword on fewer such stories is not used at all. Also left out: a row whose handle is a strict
+ * prefix of another desk row's (a stub or typo of it), and the offered entry of a handle the desk keeps ignoring
+ * (suggestionRetired).
  */
 export function deskHandleRules(rows: readonly DeskHandleRow[]): DeskHandleRules {
   const entries = rows.flatMap((r, i): GazetteerEntry<DeskHandleData>[] => {
@@ -359,10 +416,15 @@ export function deskHandleRules(rows: readonly DeskHandleRow[]): DeskHandleRules
     if (!handle || !keywords.length) return [];
     const markers = handleMarkers(handle, keywords.map(compactLatin));
     if (markers.party || markers.official) return [];
+    // A typo or stub of another desk handle ("@forest" next to "@forestRajasthan") is never used: the full handle is
+    if (rows.some((o) => o !== r && strictHandlePrefix(handle, o.handle))) return [];
+    const retired = suggestionRetired(r.suggestStats);
     const title = r.entityName || handle;
     const out: GazetteerEntry<DeskHandleData>[] = [];
     for (const suggestOnly of [false, true]) {
-      const own = keywords.filter((k) => deskKeywordAuto(r, k) !== suggestOnly);
+      // Offered only: not added on its own, used at all (enough desk-typed stories), and the desk still takes the handle
+      if (suggestOnly && retired) continue;
+      const own = keywords.filter((k) => (suggestOnly ? !deskKeywordAuto(r, k) && deskKeywordOffered(r, k) : deskKeywordAuto(r, k)));
       if (!own.length) continue;
       const [name, ...aliases] = own;
       out.push({ id: `desk:${handle.toLowerCase()}#${i}${suggestOnly ? ":suggest" : ""}`, name: name!, aliases, priority: 0, data: { handle, title, ...(suggestOnly && { suggestOnly }) } });

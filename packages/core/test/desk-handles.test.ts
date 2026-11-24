@@ -191,8 +191,9 @@ describe("suggesting desk-added handles", () => {
   const handles = (headline: string, points: string[] = [], district: string | null = null) =>
     pickHandles(story(headline, points, district), rules, { subjects, desk }).map((h) => h.handle);
 
-  it("leaves out rows with no keywords and officials' and parties' rows", () => {
-    expect(desk.count).toBe(4);
+  it("leaves out rows with no keywords, officials' and parties' rows, and a stub of another desk row", () => {
+    // @JhalawarUpdates, @KotaNewsDesk, @iitjodhpur; @JhalawarPolic is a strict prefix of @jhalawarpolice (learning fix 5)
+    expect(desk.count).toBe(3);
   });
 
   it("suggests a Jhalawar desk handle on a Jhalawar story, not on a Kota story", () => {

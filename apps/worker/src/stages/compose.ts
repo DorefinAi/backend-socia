@@ -9,11 +9,11 @@ import { createHash } from "node:crypto";
 import {
   LEADER_POST, asFileTags, assemblePostText, nationalWithoutPlace, pickReporter, composeBreaking, recoverDistrictFrom, directoryHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
   mergeReporterTokens, resolveReporterStatus, slotFromTags,
-  SETTINGS_POSTED_USES, deskAutoKey, districtKeywordCandidates, isSettingsHandleType, withKeywordUses, type BreakingDraft, type LearnStory, type Composer, type DeskHandleRow, type DeskHandleRules, type DirectoryHandleRow, type HandlePick, type HandleRules, type SubjectRules, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
+  SETTINGS_POSTED_USES, deskAutoKey, districtKeywordCandidates, isSettingsHandleType, withKeywordUses, type BreakingDraft, type Composer, type DeskHandleEvidence, type DeskHandleRow, type DeskHandleRules, type DirectoryHandleRow, type HandlePick, type HandleRules, type SubjectRules, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
   type TagSuggestion,
 } from "@socia/core";
 import {
-  EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, dictionaryFingerprint, handleDirectory, handlePostedStories, handlePostedUses, ingestedFiles, loadRuleComposer, notify, notifyQueueChanged, postDrafts, recordProposal,
+  EXPLORE_RATE, REPORTER_SOURCE, activeHashtagRules, deskHandleEvidence, dictionaryFingerprint, handleDirectory, handlePostedUses, ingestedFiles, loadRuleComposer, notify, notifyQueueChanged, postDrafts, recordProposal,
   stories, type Db, type LoggedProposal, type Tx,
 } from "@socia/db";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
@@ -80,7 +80,7 @@ export class Dictionaries {
   /** Published posts carrying each Settings handle (lower-cased, no @), and which rows they were counted for */
   private posted: { rows: string; at: number; value: Map<string, number> } | null = null;
   /** The stories behind each desk handle with keywords (learned keywords' posted counts, core learn.ts), and the rows built on them */
-  private deskStories: { rows: string; at: number; value: Map<string, LearnStory[]> } | null = null;
+  private deskStories: { rows: string; at: number; value: Map<string, DeskHandleEvidence> } | null = null;
   private learnedRows: { key: string; value: DeskHandleRow[] } | null = null;
 
   constructor(private readonly db: Db, private readonly orgId: string, private readonly log?: Logger) {}
@@ -145,10 +145,10 @@ export class Dictionaries {
     const key = keyed.map((r) => `${r.handle.toLowerCase()}:${r.aliases.length}`).sort().join(",");
     if (!this.deskStories || this.deskStories.rows !== key || Date.now() - this.deskStories.at >= POSTED_USES_MS) {
       try {
-        this.deskStories = { rows: key, at: Date.now(), value: await handlePostedStories(this.db, this.orgId, keyed.map((r) => r.handle)) };
+        this.deskStories = { rows: key, at: Date.now(), value: await deskHandleEvidence(this.db, this.orgId, keyed.map((r) => r.handle)) };
       } catch (err) {
         this.log?.warn({ err }, "desk handles: posted stories not read; learned keywords stay offered only for now");
-        const value = this.deskStories?.rows === key ? this.deskStories.value : new Map<string, LearnStory[]>();
+        const value = this.deskStories?.rows === key ? this.deskStories.value : new Map<string, DeskHandleEvidence>();
         this.deskStories = { rows: key, at: Date.now() - POSTED_USES_MS + POSTED_USES_RETRY_MS, value };
       }
     }

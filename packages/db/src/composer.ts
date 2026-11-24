@@ -2,10 +2,10 @@
 // The compose worker caches it (reloading when the tables change); the API builds one when a desk
 // action makes a story directly (a Web Scraper trend).
 
-import { RuleComposer, handleGazetteer, hashtagGazetteer, type HashtagRule, type LearnStory, type MatchType } from "@socia/core";
+import { RuleComposer, handleGazetteer, hashtagGazetteer, type DeskHandleEvidence, type HashtagRule, type LearnStory, type MatchType, type SuggestStats } from "@socia/core";
 import { and, count, eq, isNotNull, max, notInArray, sql } from "drizzle-orm";
 import type { Db } from "./client";
-import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs, postDrafts, publishedPosts, stories } from "./schema";
+import { REPORTER_SOURCE, handleDirectory, hashtagRules, orgs, postDecisions, postDrafts, publishedPosts, stories } from "./schema";
 
 /** A fingerprint of both dictionaries: any edit, add or delete changes it */
 export async function dictionaryFingerprint(db: Db, orgId: string): Promise<string> {
@@ -80,10 +80,16 @@ export async function handlePostedUses(db: Db, orgId: string, handles: readonly 
   return out;
 }
 
+/** A decided row's item_outcomes as rows (none when the column is null or not an array) */
+const OUTCOMES = sql`jsonb_array_elements(CASE WHEN jsonb_typeof(pd.item_outcomes) = 'array' THEN pd.item_outcomes ELSE '[]'::jsonb END)`;
+
 /**
- * The stories the org's live published posts carrying each handle went out on (a whole "@handle", any case, as
- * handlePostedUses counts), each story once per handle: what a desk handle's learned keywords are counted against
- * (core learn.ts keywordPostedCounts). Keyed by the lower-cased bare handle; a handle that is not a plain X handle has none.
+ * The stories of the org's live published posts on which the DESK TYPED each handle (a whole "@handle" in the post,
+ * any case, and the decision log's item_outcomes record it as desk_added: no rule put it there or offered it), each
+ * story once per handle: what a desk handle's learned keywords are counted against (core learn.ts keywordPostedCounts,
+ * learning fix 4). A post where the composer emitted the handle, or the desk took it from the suggestions, is not
+ * evidence: counting those let a handle feed on its own picks. Keyed by the lower-cased bare handle; a handle that is
+ * not a plain X handle has none.
  */
 export async function handlePostedStories(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, LearnStory[]>> {
   const keys = [...new Set(handles.map((h) => h.trim().replace(/^@+/, "").toLowerCase()))];
@@ -97,8 +103,45 @@ export async function handlePostedStories(db: Db, orgId: string, handles: readon
       ON p.org_id = ${orgId} AND p.recalled_at IS NULL
      AND strpos(lower(p.text), '@' || h.handle) > 0
      AND p.text ~* ('(^|[^A-Za-z0-9_])@' || h.handle || '([^A-Za-z0-9_]|$)')
+    JOIN ${postDecisions} pd ON pd.draft_id = p.draft_id
     JOIN ${postDrafts} d ON d.id = p.draft_id
-    JOIN ${stories} s ON s.id = d.story_id`);
+    JOIN ${stories} s ON s.id = d.story_id
+    WHERE EXISTS (
+      SELECT 1 FROM ${OUTCOMES} AS o
+      WHERE o->>'kind' = 'handle' AND o->>'outcome' = 'desk_added' AND lower(ltrim(o->>'item', '@')) = h.handle
+    )`);
   for (const r of res.rows) out.get(r.handle)?.push({ headline: r.headline, body: r.body, district: r.district, town: r.town });
   return out;
+}
+
+/**
+ * Each handle's record as a desk suggestion (item_outcomes, layer "suggest", source "desk") over the org's decided,
+ * not rejected drafts: offered = accepted + ignored. What core suggestionRetired reads (learning fix 7). Keyed like
+ * handlePostedStories; a handle never offered is 0/0.
+ */
+export async function deskSuggestionStats(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, SuggestStats>> {
+  const keys = [...new Set(handles.map((h) => h.trim().replace(/^@+/, "").toLowerCase()))];
+  const out = new Map<string, SuggestStats>(keys.map((k) => [k, { offered: 0, accepted: 0 }]));
+  const plain = keys.filter((k) => PLAIN_HANDLE.test(k));
+  if (!plain.length) return out;
+  const res = await db.execute<{ handle: string; offered: number; accepted: number }>(sql`
+    SELECT lower(ltrim(o->>'item', '@')) AS handle,
+           count(*) FILTER (WHERE o->>'outcome' IN ('accepted', 'ignored'))::int AS offered,
+           count(*) FILTER (WHERE o->>'outcome' = 'accepted')::int AS accepted
+    FROM ${postDecisions} pd CROSS JOIN LATERAL ${OUTCOMES} AS o
+    WHERE pd.org_id = ${orgId} AND pd.decided_at IS NOT NULL AND pd.decision <> 'rejected'
+      AND o->>'kind' = 'handle' AND o->>'layer' = 'suggest' AND o->>'source' = 'desk'
+      AND lower(ltrim(o->>'item', '@')) = ANY(ARRAY[${sql.join(plain.map((k) => sql`${k}`), sql`, `)}]::text[])
+    GROUP BY 1`);
+  for (const r of res.rows) out.set(r.handle, { offered: Number(r.offered), accepted: Number(r.accepted) });
+  return out;
+}
+
+/**
+ * What the worker reads behind each desk handle (core withKeywordUses): the stories the desk typed it on and its
+ * record as a suggestion. Keyed like handlePostedStories.
+ */
+export async function deskHandleEvidence(db: Db, orgId: string, handles: readonly string[]): Promise<Map<string, DeskHandleEvidence>> {
+  const [stories, stats] = await Promise.all([handlePostedStories(db, orgId, handles), deskSuggestionStats(db, orgId, handles)]);
+  return new Map([...stories].map(([k, s]) => [k, { stories: s, suggest: stats.get(k) ?? { offered: 0, accepted: 0 } }]));
 }

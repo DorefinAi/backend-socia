@@ -43,7 +43,7 @@ describe("rule 3: line 1 never names its city twice", () => {
     const d = draft(fileFor(null, "TNK"), ["टोंक", "टोंक में अवैध खनन पर बड़ी कार्रवाई", ...POINTS]);
     expect(line1(d)).toBe("टोंक में अवैध खनन पर बड़ी कार्रवाई");
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Tonk"]);
-    expect(d.headingPlace).toMatchObject({ placement: "trailing", source: "desk", district: "Tonk", card: "Tonk" });
+    expect(d.headingPlace).toMatchObject({ placement: "trailing", source: "desk", district: "Tonk", card: null });
     // Still the stated district: its police are picked as before
     expect(police(d).length).toBeGreaterThan(0);
   });
@@ -127,13 +127,14 @@ describe("rule 1: every post carries a city hashtag", () => {
     expect(allTags(none)).not.toContain("Jaipur");
   });
 
-  it("D4: a national story naming no place gets NO city: flagged noCity, the three likeliest offered first", () => {
+  it("D4 + P3: a national story naming no place gets NO city: flagged national_story, no Rajasthan place offered", () => {
     const d = composeBreaking({ headline: "यमुना प्रदूषण पर सुप्रीम कोर्ट सख्त", points: ["सरकार से मांगा जवाब"], district: null, town: null, rajasthan: false, leaderPost: false }, rules, book, opts);
     expect(d.hashtags).toEqual([`#${BRAND_NATIONAL}`]);
     expect(d.noCity).toBe(true);
+    expect(d.cityFlag).toBe("national_story");
     expect(d.headingPlace).toMatchObject({ source: "none", placement: "none", card: null, tags: [] });
-    expect(d.hashtagSuggestionItems.slice(0, 2).map((t) => [t.tag, t.source])).toEqual([["#Delhi", "district.city.candidate"], ["#Jaipur", "district.city.candidate"]]);
-    expect(d.warnings.join(" ")).toMatch(/no city hashtag/);
+    expect(d.hashtagSuggestionItems.filter((t) => t.source === "district.city.candidate").map((t) => t.tag)).toEqual(["#Delhi"]);
+    expect(d.warnings.join(" ")).toMatch(/national story/);
   });
 
   it("D4: a national story takes its city from any place its text names, an outside one included; never #Jaipur", () => {
@@ -141,8 +142,8 @@ describe("rule 1: every post carries a city hashtag", () => {
     expect(delhi.hashtags).toEqual([`#${BRAND_NATIONAL}`, "#Delhi"]);
     expect(delhi.noCity).toBe(false);
     const patna = composeBreaking({ headline: "बिहार चुनाव पर बड़ी बैठक", points: ["पटना में होगी बैठक"], district: null, town: null, rajasthan: false, leaderPost: false }, rules, book, opts);
-    expect(patna.hashtags.slice(1).length).toBe(1);
-    expect(patna.hashtags).not.toContain("#Jaipur");
+    // P3: the first CITY the text names is carried; the state (बिहार) is not
+    expect(patna.hashtags).toEqual([`#${BRAND_NATIONAL}`, "#Patna"]);
   });
 
   it("every real breaking fixture file comes out with a city, or flagged no_city", () => {
@@ -159,10 +160,17 @@ describe("rule 1: every post carries a city hashtag", () => {
 });
 
 describe("step 4: reporter rules from the data (23 Nov 2026)", () => {
-  it.each([["NIRMAL", "Jaipur"], ["NARESH", "Jaipur"], ["DINESH_KASANA", "Jaipur"], ["ASHVINI", "Delhi"]])("%s, an outside story naming no place he tagged: '#%s:' in line 1", (token, city) => {
+  it("ASHVINI (an outside rule), an outside story naming no place he tagged: '#Delhi:' in line 1", () => {
+    const d = draft(fileFor("ASHVINI"), ["बेंगलुरु में S-VYASA के दीक्षांत समारोह का आयोजन", "देशभर से पहुंचे छात्र"]);
+    expect(line1(d).startsWith("#Delhi: बेंगलुरु में")).toBe(true);
+    expect(d.headingPlace).toMatchObject({ source: "reporter_rule", placement: "lead", card: "Delhi" });
+    expect(police(d)).toEqual([]);
+  });
+
+  it.each(["NIRMAL", "NARESH", "DINESH_KASANA"])("P3: %s's Jaipur rule never goes on an outside story: #FirstIndiaNews #Bengaluru", (token) => {
     const d = draft(fileFor(token), ["बेंगलुरु में S-VYASA के दीक्षांत समारोह का आयोजन", "देशभर से पहुंचे छात्र"]);
-    expect(line1(d).startsWith(`#${city}: बेंगलुरु में`)).toBe(true);
-    expect(d.headingPlace).toMatchObject({ source: "reporter_rule", placement: "lead", card: city });
+    expect(allTags(d)).not.toContain("Jaipur");
+    expect(d.hashtags).toEqual([`#${BRAND_NATIONAL}`, "#Bengaluru"]);
     expect(police(d)).toEqual([]);
   });
 
@@ -198,7 +206,7 @@ describe("review fixes and owner decisions of 23 Nov 2026", () => {
     expect(line1(d)).toBe("#आकोला: खेत में मिला शव");
     expect(allTags(d)).not.toContain("Alwar");
     expect(d.proposals.some((p) => p.item === "#Alwar")).toBe(false);
-    expect(d.headingPlace).toMatchObject({ placement: "copy", source: "copy", tags: [], card: null });
+    expect(d.headingPlace).toMatchObject({ placement: "copy", source: "copy", tags: [], card: "आकोला", cardHeadline: "आकोला: खेत में मिला शव" });
     // The same with the district from the file code
     const coded = draft(fileFor("VIKAS", "ALW"), ["#आकोला: खेत में मिला शव", ...POINTS]);
     expect(coded.proposals.some((p) => p.item === "#Alwar")).toBe(false);
@@ -218,7 +226,7 @@ describe("review fixes and owner decisions of 23 Nov 2026", () => {
     const d = draft(fileFor(null), ["उदयपुर के गोगुंदा से खबर", "उदयपुर SP डॉ.अमृता दुहन के निर्देशन में नशे के खिलाफ कार्रवाई", ...POINTS]);
     expect(line1(d).startsWith("उदयपुर SP")).toBe(true);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Udaipur", "#गोगुंदा"]);
-    expect(d.headingPlace).toMatchObject({ placement: "trailing", card: "गोगुंदा", town: "गोगुंदा" });
+    expect(d.headingPlace).toMatchObject({ placement: "trailing", card: null, town: "गोगुंदा" });
   });
 
   it("B4: spelling-tolerant town match: a nasal variant, and a town written as two words", () => {
@@ -233,7 +241,7 @@ describe("review fixes and owner decisions of 23 Nov 2026", () => {
     const nirmal = draft(fileFor("NIRMAL"), ["जयपुर में पर्यटन विभाग की बैठक", ...POINTS]);
     expect(line1(nirmal)).toBe("जयपुर में पर्यटन विभाग की बैठक");
     expect(nirmal.hashtags).toContain("#Jaipur");
-    expect(nirmal.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing", card: "Jaipur" });
+    expect(nirmal.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing", card: null });
     const ashvini = draft(fileFor("ASHVINI"), ["दिल्ली में संसद का शीतकालीन सत्र शुरू", ...POINTS]);
     expect(line1(ashvini)).toBe("दिल्ली में संसद का शीतकालीन सत्र शुरू");
     expect(ashvini.hashtags).toContain("#Delhi");
@@ -292,6 +300,7 @@ describe("round 3 (owner, 23 Nov 2026 evening): R1–R8, Q1, Q2", () => {
 `, name, book);
     const slot = slotFromTags(p.tags);
     const d = composeBreaking({ ...p, reporterToken: slot.reporterToken, fileDistrict: slot.district }, rules, book, { ...opts, reporters: two });
+    // A district reporter's untrusted code still wins over a district in the points (only the HEADLINE's opening beats it: P9)
     expect(d.headingPlace).toMatchObject({ source: "file_code", placement: "lead" });
     expect(line1(d).startsWith("#Kota: ")).toBe(true);
   });
@@ -317,15 +326,16 @@ describe("round 3 (owner, 23 Nov 2026 evening): R1–R8, Q1, Q2", () => {
   });
 
   it("R8: a national place on the card keeps its spaces", () => {
-    const d = composeBreaking({ headline: "उत्तर प्रदेश में बड़ा फैसला", points: ["सरकार ने जारी किए आदेश"], district: null, town: null, rajasthan: false, leaderPost: false }, rules, book, opts);
+    const d = composeBreaking({ headline: "बड़ा फैसला", points: ["सरकार ने जारी किए आदेश"], district: "UttarPradesh", town: null, rajasthan: false, leaderPost: false }, rules, book, opts);
     expect(d.headingPlace.card).toBe("Uttar Pradesh");
   });
 
-  it("Q1 (a): the reporter rule wins on a national story too; D4's no-#Jaipur applies only without a reporter rule", () => {
+  it("P3 (owner, 25 Nov 2026, replacing Q1 (a)): a Jaipur reporter rule never goes on a national story", () => {
     const kasana = draft("BTN_NWS_BREAKING_7001_23NOV_US_CONTROL_DINESH_KASANA_BIG.txt", ["दिल्ली में संसद सत्र शुरू", "विपक्ष का हंगामा"]);
     expect(kasana.hashtags[0]).toBe(`#${BRAND_NATIONAL}`);
-    expect(kasana.headingPlace.source).toBe("reporter_rule");
-    expect(allTags(kasana)).toContain("Jaipur");
+    expect(kasana.headingPlace.source).toBe("inferred");
+    expect(allTags(kasana)).not.toContain("Jaipur");
+    expect(allTags(kasana)).toContain("Delhi");
     const nobody = draft("BTN_NWS_BREAKING_7002_23NOV_US_CONTROL_BIG.txt", ["दिल्ली में संसद सत्र शुरू", "विपक्ष का हंगामा"]);
     expect(allTags(nobody)).toContain("Delhi");
     expect(allTags(nobody)).not.toContain("Jaipur");
@@ -359,12 +369,17 @@ describe("the desk's own cases of 24 Nov 2026 (owner: no #Jaipur fallback)", () 
   it.each([
     ["Navin ACB (no code)", "btn_rj_breaking_6010_24nov_us_control_navin_karari_big.txt", ["RAS हरसहाय मीणा की अभियोजन स्वीकृति का ACB को इंतजार", "2013 में ACB ने दर्ज किया था पद के दुरुपयोग का मुकदमा"]],
     ["Amitabh / UP ATS", "btn_rj_breaking_24Nov_vks_1505_control_tv_big_breaking.txt", ["अमिताभ बच्चन के घर, सिंगर दिलजीत दोसांझ के शो को लेकर धमकी का मामला", "UP ATS ने बम धमकी वाले ई-मेल मामले में बड़ा खुलासा किया"]],
-    ["Delhi cabinet", "btn_rj_breaking_24Nov_vks_1643_control_tv_big_breaking.txt", ["दिल्लीः केंद्रीय कैबिनेट की कल बैठक होगी", "कल सुबह 11 बजे कैबिनेट की बैठक"]],
   ])("%s: no #Jaipur on the post or the card; flagged no_city, places offered", (_label, name, lines) => {
     const d = live(name, lines);
     expect(allTags(d)).not.toContain("Jaipur");
     expect(d.headingPlace).toMatchObject({ placement: "none", card: null });
     expect(d.noCity).toBe(true);
     expect(d.hashtagSuggestions).toContain("#Jaipur");
+  });
+  it("Delhi cabinet (P3, 25 Nov 2026): a national story, #FirstIndiaNews #Delhi, no #Jaipur anywhere (\"दिल्लीः\" with a visarga for the colon)", () => {
+    const d = live("btn_rj_breaking_24Nov_vks_1643_control_tv_big_breaking.txt", ["दिल्लीः केंद्रीय कैबिनेट की कल बैठक होगी", "कल सुबह 11 बजे कैबिनेट की बैठक"]);
+    expect(d.hashtags).toEqual([`#${BRAND_NATIONAL}`, "#Delhi"]);
+    expect(allTags(d)).not.toContain("Jaipur");
+    expect(d.hashtagSuggestions).not.toContain("#Jaipur");
   });
 });

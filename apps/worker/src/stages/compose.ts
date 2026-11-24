@@ -7,7 +7,7 @@
 
 import { createHash } from "node:crypto";
 import {
-  LEADER_POST, asFileTags, assemblePostText, nationalWithoutPlace, pickReporter, composeBreaking, recoverDistrictFrom, directoryHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
+  LEADER_POST, asFileTags, assemblePostText, isRajasthanStory, pickReporter, composeBreaking, recoverDistrictFrom, directoryHandleRules, handleProposal, handleReason, handleSource, hashtagGazetteer,
   mergeReporterTokens, resolveReporterStatus, slotFromTags,
   SETTINGS_POSTED_USES, deskAutoKey, districtKeywordCandidates, isSettingsHandleType, withKeywordUses, type BreakingDraft, type Composer, type DeskHandleEvidence, type DeskHandleRow, type DeskHandleRules, type DirectoryHandleRow, type HandlePick, type HandleRules, type SubjectRules, type HashtagGazetteer, type LearnedReporterToken, type Proposal, type ReporterRules,
   type TagSuggestion,
@@ -289,7 +289,6 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
   ]);
   const { topics, desk, learnedReporters, version: topicsVersion } = dict;
   const tags = asFileTags(story.fileTags);
-  const place = book.district(story.district);
   const headline = story.headline ?? "";
   // The reporter and the district the file name states. The copy's district still decides (it sets the
   // hashtag); the file name fills a gap, cross-checks, and is the only source of the byline.
@@ -306,9 +305,9 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       // none: its stored file is parsed again for it; failing that storyDistrict's legacy rule applies
       districtFrom: story.districtFrom ?? (await legacyDistrictFrom(tx, story, book)),
       town: story.town,
-      // No place: Rajasthan, unless the file came from the national desk, or is a national flash about Delhi or
-      // another state (core nationalWithoutPlace, the same rule the parser stored the story by)
-      rajasthan: place ? place.rajasthan : !nationalWithoutPlace(tags, [headline, story.body ?? ""].join(" । "), book, pickReporter(slot.reporterToken, reporters).match?.districts),
+      // No place: Rajasthan, unless the text names only places outside Rajasthan (P3, any file), the file came from the
+      // national desk, or is a national flash (core isRajasthanStory: the rule the parser stored the story by)
+      rajasthan: isRajasthanStory(book, story.district, tags, [headline, story.body ?? ""].join(" । "), pickReporter(slot.reporterToken, reporters).match?.districts),
       leaderPost: LEADER_POST.test(headline),
       reporterToken: slot.reporterToken,
       fileDistrict: slot.district,
@@ -326,8 +325,10 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
     },
   );
   const cut = out.headlineCut && !story.needsCheck.includes("headline_cut") ? [...story.needsCheck, "headline_cut"] : story.needsCheck;
-  // b9 D4: "no_city" follows the latest compose (a re-saved file that now names a place loses it)
-  const needsCheck = out.noCity ? (cut.includes("no_city") ? cut : [...cut, "no_city"]) : cut.filter((c) => c !== "no_city");
+  // b9 D4 / P3: "no_city" (Rajasthan) or "national_story" (national) follows the latest compose (a re-saved file that now
+  // names a place loses it)
+  const cityFree = cut.filter((c) => c !== "no_city" && c !== "national_story");
+  const needsCheck = out.cityFlag ? [...cityFree, out.cityFlag] : cityFree;
   const content = {
     bodyText: out.bodyText,
     // Line 2 as composed ("" when there is none): Fit to 280 rebuilds line 2 only while the draft still carries it

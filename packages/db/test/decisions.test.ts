@@ -73,6 +73,17 @@ describe("item outcomes (brief §2.4)", () => {
   it("reads hashtags and handles out of the post text", () => {
     expect(postItems("#जयपुर: x @A_b, #K2 @a_B")).toEqual({ hashtags: ["#जयपुर", "#K2"], handles: ["@A_b"] });
   });
+
+  it("P5: the desk tag '#Kotputli-Behror' is one item: kept, and no '#Kotputli' logged as the desk's", () => {
+    const merged = [P("#Kotputli-Behror", "emit", "district.place_line"), P("#RajasthanWithFirstIndia", "emit", "brand.geo")];
+    expect(itemOutcomes(merged, "#Kotputli-Behror: नीमराना में आग\n\n#RajasthanWithFirstIndia")).toEqual([
+      { item: "#Kotputli-Behror", kind: "hashtag", layer: "emit", source: "district.place_line", outcome: "kept" },
+      { item: "#RajasthanWithFirstIndia", kind: "hashtag", layer: "emit", source: "brand.geo", outcome: "kept" },
+    ]);
+    // In the tag line too; a Hindi word after a hyphen is not joined ("#Jaipur-दिल्ली" is #Jaipur)
+    expect(postItems("x\n\n#RajasthanWithFirstIndia #Kotputli-Behror").hashtags).toEqual(["#RajasthanWithFirstIndia", "#Kotputli-Behror"]);
+    expect(postItems("#Jaipur-दिल्ली हाईवे").hashtags).toEqual(["#Jaipur"]);
+  });
 });
 
 describe("istDate", () => {

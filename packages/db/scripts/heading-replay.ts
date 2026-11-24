@@ -1,20 +1,27 @@
-// Heading replay (SOCIA_HEADING_GAPS_AND_PLAN 2026-11-23, step 6): every breaking story the desk posted through
-// Socia, re-parsed and re-composed from its FTP file with the CURRENT code and data files, scored against the text
-// the desk actually posted. Read only: the input is a JSON export, nothing touches a database.
+// Heading replay (SOCIA_HEADING_GAPS_AND_PLAN 2026-11-23, step 6; gates of 25 Nov 2026): every breaking story the desk
+// posted through Socia, re-parsed and re-composed from its FTP file with the CURRENT code and data files, scored against
+// the text the desk actually posted. Read only: the input is a JSON export, nothing touches a database.
 //
 //   node --env-file=.env --import tsx packages/db/scripts/export-golden.ts golden.json     (read-only export)
 //   node --import tsx packages/db/scripts/heading-replay.ts golden.json out.json              (exit 1 when a gate fails)
 //
-// Gates (the run FAILS): a Rajasthan post with no city; line 1 naming its city twice (town or district, any spelling);
-// the card's place differing from line 1's. A missing input field or a renamed core function is an error, never a skip.
-// Reported: line-1 place equal to the desk's, wrong city (a city the desk did not use where it used one), national posts
-// flagged no_city, desk places written without a hashtag.
+// Gates (the run FAILS):
+//   - a Rajasthan post with no city that is not flagged no_city;
+//   - line 1 naming its city twice (town or district, any spelling);
+//   - #Jaipur on a national story (a #FirstIndiaNews post, or a story whose text names only places outside Rajasthan and
+//     whose #Jaipur the desk did not write as its dateline, prefix or tag);
+//   - the card heading differing from line 1 (P6/P10): checked on EVERY story, the desk's own tag runs, the kept place
+//     words ("कोटा ग्रामीण…") and compounds ("जयपुर-जमवारामगढ़…") included, against this file's own reading of line 1 (a lead
+//     run's last place, then the text, "#" off; a town tag in place of its word keeps the town; no run, no place in front).
+// A missing input field or a renamed core function is an error, never a skip.
+// Reported: line-1 place equal to the desk's, wrong city (a city the desk did not use where it used one), flagged stories.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import * as core from "@socia/core";
 import {
-  LEADER_POST, PlaceBook, composeBreaking, deskPlaceTag, nationalWithoutPlace, openingPlaceLength, parseBreaking, parseHandleRules, parsePartyHandles,
-  parsePlacesData, parseReporterHandles, parseSubjectHandles, pickReporter, placeMatchKey, placeSpellings, placeWordInCompound, slotFromTags, type BreakingDraft,
+  LEADER_POST, PlaceBook, RAJASTHAN_DISTRICTS, composeBreaking, deskPlaceTag, isRajasthanStory, namesOnlyOutsidePlace, openingPlaceLength, parseBreaking,
+  parseHandleRules, parsePartyHandles, parsePlacesData, parseReporterHandles, parseSubjectHandles, pickReporter, placeSpellings, placeWordInCompound,
+  slotFromTags, type BreakingDraft,
 } from "@socia/core";
 
 const [input, out] = process.argv.slice(2);
@@ -27,7 +34,7 @@ const cfg = (f: string) => JSON.parse(readFileSync(new URL(`../../../apps/worker
 const strict = (file: string) => (message: string) => {
   throw new Error(`heading-replay: ${file}: ${message}`);
 };
-const book = new PlaceBook(parsePlacesData(cfg("rajasthan-places.json")));
+const book = new PlaceBook(parsePlacesData(cfg("rajasthan-places.json"), strict("rajasthan-places.json")));
 const rules = parseHandleRules(cfg("district-handles.json"));
 const subjects = parseSubjectHandles(cfg("subject-handles.json"), strict("subject-handles.json"));
 const reporters = parseReporterHandles(cfg("reporter-handles.json"), strict("reporter-handles.json"));
@@ -51,13 +58,19 @@ rows.forEach((r, i) => {
   }
 });
 
-const TAG = /#([\p{L}\p{M}\p{N}_]+)/gu;
+/** A hashtag; an English tag joined by hyphens is one ("#Kotputli-Behror", P5) */
+const TAG_SRC = String.raw`#([\p{L}\p{M}\p{N}_]+(?:-[A-Za-z0-9]+)*)`;
+const TAG = new RegExp(TAG_SRC, "gu");
 const tagsOf = (s: string) => [...s.matchAll(TAG)].map((m) => m[1]!);
 const DEVANAGARI = /[ऀ-ॿ]/u;
-/** The place a tag names, as one key: the district or national place's name, or "town:<hi>" */
+/** rajasthan.ts's other Latin names of a district ("Khairthal", "Didwana", "Kotputli"), folded to the district's name */
+const DISTRICT_ALIAS = new Map(RAJASTHAN_DISTRICTS.flatMap((d) => d.aliases.filter((a) => /^[A-Za-z]/.test(a)).map((a) => [a.toLowerCase().replace(/[\s_-]+/g, ""), d.name] as const)));
+/** The place a tag names, as one key: the district or national place's name, or "town:<hi>"; alias-aware (the desk's #Khairthal is Khairthal-Tijara) */
 function placeKey(tag: string): string | null {
   const p = core.placeOfTag(book, tag);
   if (p) return p.kind === "town" ? `town:${p.hi}` : `d:${p.districts[0]?.name ?? p.hi}`;
+  const alias = DISTRICT_ALIAS.get(tag.toLowerCase().replace(/[\s_-]+/g, "").replace(/news$/, ""));
+  if (alias) return `d:${alias}`;
   const t = core.tagPlace(tag, tagPlaces);
   return t ? `x:${t.place.toLowerCase()}` : null;
 }
@@ -69,7 +82,7 @@ const cityKeys = (text: string) => new Set(tagsOf(text).map(placeKey).filter((k)
 function hasCityTag(post: string): boolean {
   if (cityKeys(post).size > 0) return true;
   const line1 = post.split("\n")[0]!.trim();
-  const run = /^((?:#[\p{L}\p{M}\p{N}_]+\s*)+)[:：]/u.exec(line1)?.[1] ?? "";
+  const run = new RegExp(String.raw`^((?:${TAG_SRC}\s*)+)[:：]`, "u").exec(line1)?.[1] ?? "";
   const lead = new Set(tagsOf(run));
   return tagsOf(post).some((t) => deskPlaceTag(book, t, lead.has(t)));
 }
@@ -85,12 +98,13 @@ const opensWith = (rest: string, names: string[]) => {
   const k = openingPlaceLength(rest, names);
   return k > 0 && !placeWordInCompound(rest, k);
 };
+const LEAD_RUN = new RegExp(String.raw`^((?:${TAG_SRC}\s*)+)[:：]\s*(.*)$`, "u");
 /** "town" | "district" when line 1 names a lead place again as the headline's opening, in any spelling (B4) */
 function twice(line1: string): "town" | "district" | null {
-  const m = /^((?:#[\p{L}\p{M}\p{N}_]+\s*)+)[:：]\s*(.*)$/u.exec(line1.trim());
+  const m = LEAD_RUN.exec(line1.trim());
   if (!m) return null;
   const lead = tagsOf(m[1]!);
-  const rest = m[2]!;
+  const rest = m.at(-1)!;
   const last = lead.at(-1)!;
   const lastPlace = core.placeOfTag(book, last);
   if (lastPlace?.kind === "town" && opensWith(rest, spellings(last))) return "town";
@@ -101,37 +115,55 @@ function twice(line1: string): "town" | "district" | null {
   }
   return null;
 }
-/**
- * Line 1's place as the post shows it (B7: read from the composed text, not from headingPlace): the lead run's last place,
- * the town tag standing in for a word, or the tag line's city (its town if one, else its district). Null when none.
- */
-function postPlace(d: BreakingDraft): string | null {
-  const line1 = d.bodyText.split("\n")[0] ?? "";
-  const run = /^((?:#[\p{L}\p{M}\p{N}_]+\s*)+)/u.exec(line1.trim())?.[1];
-  const pick = (tags: string[]) => {
-    // A town is a Hindi tag, known to the places file or not ("#तखतगढ़", "#सियोल"); else the first district or national place
-    const town = tags.find((t) => DEVANAGARI.test(t) || core.placeOfTag(book, t)?.kind === "town");
-    if (town) return town;
-    const first = tags.map((t) => core.placeOfTag(book, t)).find((p) => p);
-    return first ? (first.districts[0]?.name ?? null) : null;
-  };
-  if (run && d.headingPlace.placement !== "trailing") return pick(tagsOf(run));
-  return pick(d.hashtags.slice(1).map((t) => t.replace(/^#/, "")));
-}
 const eq = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((x) => b.has(x));
 const leadKeys = (line1: string) => {
-  const m = /^((?:#[\p{L}\p{M}\p{N}_]+\s*)+)/u.exec(line1.trim());
+  const m = new RegExp(String.raw`^((?:${TAG_SRC}\s*)+)`, "u").exec(line1.trim());
   return new Set((m ? tagsOf(m[1]!) : []).map(placeKey).filter((k): k is string => !!k));
 };
+
+/**
+ * P6/P10: the card heading for a line 1, read here independently of the composer (as the desk's X cards of 23–24 Nov show
+ * it): a lead run ending in ":" with a place puts its LAST place in front (a town or Hindi tag as written, a Latin district or
+ * national place by name, a desk tag as written), then the text with every "#" off; a run of place tags standing in for a
+ * word ("#Bundi #नैनवां में…") keeps its last tag; otherwise line 1 with "#" off and no place in front.
+ */
+function expectedCard(line1: string): string {
+  const line = line1.normalize("NFC").replace(/\s+/g, " ").trim();
+  const off = (t: string) => t.replace(/#(?=[\p{L}\p{M}\p{N}_])/gu, "").replace(/\s+/g, " ").trim();
+  const isPlace = (t: string) => core.placeOfTag(book, t) !== null || deskPlaceTag(book, t, true);
+  const name = (t: string) => {
+    const p = core.placeOfTag(book, t);
+    const d = p && p.kind !== "town" ? p.districts[0] : null;
+    if (!d || DEVANAGARI.test(t)) return t;
+    if (d.deskTag && d.deskTag.toLowerCase() === t.toLowerCase()) return d.deskTag;
+    return d.rajasthan ? d.name : d.name.replace(/([a-z])([A-Z])/g, "$1 $2");
+  };
+  const run = new RegExp(String.raw`^((?:${TAG_SRC}\s*)+)[:：]\s*`, "u").exec(line);
+  if (run) {
+    const last = tagsOf(run[1]!).filter(isPlace).at(-1);
+    if (last) {
+      const rest = off(line.slice(run[0].length));
+      return rest ? `${name(last)}: ${rest}` : name(last);
+    }
+  }
+  const inline = new RegExp(String.raw`^((?:${TAG_SRC}\s+)+)(?=[^#\s])`, "u").exec(line);
+  if (inline) {
+    const tags = tagsOf(inline[1]!);
+    if (tags.length > 1 && tags.every(isPlace)) return `${tags.at(-1)} ${off(line.slice(inline[0].length))}`.trim();
+  }
+  return off(line);
+}
+/** A place in front of the card ("Kota: …") only when line 1 has a lead run with a place (never the old D1 "Kota:" on its own) */
+const cardPrefixWithoutRun = (line1: string, card: string) => !LEAD_RUN.test(line1.trim()) && /^[^\s:：]{2,30}[:：]\s/u.test(card) && !/^[^\s:：]{2,30}[:：]\s/u.test(line1.replace(/#/g, "").trim());
 
 const result = rows.map((r) => {
   const p = parseBreaking(r.source_text, r.file_name, book);
   const slot = slotFromTags(p.tags);
-  // R6: as the worker decides it (apps/worker/src/stages/compose.ts): a stated place, else the national-desk rule with the
-  // reporter's districts
-  const place = book.district(p.district);
-  const worksAsRajasthan = place ? place.rajasthan : !nationalWithoutPlace(p.tags, [p.headline, p.points.join("\n")].join(" । "), book, pickReporter(slot.reporterToken, reporters).match?.districts);
-  const d = composeBreaking(
+  const text = [p.headline, p.points.join("\n")].join(" । ");
+  // R6: as the worker decides it (apps/worker/src/stages/compose.ts, core isRajasthanStory): a stated place, else the text and
+  // the file's national rules with the reporter's districts
+  const worksAsRajasthan = isRajasthanStory(book, p.district, p.tags, text, pickReporter(slot.reporterToken, reporters).match?.districts);
+  const d: BreakingDraft = composeBreaking(
     {
       headline: p.headline, points: p.points, district: p.district, districtFrom: p.districtFrom, town: p.town, rajasthan: worksAsRajasthan,
       leaderPost: LEADER_POST.test(p.headline), rawHeadline: p.rawHeadline, reporterToken: slot.reporterToken, fileDistrict: slot.district,
@@ -145,20 +177,27 @@ const result = rows.map((r) => {
   const deskLine1 = desk.split("\n")[0] ?? "";
   const rajasthan = d.hashtags[0] === "#RajasthanWithFirstIndia";
   const hp = d.headingPlace;
-  const linePlace = hp.placement === "copy" || hp.placement === "none" ? null : postPlace(d);
   const ourCity = [...cityKeys(ours)];
   const deskCity = [...cityKeys(desk)];
+  const card = hp.cardHeadline ?? null;
+  const expected = expectedCard(ourLine1);
+  const jaipur = ourCity.includes("d:Jaipur");
   return {
     file: r.file_name, at: r.created_at, district: p.district, districtFrom: p.districtFrom, town: p.town, rajasthan,
-    ourLine1, deskLine1, ourTags: d.hashtags, suggest: d.hashtagSuggestions, headingPlace: hp, storyHeadline: p.headline, noCity: d.noCity,
+    ourLine1, deskLine1, ourTags: d.hashtags, suggest: d.hashtagSuggestions, headingPlace: hp, storyHeadline: p.headline, noCity: d.noCity, cityFlag: d.cityFlag,
     cityTagOurs: hasCityTag(ours), cityTagDesk: hasCityTag(desk),
     deskPlaceNoTag: !hasCityTag(ours) && hp.placement === "copy",
     twiceOurs: twice(ourLine1), twiceDesk: twice(deskLine1),
     leadEqual: eq(leadKeys(ourLine1), leadKeys(deskLine1)),
     cityEqual: eq(new Set(ourCity), new Set(deskCity)),
     wrongCity: deskCity.length > 0 && ourCity.some((k) => !deskCity.includes(k)),
-    cardChecked: !!linePlace || !!hp.card,
-    cardEqual: !linePlace && !hp.card ? true : !!linePlace && !!hp.card && placeMatchKey(linePlace) === placeMatchKey(hp.card),
+    // A national post, or a story whose text names only outside places where #Jaipur did not come from the desk's own words
+    // (a "जयपुर" dateline, a "जयपुर:" prefix or tag is the desk stating the place)
+    jaipurOnNational: jaipur && (!rajasthan || (namesOnlyOutsidePlace(book, text) && !core.isExplicitDistrict(p.districtFrom))),
+    card, expectedCard: expected,
+    // P6/P10: on EVERY story (the old gate skipped the D1-guard and compound cases: that is how "Kota: ग्रामीण…" passed)
+    cardEqual: card !== null && card === expected,
+    cardPrefixWithoutRun: card !== null && cardPrefixWithoutRun(ourLine1, card),
     ourCity, deskCity,
   };
 });
@@ -169,22 +208,24 @@ const pct = (k: number, of = n) => `${k}/${of} (${((100 * k) / Math.max(1, of)).
 const by = (f: (x: (typeof result)[number]) => boolean, xs = result) => xs.filter(f).length;
 const raj = result.filter((x) => x.rajasthan);
 const nat = result.filter((x) => !x.rajasthan);
-const checked = result.filter((x) => x.cardChecked);
+const missing = (x: (typeof result)[number]) => x.rajasthan && !x.cityTagOurs && !x.deskPlaceNoTag && !x.noCity;
 console.log(`stories: ${n} (Rajasthan ${raj.length}, national ${nat.length})`);
-console.log(`city tag missing, not flagged   ${by((x) => !x.cityTagOurs && !x.deskPlaceNoTag && !x.noCity)}   (desk wrote a place without a hashtag: ${by((x) => x.deskPlaceNoTag)})`);
-console.log(`flagged no_city                  Rajasthan ${by((x) => x.noCity, raj)} of ${raj.length}, national ${by((x) => x.noCity, nat)} of ${nat.length}`);
-console.log(`#Jaipur not from a reporter rule  ${by((x) => x.ourCity.includes("d:Jaipur") && x.headingPlace.source !== "reporter_rule" && x.headingPlace.district !== "Jaipur")}`);
+console.log(`city missing on Rajasthan, not flagged  ${by(missing)}   (desk wrote a place without a hashtag: ${by((x) => x.deskPlaceNoTag)})`);
+console.log(`flagged                          Rajasthan no_city ${by((x) => x.cityFlag === "no_city", raj)} of ${raj.length}, national_story ${by((x) => x.cityFlag === "national_story", nat)} of ${nat.length}`);
+console.log(`#Jaipur on a national story      ${by((x) => x.jaipurOnNational)}`);
 console.log(`wrong city (desk used another)   ${by((x) => x.wrongCity)}`);
 console.log(`town said twice                  ours ${by((x) => x.twiceOurs === "town")}   desk ${by((x) => x.twiceDesk === "town")}`);
 console.log(`district said twice              ours ${by((x) => x.twiceOurs === "district")}   desk ${by((x) => x.twiceDesk === "district")}`);
 console.log(`line-1 place = desk              ${pct(by((x) => x.leadEqual))}`);
 console.log(`post city tags = desk            ${pct(by((x) => x.cityEqual))}`);
-console.log(`card place = line-1 place        ${pct(by((x) => x.cardEqual, checked), checked.length)}`);
+console.log(`card = caption line 1            ${pct(by((x) => x.cardEqual))}   (a place in front with no lead run: ${by((x) => x.cardPrefixWithoutRun)})`);
 const gates: [string, number][] = [
-  ["posts with no city that are not flagged no_city", by((x) => !x.cityTagOurs && !x.deskPlaceNoTag && !x.noCity)],
+  ["Rajasthan posts with no city that are not flagged no_city", by(missing)],
   ["line 1 naming its town twice", by((x) => x.twiceOurs === "town")],
   ["line 1 naming its district twice", by((x) => x.twiceOurs === "district")],
-  ["card place differing from line 1's", by((x) => !x.cardEqual)],
+  ["#Jaipur on a national story", by((x) => x.jaipurOnNational)],
+  ["card heading differing from line 1", by((x) => !x.cardEqual)],
+  ["a place in front of the card with no lead run on line 1", by((x) => x.cardPrefixWithoutRun)],
 ];
 const failed = gates.filter(([, k]) => k > 0);
 for (const [what, k] of failed) console.log(`GATE FAILED: ${what}: ${k}`);

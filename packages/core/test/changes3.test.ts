@@ -249,7 +249,7 @@ describe("Changes #3 step 3: the district-when-missing policy for four more repo
     const d = draft(fileFor("BHANWAR"), ["कोचिंग छात्रों के लिए नई गाइडलाइन जारी | Rajasthan News", "सभी संस्थानों को भेजे गए निर्देश"]);
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.hashtags).toEqual(["#RajasthanWithFirstIndia", "#Kota"]);
-    expect(d.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing", card: "Kota" });
+    expect(d.headingPlace).toMatchObject({ source: "reporter_rule", placement: "trailing", card: null });
     expect(d.proposals.find((p) => p.item === "#Kota")).toMatchObject({ layer: "emit", source: "reporter_policy" });
     expect(d.hashtagSuggestions).not.toContain("#Kota");
   });

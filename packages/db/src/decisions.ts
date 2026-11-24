@@ -122,7 +122,12 @@ async function guarded(tx: Executor, context: Record<string, unknown>, fn: (sp: 
 
 // ─── Pure helpers ───────────────────────────────────────────────────────────
 
-const TAG_OR_MENTION = /[#@][\p{L}\p{M}\p{N}_]+/gu;
+/**
+ * A hashtag or handle. An English tag joined by hyphens ("#Kotputli-Behror", the desk tag of a merged district: P5, owner
+ * 25 Nov 2026) is ONE item here, as the composer wrote it, though X links only its first word: otherwise the outcome log
+ * would read the composer's tag as removed and "#Kotputli" as a tag the desk added.
+ */
+const TAG_OR_MENTION = /#[A-Za-z0-9_]+(?:-[A-Za-z0-9]+)+(?![\p{L}\p{M}\p{N}_])|[#@][\p{L}\p{M}\p{N}_]+/gu;
 const URL_RE = /\bhttps?:\/\/\S+|\b(?:www\.)?[a-z0-9-]+\.(?:com|in|org|net|co|ly|me)\/\S*/giu;
 
 /** An item's comparison key: "#jaipur", "@rajgovofficial" */

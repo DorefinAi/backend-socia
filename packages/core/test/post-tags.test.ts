@@ -189,13 +189,14 @@ const draft = (text: string, file: string) => {
 describe("12 Nov ACB file: a bureau reporter's file code picks no handle, and gives way to the district the text names", () => {
   it("puts #Dungarpur in the tag line, never #Jaipur from the JPR code; offers #ACB without applying it", () => {
     const { p, d } = draft(ACB_TEXT, ACB_FILE);
-    // Parsed, the JPR code stands; storyDistrict drops it because Navin files for no single district
-    expect([p.district, p.districtFrom]).toEqual(["Jaipur", "file_code"]);
+    // Parsed, the headline's opening district beats the JPR code (P9); for Navin (no district of his own) storyDistrict keeps
+    // it the text's district: a tag in the tag line, no handle
+    expect([p.district, p.districtFrom]).toEqual(["Dungarpur", "headline_lead"]);
     // Owner, 23 Nov 2026: an untrusted file code (Navin files every district under JPR) is the city only when the text
     // names no district; here it names Dungarpur, as the desk wrote it
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Dungarpur"]);
-    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: "Dungarpur" });
+    expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing", card: null });
     expect(d.hashtagSuggestions).toContain("#ACB");
     expect(d.mentions).not.toContain("@jaipur_police");
     expect(d.mentions).not.toContain("@DungarpurP");
@@ -268,13 +269,16 @@ describe("review fixes (12 Nov): the file code stands; the headline's district o
   ])("keeps the file's district: %s", (headline) => {
     expect(at(headline)).toMatchObject({ district: "Jaipur", districtFrom: "file_code" });
   });
+  it("keeps the file's district, and the headline's would be offered: a compound is no opening (डीग-कुम्हेर)", () => {
+    const headline = "डीग-कुम्हेर विधायक डॉ. शैलेश सिंह आज पहुंचेंगे डीग";
+    expect(at(headline)).toMatchObject({ district: "Jaipur", districtFrom: "file_code" });
+    expect(inferHeadlineDistrict(book, headline)?.name).toBe("Deeg");
+  });
   it.each([
     ["डूंगरपुर में ACB कार्रवाई", "Dungarpur"],
-    ["डीग-कुम्हेर विधायक डॉ. शैलेश सिंह आज पहुंचेंगे डीग", "Deeg"],
     ["सीकर जिले के खाटूश्यामजी में भीड़", "Sikar"],
-  ])("keeps the file's district, and the headline's would be offered: %s", (headline, district) => {
-    expect(at(headline)).toMatchObject({ district: "Jaipur", districtFrom: "file_code" });
-    expect(inferHeadlineDistrict(book, headline)?.name).toBe(district);
+  ])("P9 (owner, 25 Nov 2026): a headline OPENING with another district beats the file code: %s", (headline, district) => {
+    expect(at(headline)).toMatchObject({ district, districtFrom: "headline_lead" });
   });
   it.each([
     ["ओबीसी कोटा बढ़ाने की मांग तेज"],
@@ -417,7 +421,7 @@ describe("b6 fix brief fixtures", () => {
     const { d } = file("चित्तौड़गढ़-उदयपुर हाईवे पर हादसा", ["दो वाहनों की भिड़ंत"], { place: "चित्तौड़गढ़" });
     expect(d.bodyText.startsWith("चित्तौड़गढ़-उदयपुर हाईवे पर हादसा")).toBe(true);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Chittorgarh"]);
-    expect(d.headingPlace).toMatchObject({ source: "desk", placement: "trailing", card: "Chittorgarh" });
+    expect(d.headingPlace).toMatchObject({ source: "desk", placement: "trailing", card: null });
     expect(everyTag(d)).not.toMatch(/#Udaipur\b/);
   });
 

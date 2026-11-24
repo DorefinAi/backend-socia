@@ -333,3 +333,48 @@ describe("P6/P10: one place rule for the caption and the card", () => {
     expect(d.headingPlace.cardHeadline).toBe("नदबई: मारपीट में अधेड़ की मौत");
   });
 });
+
+describe("P3 (lead, 25 Nov 2026): anything of Rajasthan's keeps a story Rajasthan; only the headline or first point can make it national", () => {
+  it.each([
+    ["a Jaipur town in a route name ('कालाडेरा रेनवाल रोड')", "BTN_RJ_BREAKING_2050_24NOV_mh_CONTROL_jpr18_big.txt", ["ट्रक की सीट पर बैठे चालक की नीचे गिरने से हुई मौत", "कालाडेरा रेनवाल रोड पर कानरपुरा के पास की घटना", "दिल्ली से आ रहा था ट्रक"]],
+    ["the desk's own Hindi place tag ('#कालाडेरा:')", fileFor(null), ["#कालाडेरा: ट्रक की सीट से गिरकर चालक की मौत", "दिल्ली से आ रहा था ट्रक"]],
+    ["ACB", "BTN_RAJ_BREAKING_1301_23NOV_NDR_JNS_UPDATE_BIG_FULL.txt", ["शिखर अग्रवाल ACB प्रकरण !", "दिल्ली में इस बारे में शीर्ष स्तर पर दो बार हो चुका विचार विमर्श"]],
+    ["Gehlot's Delhi visit", "BTN_RJ_BREAKING_6104_18NOV_US_CONTROL_Dinesh_Dangi_BIG.txt", ["अशोक गहलोत का दिल्ली दौरा", "गहलोत दिल्ली में कार्यक्रम में होंगे शामिल"]],
+    ["Pilot's Punjab trip", "BTN_RJ_BREAKING_2121_23NOV_mh_CONTROL_Dinesh_Dangi_big.txt", ["सचिन पायलट आज पंजाब के दौरे पर", "सचिन पायलट पहुंचे पंजाब के अमृतसर"]],
+    ["Dotasra in the first point", "BTN_RAJ_BREAKING_1302_23NOV_NDR_Aishwarya_Karari_BIG.txt", ["भाजपा में जाट Vote Bank को लेकर अंदरूनी मंथन", "गोविंद डोटासरा के कद के सामने भाजपा में बेचैनी", "दिल्ली तक पहुंची बात"]],
+    ["the Chief Secretary in Seoul ('#सियोल:')", fileFor("RITURAJ"), ["#सियोल: मुख्य सचिव की 34 बैठकें", "कोरिया सरकार से समझौते"]],
+    ["the state's विधानसभा", fileFor(null), ["विधानसभा में हंगामा", "दिल्ली के नेताओं ने भी दी प्रतिक्रिया"]],
+    ["an outside place only in the body ('कांग्रेस से बड़ी खबर')", fileFor("VIKAS"), ["कांग्रेस से बड़ी खबर", "कांग्रेस ने अपने सांसदों को दिए निर्देश", "दिल्ली में होगी बैठक"]],
+  ])("%s: Rajasthan", (_label, file, lines) => {
+    const d = worker(file, lines as string[]);
+    expect(d.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+  });
+
+  it.each([
+    ["बिहार के वैशाली में PM मोदी का संबोधन", "नीतीश कुमार के सम्मान में सेतु का नाम"],
+    ["पंजाब PCS भर्ती को लेकर हाईकोर्ट का बड़ा फैसला", "पंजाब लोक सेवा आयोग की भर्ती प्रक्रिया"],
+    ["दिल्ली सरकार के विभागों में 1,260 पदों पर भर्ती", "आवेदन की अंतिम तिथि तय"],
+    ["दिल्ली विधानसभा में हंगामा", "विपक्ष का वॉकआउट"],
+  ])("national when the headline or first point names an outside place and nothing is Rajasthan's: %s", (headline, point) => {
+    const d = worker(fileFor("TV"), [headline, point]);
+    expect(d.hashtags[0]).toBe("#FirstIndiaNews");
+  });
+
+  it("an airline pilot is no Sachin Pilot ('पायलट' alone is no Rajasthan leader)", () => {
+    const d = worker(fileFor("TV"), ["दिल्ली एयरपोर्ट पर पायलट की सूझबूझ से टला हादसा", "विमान सुरक्षित उतरा"]);
+    expect(d.hashtags[0]).toBe("#FirstIndiaNews");
+  });
+});
+
+describe("the merged districts' hyphenated names are the district, never a route", () => {
+  it("'खैरथल-तिजारा से हेमसिंह परमार की Exclusive Report' in an ALW21 file: Khairthal-Tijara, #Khairthal, not #Alwar", () => {
+    const d = worker("BTN_RJ_BREAKING_2026_24NOV_mh_CONTROL_ALW21_big.txt", ["खैरथल-तिजारा से हेमसिंह परमार की Exclusive Report", "कोटकासिम में अपहरण की FIR पर कांग्रेस का प्रदर्शन"]);
+    expect(d.headingPlace.district).toBe("Khairthal-Tijara");
+    expect(tagsOf(d)).toContain("Khairthal");
+    expect(tagsOf(d)).not.toContain("Alwar");
+  });
+  it.each([["कोटपूतली-बहरोड़ में बड़ा हादसा", "Kotputli-Behror"], ["डीडवाना-कुचामन में बारिश", "Didwana-Kuchaman"]])("'%s' in a JPR file opens with %s", (headline, district) => {
+    const p = parseBreaking(`x\r\n${headline}\r\nपहला बिंदु\r\n`, fileFor(null, "JPR"), book);
+    expect(p.district).toBe(district);
+  });
+});

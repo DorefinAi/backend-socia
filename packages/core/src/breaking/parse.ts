@@ -302,7 +302,9 @@ export function headlineDistrictTags(book: PlaceBook, headline: string): Distric
  * After a place word: from, up to, to, for ("से", "तक", "को", "के लिए"): the place is an origin or a destination; a comma
  * or "और" makes it the first of a list ("कोटा, बारां, करौली और श्रीगंगानगर में…"), not the story's place
  */
-const LEAD_AWAY = /^\s*(?:[,،]|(?:से|तक|को|के\s+लिए|की\s+ओर|और|व|एवं|तथा)(?![\p{L}\p{M}]))/u;
+/** "<place> से <reporter> की (एक्सक्लूसिव / Exclusive) रिपोर्ट / Report / खबर": a byline names where the story is */
+const BYLINE_AFTER = /^\s*से\s+.{2,40}?\s+की\s+(?:\S+\s+)?(?:रिपोर्ट|खबर|report|story)(?![\p{L}\p{M}])/iu;
+const LEAD_AWAY =/^\s*(?:[,،]|(?:से|तक|को|के\s+लिए|की\s+ओर|और|व|एवं|तथा)(?![\p{L}\p{M}]))/u;
 
 /**
  * P9: the Rajasthan district the headline OPENS with, in any spelling ("बालोतरा शहर के…", "खैरथल के किशनगढ़बास में…"), never
@@ -323,8 +325,9 @@ export function leadDistrict(book: PlaceBook, headline: string): DistrictInfo | 
   }
   // A route or building keeps its words ("अजमेर रोड पर हादसा"): no longer the opening once they are taken out
   const route = best && !withoutRoutesAndBuildings(text).trimStart().startsWith(text.slice(0, len));
-  // Where someone comes from or goes to is not where the story is ("उदयपुर से लौट रहे जयपुर के परिवार…", "… के लिए")
-  const away = best && LEAD_AWAY.test(text.slice(len));
+  // Where someone comes from or goes to is not where the story is ("उदयपुर से लौट रहे जयपुर के परिवार…", "… के लिए"); a byline
+  // is ("खैरथल-तिजारा से हेमसिंह परमार की Exclusive Report": the hyphen is the district's own name, no route)
+  const away = best && LEAD_AWAY.test(text.slice(len)) && !BYLINE_AFTER.test(text.slice(len));
   if (best && !placeWordInCompound(text, len) && !route && !away) return best;
   for (const m of headline.normalize("NFC").matchAll(/([\p{L}\p{M}]+)\s+शहर(?![\p{L}\p{M}])/gu)) {
     const p = book.lookup(m[1]!);
@@ -522,32 +525,80 @@ function placeInText(book: PlaceBook, text: string, hint: string | null): { dist
  *   5. otherwise (a Rajasthan reporter's flash): Rajasthan.
  * parseBreaking (no roster) and the composer both read it.
  */
-export function nationalWithoutPlace(tags: FileTags | null | undefined, text: string, book: PlaceBook, reporterDistricts?: readonly string[]): boolean {
+export function nationalWithoutPlace(tags: FileTags | null | undefined, text: StoryText, book: PlaceBook, reporterDistricts?: readonly string[]): boolean {
   if (!tags) return false;
-  // P3 (owner, 25 Nov 2026): rule 2 holds for EVERY file, not only the flash: a story whose text names only places outside
-  // Rajasthan (and never says राजस्थान) is national ("यूपी चुनाव को लेकर बड़ी खबर" from the TV desk went out Rajasthan)
-  if (namesOnlyOutsidePlace(book, text)) return true;
+  const lines = storyLines(text);
+  // The NWS desk's files are national, as before 25 Nov (the desk posts them #FirstIndiaNews, its Rajasthan columns too): a
+  // Rajasthan place in the headline or first points gives the parser a district before this is asked
+  if (tags.other.includes("NWS") && !isNationalFlash(tags)) return true;
+  // P3 (owner and lead, 25 Nov 2026): anything of Rajasthan's in the story (a place anywhere, an institution, a Rajasthan
+  // leader as the subject, the desk's own Hindi place tag) keeps it Rajasthan: the desk posts Pilot's Punjab trip and
+  // Gehlot's Delhi visit #RajasthanWithFirstIndia
+  if (rajasthanSignal(book, lines)) return false;
+  // Rule 2 for EVERY file: the headline or the first point names a place outside Rajasthan ("यूपी चुनाव को लेकर बड़ी खबर",
+  // "बिहार के वैशाली में PM मोदी"). A place named only further down never flips a story (as before 25 Nov)
+  if (outsideInLead(book, lines)) return true;
   if (isNationalFlash(tags)) {
-    if (/राजस्थान/u.test(text)) return false;
+    // The flash keeps its own rule 2 on the whole text (17 Nov 2026)
+    if (placeInText(book, lines.join(" । "), null)?.national) return true;
     if (reporterDistricts?.length && reporterDistricts.every((d) => book.district(d)?.rajasthan === false)) return true;
     return !tags.reporter;
   }
   return fromNationalDesk(tags);
 }
 
-/** P3: the text never says राजस्थान, names no Rajasthan place (routes and buildings aside), and names one outside it */
-export function namesOnlyOutsidePlace(book: PlaceBook, text: string): boolean {
-  return !/राजस्थान/u.test(text) && !RAJASTHAN_HOUSE.test(text) && !!placeInText(book, text, null)?.national;
+/** A story's text: its lines (headline first, then the points), or the old joined form ("headline । point\npoint") */
+export type StoryText = string | readonly string[];
+const storyLines = (text: StoryText): string[] =>
+  (typeof text === "string" ? text.split(/\s+।\s+|\n/u) : [...text]).map((l) => l.normalize("NFC").trim()).filter(Boolean);
+
+/** P3: no Rajasthan signal anywhere, and the headline or first point names a place outside Rajasthan */
+export function namesOnlyOutsidePlace(book: PlaceBook, text: StoryText): boolean {
+  const lines = storyLines(text);
+  return !rajasthanSignal(book, lines) && outsideInLead(book, lines);
 }
 /** Rajasthan's own houses in Delhi ("बीकानेर हाउस", "जोधपुर हाउस"): a story there is the state's news, not Delhi's */
 const RAJASTHAN_HOUSE = /(?:बीकानेर|जोधपुर|जयपुर|उदयपुर)\s*हाउस/u;
+/** Rajasthan's own institutions (lead, 25 Nov 2026): its ACB, RPSC, staff board, RAS, secretariat */
+const RAJASTHAN_INSTITUTION = /(?<![A-Za-z])(?:ACB|RPSC|RSSB|RSMSSB|RAS)(?![A-Za-z])|एसीबी|आरपीएससी|सचिवालय/u;
+/**
+ * Rajasthan's leaders as a story's subject (subject-handles.json: the state government, the Speaker and opposition, the
+ * party chiefs, the state's own MPs and union ministers): their trips to Delhi or Punjab are still Rajasthan news
+ */
+const RAJASTHAN_LEADER =
+  /गहलोत|सचिन\s+पायलट|भजनलाल|भजन\s+लाल|डोटासरा|जूली|राठौड़|वसुंधरा|वसुन्धरा|बेनीवाल|पूनिया|दीया\s+कुमारी|दिया\s+कुमारी|किरोड़ी|बैरवा|खींवसर|दिलावर|देवनानी|बागडे|मेघवाल|ओम\s+बिरला|ओम\s+बिड़ला|शेखावत|श्रीनिवास(?![\p{L}\p{M}])|खर्रा|गोदारा|जोगाराम|(?<![\p{L}\p{M}])रोत(?![\p{L}\p{M}])/u;
+
+/**
+ * Anything of Rajasthan's in the story: "राजस्थान", a Rajasthan district or town anywhere (route names included: "कालाडेरा
+ * रेनवाल रोड" is in Jaipur), one of its houses in Delhi, its institutions (ACB, RPSC, सचिवालय, its विधानसभा), one of its
+ * leaders, or the desk's own unknown Hindi place tag leading the headline ("#कालाडेरा:", "#सियोल:" on the Chief Secretary's trip)
+ */
+function rajasthanSignal(book: PlaceBook, lines: readonly string[]): boolean {
+  const all = lines.join(" । ");
+  if (/राजस्थान/u.test(all) || RAJASTHAN_HOUSE.test(all) || RAJASTHAN_INSTITUTION.test(all)) return true;
+  // A leader is the SUBJECT in the headline or the first point; one congratulating in the body is not ("CM भजनलाल ने दी बधाई"
+  // under a union minister's birthday)
+  if (RAJASTHAN_LEADER.test(lines.slice(0, 2).join(" । "))) return true;
+  if (book.find(all).some((m) => m.entry.data.kind !== "national" && m.entry.data.districts.some((d) => d.rajasthan))) return true;
+  // "विधानसभा", unless another state's ("दिल्ली विधानसभा", "बिहार विधानसभा चुनाव")
+  for (const m of all.matchAll(/([\p{L}\p{M}]+)\s+विधानसभा|(?:^|[^\p{L}\p{M}])विधानसभा/gu)) {
+    if (!m[1] || book.lookup(m[1])?.kind !== "national") return true;
+  }
+  const lead = /^#([\p{L}\p{M}]+)\s*[:：]?/u.exec(lines[0] ?? "")?.[1];
+  return !!lead && DEVANAGARI.test(lead) && !PARTY.test(lead) && !notAPlace(lead) && book.hashtag(lead)?.kind !== "national";
+}
+
+/** P3: the headline or the first point names a place outside Rajasthan (routes and buildings aside) */
+function outsideInLead(book: PlaceBook, lines: readonly string[]): boolean {
+  return lines.slice(0, 2).some((l) => !!placeInText(book, l, null)?.national);
+}
 
 /**
  * The post's brand as the worker decides it, one rule for the worker, the replay and the tests: a stated place decides
- * (stories.district: a Rajasthan district or a national place); with none, nationalWithoutPlace on the text, with the
- * filing reporter's districts.
+ * (stories.district: a Rajasthan district or a national place); with none, nationalWithoutPlace on the text (its lines), with
+ * the filing reporter's districts.
  */
-export function isRajasthanStory(book: PlaceBook, district: string | null | undefined, tags: FileTags | null | undefined, text: string, reporterDistricts?: readonly string[]): boolean {
+export function isRajasthanStory(book: PlaceBook, district: string | null | undefined, tags: FileTags | null | undefined, text: StoryText, reporterDistricts?: readonly string[]): boolean {
   const place = book.district(district);
   return place ? place.rajasthan : !nationalWithoutPlace(tags, text, book, reporterDistricts);
 }
@@ -694,7 +745,7 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
     // P3 (owner, 25 Nov 2026): a Rajasthan file code never beats a place outside Rajasthan that the text names, nor the
     // national flash's own rule when the text names no Rajasthan place (NAT_FLASH_RAJ_JPR's Bhopal, Hyderabad, Nepal,
     // Delhi-NCR stories went out "#Jaipur:")
-    } else if (code?.rajasthan && !(inText && !inText.national) && nationalWithoutPlace(tags, all, book)) {
+    } else if (code?.rajasthan && !(inText && !inText.national) && nationalWithoutPlace(tags, [headline, ...points], book)) {
       national = true;
     } else {
       district = code;
@@ -715,7 +766,7 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   }
   // National news with no place (NWS desk files; the national flash by rule b) is not missing a district. A flash
   // with a Rajasthan place keeps it (owner 17 Nov 2026, replacing 15 Nov's L2 "always national")
-  if (!district && !national && nationalWithoutPlace(tags, [headline, ...points].join(" । "), book)) national = true;
+  if (!district && !national && nationalWithoutPlace(tags, [headline, ...points], book)) national = true;
   const leaderPost = LEADER_POST.test(headline);
   // A leader's post and state-wide news (secretariat, a state decision) have no district and need none; nor does a
   // flash (a reporter's flash often has no place, and the reporter's own district rule fills it)

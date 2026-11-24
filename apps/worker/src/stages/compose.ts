@@ -305,9 +305,10 @@ async function composeBreakingStory(tx: Tx, story: typeof stories.$inferSelect, 
       // none: its stored file is parsed again for it; failing that storyDistrict's legacy rule applies
       districtFrom: story.districtFrom ?? (await legacyDistrictFrom(tx, story, book)),
       town: story.town,
-      // No place: Rajasthan, unless the text names only places outside Rajasthan (P3, any file), the file came from the
-      // national desk, or is a national flash (core isRajasthanStory: the rule the parser stored the story by)
-      rajasthan: isRajasthanStory(book, story.district, tags, [headline, story.body ?? ""].join(" । "), pickReporter(slot.reporterToken, reporters).match?.districts),
+      // No place: Rajasthan, unless nothing of Rajasthan's is in the story and its headline or first point names a place
+      // outside it (P3, any file), the file came from the national desk, or is a national flash (core isRajasthanStory: the
+      // rule the parser stored the story by)
+      rajasthan: isRajasthanStory(book, story.district, tags, [headline, ...(story.body ?? "").split(/\r?\n/).filter(Boolean)], pickReporter(slot.reporterToken, reporters).match?.districts),
       leaderPost: LEADER_POST.test(headline),
       reporterToken: slot.reporterToken,
       fileDistrict: slot.district,

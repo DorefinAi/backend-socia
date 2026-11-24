@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   DESK_LEARNED_AUTO_USES, DESK_LEARNED_POSTED_USES, PlaceBook, PostedLearner, SUGGEST_RETIRE_OFFERS, deskAutoKey, deskHandleRules, deskKeywordAuto, deskKeywordOffered,
-  districtKeywordCandidates, handleDistricts, handleLookalikeOf, handleStoryNames, mergeKeywords, parseHandleRules, parsePlacesData, parseSubjectHandles,
+  districtKeywordCandidates, handleDistricts, handleLookalikeOf, handleStoryNames, handleTypoOf, mergeKeywords, parseHandleRules, parsePlacesData, parseSubjectHandles,
   pickHandlesExplained, placeDistricts, placeOutsideHandle, strictHandlePrefix, suggestionRetired, tagLooksLikeHandle, tagRuleKeywords, withKeywordUses,
   type DeskHandleRow, type LearnStory,
 } from "../src";
@@ -144,6 +144,34 @@ describe("rule 5: a typo or stub of a known handle is not learned; the known one
     expect(learner.handleWithheld("@forestRajasthan", directory)).toBe("file_handle");
     expect(learner.handleWithheld("@JhalawarUp", ["JhalawarUpdates"])).toBe("lookalike");
     expect(learner.handleWithheld("@JhalawarUpdates", ["JhalawarUp"])).toBeNull();
+  });
+  it("still catches @forest, @nwr, @Khirthalpolice and @jaipurpolice against the files and the directory", () => {
+    const known = ["forestRajasthan", "NWRailways", "Khirthalpolice", "forest", "nwr", "jaipurpolice"];
+    expect(learner.handleLookalike("@forest", known)).toBe("forestRajasthan");
+    expect(learner.handleLookalike("@nwr", known)).toBe("NWRailways");
+    // khairthalpolice and jaipur_police are district-file handles: one edit away, and without "_"
+    expect(learner.handleLookalike("@Khirthalpolice", known)).toBe("khairthalpolice");
+    expect(learner.handleLookalike("@jaipurpolice", known)).toBe("jaipur_police");
+    expect(handleTypoOf("@avinashgehlot_", ["avinashgehlot"])).toBe("avinashgehlot");
+    expect(handleTypoOf("@JaipurDiscom", ["JaipurDiscom1"])).toBe("JaipurDiscom1");
+  });
+  it("never flags real, different handles that only look alike (@INCRajasthan, @BJP4Rajasthan, @RajGovOfficial)", () => {
+    const known = ["secrajasthan", "bjprajasthan", "rhbgovofficial", "INCRajasthan", "BJP4Rajasthan", "RajGovOfficial"];
+    for (const h of ["@INCRajasthan", "@BJP4Rajasthan", "@RajGovOfficial"]) expect(learner.handleLookalike(h, known), h).toBeNull();
+    // Two edits apart: not a typo under any rule
+    expect(handleTypoOf("@INCRajasthan", ["secrajasthan"])).toBeNull();
+    expect(handleTypoOf("@RajGovOfficial", ["rhbgovofficial"])).toBeNull();
+    // One edit apart, but @BJP4Rajasthan is a data-file handle (protected): never a typo
+    expect(handleTypoOf("@BJP4Rajasthan", ["bjprajasthan"], ["bjp4rajasthan"])).toBeNull();
+    // A Settings-verified directory row is protected the same way
+    expect(learner.handleLookalike("@forest", ["forestRajasthan"], ["forest"])).toBeNull();
+  });
+  it("a stub needs the known handle 4 or more letters longer; one edit counts only at 8 letters or more", () => {
+    expect(handleTypoOf("@JhalawarPolic", ["jhalawarpolice"])).toBe("jhalawarpolice"); // one edit, 13 letters
+    expect(strictHandlePrefix("@JhalawarPolic", "jhalawarpolice")).toBe(false);
+    expect(strictHandlePrefix("@JhalawarUp", "JhalawarUpdates")).toBe(true);
+    expect(handleTypoOf("@kotanws", ["kotanews"])).toBeNull(); // 7 letters
+    expect(handleTypoOf("@hbh", ["bjp", "nwr"])).toBeNull();
   });
   it("a desk row that is a stub of another desk row is never suggested", () => {
     const forest: DeskHandleRow = { handle: "forest", entityName: "forest", aliases: ["Tonk", "टोंक"] };

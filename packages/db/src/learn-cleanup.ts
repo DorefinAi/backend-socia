@@ -127,6 +127,8 @@ export function planLearnCleanup(snap: CleanupSnapshot, learner: PostedLearner):
     const handles = snap.handles.filter((h) => h.org_id === orgId);
     const audit = snap.audit.filter((a) => a.org_id === orgId).sort((a, b) => at(a) - at(b));
     const directory = handles.map((h) => bare(h.handle));
+    // Rows an editor verified in Settings (not desk adds): never a typo of anything
+    const curated = handles.filter((h) => h.source !== "desk" && verified(h)).map((h) => bare(h.handle));
     const desk = handles.filter((h) => h.source === "desk" && verified(h));
     const done = new Set<string>();
 
@@ -183,7 +185,7 @@ export function planLearnCleanup(snap: CleanupSnapshot, learner: PostedLearner):
 
     // Lookalikes, for the record
     for (const h of desk) {
-      const like = learner.handleLookalike(h.handle, directory.filter((d) => low(d) !== low(h.handle)));
+      const like = learner.handleLookalike(h.handle, directory.filter((d) => low(d) !== low(h.handle)), curated);
       if (like) lookalikes.push({ orgId, handle: `@${bare(h.handle)}`, like: `@${like}` });
     }
 

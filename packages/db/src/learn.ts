@@ -106,8 +106,14 @@ export async function learnFromPost(tx: Executor, who: LearnWho, draft: Draft, l
       const [story] = await sp.select({ headline: stories.headline, body: stories.body, district: stories.district, town: stories.town }).from(stories).where(eq(stories.id, draft.storyId));
       const names = story ? learner.storyNames(story satisfies LearnStory) : [];
       const report: LearnedReport = { draftId: draft.id, names, handles: [], tags: [] };
-      const directory = (await sp.select({ handle: handleDirectory.handle }).from(handleDirectory).where(and(eq(handleDirectory.orgId, who.orgId), eq(handleDirectory.platform, "x")))).map((r) => r.handle);
-      await learnHandles(sp, who, draft, story ?? null, directory, learner, report);
+      const rows = await sp
+        .select({ handle: handleDirectory.handle, source: handleDirectory.source, verifiedAt: handleDirectory.verifiedAt })
+        .from(handleDirectory)
+        .where(and(eq(handleDirectory.orgId, who.orgId), eq(handleDirectory.platform, "x")));
+      const directory = rows.map((r) => r.handle);
+      // Rows an editor verified in Settings (not a desk add): never a typo of anything
+      const curated = rows.filter((r) => r.source !== "desk" && r.verifiedAt !== null).map((r) => r.handle);
+      await learnHandles(sp, who, draft, story ?? null, directory, curated, learner, report);
       await learnHashtags(sp, who, draft, directory, learner, report);
       return report;
     });
@@ -123,7 +129,9 @@ async function proposedHandles(tx: Executor, draftId: string): Promise<string[]>
   return (row?.proposals ?? []).filter((p) => p.kind === "handle").map((p) => p.item);
 }
 
-async function learnHandles(tx: Executor, who: LearnWho, draft: Draft, story: LearnStory | null, directory: string[], learner: PostedLearner, report: LearnedReport): Promise<void> {
+async function learnHandles(
+  tx: Executor, who: LearnWho, draft: Draft, story: LearnStory | null, directory: string[], curated: string[], learner: PostedLearner, report: LearnedReport,
+): Promise<void> {
   if (!draft.mentions.length) return;
   const keys = typedHandles(draft, await proposedHandles(tx, draft.id));
   if (!keys.length) return;
@@ -147,8 +155,8 @@ async function learnHandles(tx: Executor, who: LearnWho, draft: Draft, story: Le
     const handle = `@${bare(row.handle)}`;
     if (done.has(handle.toLowerCase())) continue;
     done.add(handle.toLowerCase());
-    const withheld = learner.handleWithheld(row.handle, directory);
-    const like = withheld === "lookalike" ? learner.handleLookalike(row.handle, directory) : null;
+    const withheld = learner.handleWithheld(row.handle, directory, curated);
+    const like = withheld === "lookalike" ? learner.handleLookalike(row.handle, directory, curated) : null;
     const names = story ? learner.handleNames(row.handle, story) : [];
     const { keywords, added } = withheld ? { keywords: row.aliases, added: [] } : mergeKeywords(row.aliases, names, MAX_HANDLE_KEYWORDS);
     report.handles.push({ handle, added, keywords: keywords.length, withheld, ...(like && { like: `@${like}` }), names });

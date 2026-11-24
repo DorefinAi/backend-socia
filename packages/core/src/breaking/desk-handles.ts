@@ -388,12 +388,42 @@ export function suggestionRetired(stats: SuggestStats | null | undefined): boole
 
 /** Shortest handle that counts as a strict prefix of a longer one ("@nwr" of "@NWRailways", "@forest" of "@forestRajasthan") */
 export const LOOKALIKE_PREFIX_LETTERS = 3;
+/** ...and the longer one has at least this many letters more ("@JhalawarPolic" is not a stub of "@jhalawarpolice") */
+export const LOOKALIKE_PREFIX_EXTRA = 4;
+/** Both handles at least this long for one edit to count as a typo (Khirthalpolice ~ khairthalpolice) */
+export const TYPO_EDIT_MIN_LETTERS = 8;
 
-/** Whether handle `a` is a strict prefix of handle `b` (case and @ ignored), LOOKALIKE_PREFIX_LETTERS letters or more */
+const bareLow = (h: string) => h.trim().replace(/^@+/, "").toLowerCase();
+
+/** Whether handle `a` is a stub of handle `b`: a strict prefix (case and @ ignored), 3 letters or more, `b` 4 or more longer */
 export function strictHandlePrefix(a: string, b: string): boolean {
-  const x = a.trim().replace(/^@+/, "").toLowerCase();
-  const y = b.trim().replace(/^@+/, "").toLowerCase();
-  return x.length >= LOOKALIKE_PREFIX_LETTERS && y.length > x.length && y.startsWith(x);
+  const x = bareLow(a);
+  const y = bareLow(b);
+  return x.length >= LOOKALIKE_PREFIX_LETTERS && y.length >= x.length + LOOKALIKE_PREFIX_EXTRA && y.startsWith(x);
+}
+
+/** A handle lower-cased without "_" and trailing digits: "jaipur_police" = "jaipurpolice", "avinashgehlot_" = "avinashgehlot" */
+const squashHandle = (h: string) => bareLow(h).replace(/_/g, "").replace(/[0-9]+$/, "");
+
+/**
+ * The known handle (as written there, bare) this one is a typo or stub of, or null. Only (a) a stub: a strict prefix of
+ * it (strictHandlePrefix: "@forest" of "@forestRajasthan", "@nwr" of "@NWRailways"); (b) the same once lower-cased
+ * without "_" and trailing digits ("@jaipurpolice" ~ "@jaipur_police"); (c) one edit away when both have 8 letters or
+ * more ("@Khirthalpolice" ~ "@khairthalpolice"). Different real handles that merely look alike (@INCRajasthan and
+ * @secrajasthan, @BJP4Rajasthan and @bjprajasthan) are not. A handle in `protectedHandles` (the data files', the
+ * Settings-verified directory's) is never a typo of anything.
+ */
+export function handleTypoOf(handle: string, known: Iterable<string>, protectedHandles: Iterable<string> = []): string | null {
+  const self = bareLow(handle);
+  if (!self || new Set([...protectedHandles].map(bareLow)).has(self)) return null;
+  const others = [...new Set([...known].map((h) => h.trim().replace(/^@+/, "")))].filter((o) => o && o.toLowerCase() !== self);
+  const squashed = squashHandle(self);
+  return (
+    others.find((o) => strictHandlePrefix(self, o)) ??
+    others.find((o) => !!squashed && squashHandle(o) === squashed) ??
+    others.find((o) => self.length >= TYPO_EDIT_MIN_LETTERS && o.length >= TYPO_EDIT_MIN_LETTERS && editDistance(self, o.toLowerCase()) === 1) ??
+    null
+  );
 }
 
 export interface DeskHandleData {

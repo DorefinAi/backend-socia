@@ -29,8 +29,8 @@ import { Gazetteer, type GazetteerEntry } from "../gazetteer";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 import { NATIONAL_FOOTER, RAJASTHAN_FOOTER } from "./compose";
 import {
-  MAX_HANDLE_KEYWORDS, compactLatin, deskHandleKeywords, deskKeywordAuto, deskKeywordOffered, districtKeywordCandidates, fileLookalike, keywordsForHandle,
-  matchHandleKeywords, strictHandlePrefix, suggestionRetired, usableHandleName, type DeskHandleRow, type KeywordCandidate, type KeywordsWithheld, type SuggestStats,
+  MAX_HANDLE_KEYWORDS, compactLatin, deskHandleKeywords, deskKeywordAuto, deskKeywordOffered, districtKeywordCandidates, handleTypoOf, keywordsForHandle,
+  matchHandleKeywords, suggestionRetired, usableHandleName, type DeskHandleRow, type KeywordCandidate, type KeywordsWithheld, type SuggestStats,
 } from "./desk-handles";
 import type { PlaceBook } from "./places";
 import type { SubjectRules } from "./subjects";
@@ -133,32 +133,26 @@ export function mergeKeywords(existing: readonly string[], names: readonly strin
 /**
  * Why a desk handle may NOT learn keywords, or null when it may. The add rules of POST /handles/desk
  * (deskHandleKeywords: a data-file handle, a lookalike of one, a party's, an official's), with every handle of the
- * four directory files counted as a file handle (a reporter's included), and a lookalike of another handle the org's
- * directory has ("@JhalawarUpdatse" next to "@JhalawarUpdates").
+ * four directory files counted as a file handle (a reporter's included), and a typo or stub of another handle the
+ * org's directory or the files have (handleTypoOf: "@forest" next to "@forestRajasthan"). `protectedHandles` (the
+ * Settings-verified directory rows) are never typos; the files' handles never are either.
  */
 export function handleLearnWithheld(
   handle: string,
-  ctx: { candidates: readonly KeywordCandidate[]; fileHandles: Iterable<string>; directoryHandles?: Iterable<string> },
+  ctx: { candidates: readonly KeywordCandidate[]; fileHandles: Iterable<string>; directoryHandles?: Iterable<string>; protectedHandles?: Iterable<string> },
 ): KeywordsWithheld | null {
   const { withheld } = deskHandleKeywords(handle, { candidates: ctx.candidates, fileHandles: ctx.fileHandles });
   if (withheld) return withheld;
-  return handleLookalikeOf(handle, [...ctx.fileHandles, ...(ctx.directoryHandles ?? [])]) !== null ? "lookalike" : null;
+  return handleLookalikeOf(handle, [...ctx.fileHandles, ...(ctx.directoryHandles ?? [])], [...ctx.fileHandles, ...(ctx.protectedHandles ?? [])]) !== null ? "lookalike" : null;
 }
 
-const bareHandle = (h: string) => h.trim().replace(/^@+/, "");
-
 /**
- * The other known handle this one is a typo or stub of, as written there (bare), or null: at most 2 edits or
- * Jaro-Winkler ≥ 0.95 (fileLookalike), or a strict prefix of it ("@forest" → "forestRajasthan", "@nwr" →
- * "NWRailways"). The handle itself (any case) is not "another". What the desk is pointed to instead ("did you mean").
+ * The other known handle this one is a typo or stub of, as written there (bare), or null (desk-handles.ts handleTypoOf:
+ * a stub, the same without "_" and trailing digits, or one edit at 8 letters or more). A handle in `protectedHandles`
+ * is never one. What the desk is pointed to instead ("did you mean").
  */
-export function handleLookalikeOf(handle: string, known: Iterable<string>): string | null {
-  const self = bareHandle(handle).toLowerCase();
-  const others = [...new Set([...known].map(bareHandle))].filter((h) => h && h.toLowerCase() !== self);
-  const prefixOf = others.find((o) => strictHandlePrefix(self, o));
-  if (prefixOf) return prefixOf;
-  const like = fileLookalike(self, others);
-  return like === null ? null : (others.find((o) => o.toLowerCase() === like) ?? like);
+export function handleLookalikeOf(handle: string, known: Iterable<string>, protectedHandles: Iterable<string> = []): string | null {
+  return handleTypoOf(handle, known, protectedHandles);
 }
 
 // ─── Handles: which names are a handle's own ────────────────────────────────
@@ -166,6 +160,7 @@ export function handleLookalikeOf(handle: string, known: Iterable<string>): stri
 /** Not in the places file, but a place: a state's name is never a local handle's own keyword */
 const STATE_NAMES = new Set(["Rajasthan", "राजस्थान"].map((s) => key(s)));
 const districtName = (name: string) => RAJASTHAN_DISTRICTS.find((x) => compactLatin(x.name) === compactLatin(name))?.name ?? name;
+const bareHandle = (h: string) => h.trim().replace(/^@+/, "");
 
 /**
  * The Rajasthan districts (their English names, as stories.district holds them) a handle is of: a district's name
@@ -466,13 +461,14 @@ export class PostedLearner {
     return handleStoryNames(handle, story, this.ctx);
   }
 
-  handleWithheld(handle: string, directoryHandles: Iterable<string> = []): KeywordsWithheld | null {
-    return handleLearnWithheld(handle, { candidates: this.candidates, fileHandles: this.fileHandles, directoryHandles });
+  /** `protectedHandles`: the Settings-verified directory rows, never typos (nor are the files' handles) */
+  handleWithheld(handle: string, directoryHandles: Iterable<string> = [], protectedHandles: Iterable<string> = []): KeywordsWithheld | null {
+    return handleLearnWithheld(handle, { candidates: this.candidates, fileHandles: this.fileHandles, directoryHandles, protectedHandles });
   }
 
-  /** The file or directory handle this one is a typo or stub of ("did you mean"), or null */
-  handleLookalike(handle: string, directoryHandles: Iterable<string> = []): string | null {
-    return handleLookalikeOf(handle, [...directoryHandles, ...this.fileHandles]);
+  /** The file or directory handle this one is a typo or stub of ("did you mean"), or null (handleTypoOf) */
+  handleLookalike(handle: string, directoryHandles: Iterable<string> = [], protectedHandles: Iterable<string> = []): string | null {
+    return handleLookalikeOf(handle, [...directoryHandles, ...this.fileHandles], [...this.fileHandles, ...protectedHandles]);
   }
 
   tagKeywords(tag: string): { keywords: string[]; known: boolean } {

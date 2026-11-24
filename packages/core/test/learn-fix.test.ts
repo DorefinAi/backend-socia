@@ -1,7 +1,7 @@
 // The learning fix (25 Nov 2026), rule by rule, on the cases the audit found: @jpr_rural learned Air India and
 // Hyderabad, @JaipurDiscom1 Mumbai and IndiGo, @NitinNabin Delhi and Punjab, @forest (a stub of @ForestRajasthan)
 // Tonk; @hbh and @nwr were offered on almost every story and never taken; #RajasthanPanchayatElection2026 learned
-// the stories' places (that fix is its own change); the desk typed #Balotrapolice for @BalotraPolice. Rule 1 (only what the desk typed) is
+// the stories' places; the desk typed #Balotrapolice for @BalotraPolice. Rule 1 (only what the desk typed) is
 // packages/db typedHandles; the cleanup is packages/db learn-cleanup.
 
 import { readFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   DESK_LEARNED_AUTO_USES, DESK_LEARNED_POSTED_USES, PlaceBook, PostedLearner, SUGGEST_RETIRE_OFFERS, deskAutoKey, deskHandleRules, deskKeywordAuto, deskKeywordOffered,
   districtKeywordCandidates, handleDistricts, handleLookalikeOf, handleStoryNames, mergeKeywords, parseHandleRules, parsePlacesData, parseSubjectHandles,
-  pickHandlesExplained, placeDistricts, placeOutsideHandle, strictHandlePrefix, suggestionRetired, withKeywordUses,
+  pickHandlesExplained, placeDistricts, placeOutsideHandle, strictHandlePrefix, suggestionRetired, tagLooksLikeHandle, tagRuleKeywords, withKeywordUses,
   type DeskHandleRow, type LearnStory,
 } from "../src";
 
@@ -121,6 +121,25 @@ describe("rule 5: a typo or stub of a known handle is not learned; the known one
     const real: DeskHandleRow = { handle: "forestRajasthan", entityName: "forestRajasthan", aliases: [] };
     expect(deskHandleRules([forest]).count).toBe(1);
     expect(deskHandleRules([forest, real]).count).toBe(0);
+  });
+});
+
+describe("rule 6: a typed hashtag learns its own words, never places; a #handle is never a rule", () => {
+  it("#RajasthanPanchayatElection2026 learns Panchayat, Election, never the stories' places", () => {
+    expect(tagRuleKeywords("#RajasthanPanchayatElection2026", ctx)).toEqual({ keywords: ["Panchayat", "Election"], known: false });
+    expect(tagRuleKeywords("#WeatherUpdate", ctx)).toEqual({ keywords: ["Weather"], known: false });
+    expect(tagRuleKeywords("#JaipurMetro", ctx)).toEqual({ keywords: ["Metro"], known: false });
+    expect(learner.tagKeywords("#bbhbh")).toEqual({ keywords: [], known: false });
+  });
+  it("#Balotrapolice (meant @BalotraPolice) and other handle-shaped tags are handles", () => {
+    for (const t of ["#Balotrapolice", "#Khirthalpolice", "#JaipurDM", "#TonkCollector"]) expect(tagLooksLikeHandle(t)).toBe(true);
+    expect(tagLooksLikeHandle("#jaipur_police", ["jaipur_police"])).toBe(true);
+    expect(tagLooksLikeHandle("#JaipurPoliceNews")).toBe(false);
+    for (const t of ["#RajasthanPanchayatElection2026", "#Jaisalmer", "#जयपुर"]) expect(tagLooksLikeHandle(t)).toBe(false);
+  });
+  it("a tag naming a known subject is a topic even when a handle of that name exists (#NarendraModi)", () => {
+    expect(learner.tagIsHandle("#NarendraModi", ["narendramodi"])).toBe(false);
+    expect(learner.tagIsHandle("#Balotrapolice", [])).toBe(true);
   });
 });
 

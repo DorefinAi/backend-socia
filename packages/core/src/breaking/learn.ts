@@ -19,9 +19,10 @@
 //    (desk-handles.ts suggestionRetired).
 // 2. Hashtags. A tag an editor typed that no rule offered becomes an active topic rule (match_type "entity") at once.
 //    Its keywords: a tag naming a known district, place or subject gets that one's Hindi and English names
-//    (#Jaisalmer → Jaisalmer, जैसलमेर); any other tag the recognised names of the stories it was posted on plus
-//    its own CamelCase words (#JaswantYadav → Jaswant, Yadav). A tag with no usable keyword is saved inactive.
-//    Never the footer tags (nor a tag run on from one: "#RajasthanWithFirstIndiaJaipurPolice").
+//    (#Jaisalmer → Jaisalmer, जैसलमेर); any other tag only its own words that are not places and the subjects named
+//    inside it (#JaswantYadav → Jaswant, Yadav; never the story's places: #RajasthanPanchayatElection2026 learned
+//    Jaipur, Hanumangarh...). A tag with no usable keyword is saved inactive. Never the footer tags (nor a tag run on
+//    from one: "#RajasthanWithFirstIndiaJaipurPolice"), nor a tag that is a handle typed with a # ("#Balotrapolice").
 
 import { fold } from "../fold";
 import { Gazetteer, type GazetteerEntry } from "../gazetteer";
@@ -386,14 +387,36 @@ export function knownTagNames(tag: string, ctx: { book: PlaceBook | null; subjec
 }
 
 /**
- * A learned rule's keywords for a tag posted on a story: a known district, place or subject's own names; otherwise the
- * story's recognised names, then the tag's CamelCase words. At most MAX_RULE_KEYWORDS; [] means the rule is saved
- * inactive (nothing to match it on).
+ * A learned rule's keywords for a tag: a known district, place or subject's own names; otherwise only the tag's own
+ * CamelCase words that are not places, and the names of a subject whose name is inside the tag. Never the places of
+ * the story it went out on (learning fix 6). At most MAX_RULE_KEYWORDS; [] means the rule is saved inactive.
  */
-export function tagRuleKeywords(tag: string, names: readonly string[], ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): { keywords: string[]; known: boolean } {
+export function tagRuleKeywords(tag: string, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): { keywords: string[]; known: boolean } {
   const known = knownTagNames(tag, ctx);
   if (known) return { keywords: known, known: true };
-  return { keywords: uniqueNames([...names, ...tagWords(tag)], MAX_RULE_KEYWORDS), known: false };
+  const k = solidKey(tag);
+  const subjects = (ctx.subjects?.keywordCandidates ?? []).filter((c) => {
+    const name = compactLatin(c.latin);
+    return name.length >= 5 && !!k && k.includes(name) && placeDistricts(c.latin, ctx.book) === null;
+  });
+  const words = tagWords(tag).filter((w) => placeDistricts(w, ctx.book) === null);
+  return { keywords: uniqueNames([...words, ...subjects.flatMap((c) => c.keywords)], MAX_RULE_KEYWORDS), known: false };
+}
+
+/** The last word of a handle-shaped tag: a police station's, a DM's, a collector's */
+const HANDLE_TAG_ENDINGS = /(police|dm|collector)$/i;
+
+/**
+ * Whether a typed hashtag is really a handle written with a # ("#Balotrapolice" for @BalotraPolice): it ends in
+ * police, DM or collector, or it is a known handle's name (case, @ and underscores ignored). Never learned as a rule.
+ */
+export function tagLooksLikeHandle(tag: string, knownHandles: Iterable<string> = []): boolean {
+  const bare = nfc(tag).replace(/^#+/, "");
+  if (!bare || isHindi(bare)) return false;
+  if (HANDLE_TAG_ENDINGS.test(bare.replace(/[^A-Za-z]+$/, ""))) return true;
+  const k = compactLatin(bare);
+  for (const h of knownHandles) if (k && compactLatin(h) === k) return true;
+  return false;
 }
 
 // ─── Everything the learning needs, in one place ────────────────────────────
@@ -441,8 +464,8 @@ export class PostedLearner {
     return handleLookalikeOf(handle, [...directoryHandles, ...this.fileHandles]);
   }
 
-  tagKeywords(tag: string, names: readonly string[]): { keywords: string[]; known: boolean } {
-    return tagRuleKeywords(tag, names, this.ctx);
+  tagKeywords(tag: string): { keywords: string[]; known: boolean } {
+    return tagRuleKeywords(tag, this.ctx);
   }
 
   /** Every name of the subjects that are the handle's own (handleOwnSubjectNames) */
@@ -455,4 +478,16 @@ export class PostedLearner {
     return placeOutsideHandle(handle, keyword, this.ctx);
   }
 
+  /** Whether a tag names a known district, place or subject (knownTagNames) */
+  tagKnown(tag: string): boolean {
+    return knownTagNames(tag, this.ctx) !== null;
+  }
+
+  /**
+   * Whether a typed tag is a handle written with a # (tagLooksLikeHandle), against the files' and the directory's
+   * handles. A tag naming a known place or subject never is: "#NarendraModi" is a topic although @narendramodi exists.
+   */
+  tagIsHandle(tag: string, directoryHandles: Iterable<string> = []): boolean {
+    return !this.tagKnown(tag) && tagLooksLikeHandle(tag, [...this.fileHandles, ...directoryHandles]);
+  }
 }

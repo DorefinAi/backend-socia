@@ -110,35 +110,39 @@ run("learning from posted breaking stories", () => {
 
   it("typed hashtags become topic rules at once (an unknown one off until its 2nd story); footer, offered and an editor's own tags do not", async () => {
     const before = await dictionaryFingerprint(h.db, s.org.id);
-    const d = await breaking("जैसलमेर में चुनाव", "", "Jaisalmer", [], ["#RajasthanWithFirstIndia", "#Jaisalmer", "#JaswantYadav", "#jaipur", "#BombThreat", "#RajasthanWithFirstIndiaJaipurPolice"], ["#BombThreat"]);
+    const d = await breaking("जैसलमेर में चुनाव", "", "Jaisalmer", [], ["#RajasthanWithFirstIndia", "#Jaisalmer", "#JaswantYadav", "#jaipur", "#BombThreat", "#RajasthanWithFirstIndiaJaipurPolice", "#Balotrapolice"], ["#BombThreat"]);
     await copyPosted(h.db, s.priya, d.id, d.version, { learner });
     // A story naming nothing known, and a tag too short to be a word: nothing to match on
     const bare = await breaking("तेज बारिश से नदी उफान पर", "", null, [], ["#RCA"]);
     await copyPosted(h.db, s.priya, bare.id, bare.version, { learner });
 
     expect(await rule("Jaisalmer")).toMatchObject({ matchType: "entity", name: "Jaisalmer", aliases: ["जैसलमेर"], active: true, priority: 1 });
-    // A tag naming no known place or subject is saved with its keywords but offered only from its second story
-    expect(await rule("JaswantYadav")).toMatchObject({ name: "Jaisalmer", aliases: ["जैसलमेर", "Jaswant", "Yadav"], active: false });
+    // A tag naming no known place or subject is saved with its own words (never the story's places) but offered only
+    // from its second story
+    expect(await rule("JaswantYadav")).toMatchObject({ name: "Jaswant", aliases: ["Yadav"], active: false });
     expect(await rule("RCA")).toMatchObject({ name: "RCA", aliases: [], active: false });
-    // The editor's Jaipur rule is the only one for #jaipur; nothing for the footer run-on or the offered tag
+    // The editor's Jaipur rule is the only one for #jaipur; nothing for the footer run-on, the offered tag, or a
+    // handle typed with a # (#Balotrapolice for @BalotraPolice)
     expect(await h.db.select().from(hashtagRules).where(eq(hashtagRules.hashtagLatin, "jaipur"))).toEqual([]);
     expect(await rule("RajasthanWithFirstIndiaJaipurPolice")).toBeUndefined();
+    expect(await rule("Balotrapolice")).toBeUndefined();
     expect((await h.db.select().from(hashtagRules).where(eq(hashtagRules.hashtagLatin, "BombThreat")))).toHaveLength(1);
 
     // Staging is still written, and marks the rows that became rules
     const staged = Object.fromEntries((await h.db.select().from(hashtagStaging)).map((r) => [r.tagKey, r.promotedAt !== null]));
-    expect(staged).toMatchObject({ jaisalmer: true, jaswantyadav: true, rca: true, jaipur: false });
+    expect(staged).toMatchObject({ jaisalmer: true, jaswantyadav: true, rca: true, jaipur: false, balotrapolice: false });
     const learned = await h.db.select().from(auditLog).where(eq(auditLog.action, "hashtag.rule_learned"));
     expect(learned).toHaveLength(3);
     expect(await dictionaryFingerprint(h.db, s.org.id)).not.toBe(before);
   });
 
-  it("a learned rule grows with later posts and an inactive one wakes up; an editor's change is never undone", async () => {
+  it("a learned rule never takes a later story's places; an inactive one wakes up; an editor's change is never undone", async () => {
     const d = await breaking("जयपुर में क्रिकेट", "", "Jaipur", [], ["#RCA", "#JaswantYadav"]);
     await copyPosted(h.db, s.priya, d.id, d.version, { learner });
-    expect(await rule("RCA")).toMatchObject({ name: "Jaipur", aliases: ["जयपुर"], active: true });
-    // Its second story: now offered
-    expect(await rule("JaswantYadav")).toMatchObject({ aliases: ["जैसलमेर", "Jaswant", "Yadav", "Jaipur", "जयपुर"], active: true });
+    // Still nothing of its own to match on: stays off, and never learns Jaipur from the story
+    expect(await rule("RCA")).toMatchObject({ name: "RCA", aliases: [], active: false });
+    // Its second story: now offered, with its own words only
+    expect(await rule("JaswantYadav")).toMatchObject({ name: "Jaswant", aliases: ["Yadav"], active: true });
 
     // An editor edits the Jaisalmer rule in Settings: from then on it is theirs
     const jaisalmer = (await rule("Jaisalmer"))!;

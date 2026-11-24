@@ -9,8 +9,8 @@
 //     directory handle, a party's, an official's, a reporter's). verified_at is bumped so the worker's dictionary
 //     fingerprint reloads the rows.
 //   - A hashtag an editor typed that no rule offered becomes an active topic rule (match_type "entity"), or adds to
-//     the one this loop made for it before; never a footer tag, never a second rule for a tag an editor's rule has
-//     (any case). A tag with nothing to match on is saved inactive,
+//     the one this loop made for it before; never a footer tag, never a handle typed with a # ("#Balotrapolice"),
+//     never a second rule for a tag an editor's rule has (any case). A tag with nothing to match on is saved inactive,
 //     and one that names no known place or subject stays inactive until it has gone out on UNKNOWN_TAG_POSTS (2)
 //     different stories. hashtag_staging keeps its row; promoted_at is set.
 //
@@ -30,7 +30,7 @@ export interface LearnWho {
   actor?: string | null;
 }
 
-export type LearnedTagAction = "created" | "updated" | "unchanged" | "duplicate" | "footer";
+export type LearnedTagAction = "created" | "updated" | "unchanged" | "duplicate" | "footer" | "handle_like";
 
 /** What learning from one post did (or, in a dry run, would do) */
 export interface LearnedReport {
@@ -108,7 +108,7 @@ export async function learnFromPost(tx: Executor, who: LearnWho, draft: Draft, l
       const report: LearnedReport = { draftId: draft.id, names, handles: [], tags: [] };
       const directory = (await sp.select({ handle: handleDirectory.handle }).from(handleDirectory).where(and(eq(handleDirectory.orgId, who.orgId), eq(handleDirectory.platform, "x")))).map((r) => r.handle);
       await learnHandles(sp, who, draft, story ?? null, directory, learner, report);
-      await learnHashtags(sp, who, draft, names, learner, report);
+      await learnHashtags(sp, who, draft, directory, learner, report);
       return report;
     });
   } catch (err) {
@@ -207,15 +207,20 @@ async function rulePosts(tx: Executor, orgId: string, ruleId: string, draftId: s
   return new Set([...rows.map((r) => r.draftId).filter((d): d is string => !!d), draftId]).size;
 }
 
-async function learnHashtags(tx: Executor, who: LearnWho, draft: Draft, names: string[], learner: PostedLearner, report: LearnedReport): Promise<void> {
+async function learnHashtags(tx: Executor, who: LearnWho, draft: Draft, directory: string[], learner: PostedLearner, report: LearnedReport): Promise<void> {
   for (const [tagKey, tag] of typedHashtags(draft)) {
     if (isFooterTag(tag)) {
       report.tags.push({ tag, action: "footer", active: false, keywords: [], ruleId: null });
       continue;
     }
+    // A handle typed with a # ("#Balotrapolice" for @BalotraPolice) is never a topic rule
+    if (learner.tagIsHandle(tag, directory)) {
+      report.tags.push({ tag, action: "handle_like", active: false, keywords: [], ruleId: null });
+      continue;
+    }
     // One learner per tag at a time: two posts with the same new tag make one rule
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`hashtag_rules:${who.orgId}:${tagKey}`}))`);
-    const fresh = learner.tagKeywords(tag, names);
+    const fresh = learner.tagKeywords(tag);
     const existing = await rulesForTag(tx, who.orgId, tagKey);
     if (existing.length) {
       const rule = await learnedRule(tx, who.orgId, existing);

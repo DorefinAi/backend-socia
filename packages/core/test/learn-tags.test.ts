@@ -128,16 +128,16 @@ describe("hashtag rule keywords", () => {
     expect(knownTagNames("#BhajanlalSharma", ctx)).toEqual(expect.arrayContaining(["Bhajanlal Sharma", "भजनलाल शर्मा"]));
     expect(knownTagNames("#IPL", ctx)).toBeNull();
     // A known tag ignores the story it went on
-    expect(tagRuleKeywords("#Jaisalmer", ["Kota", "कोटा"], ctx)).toEqual({ keywords: ["Jaisalmer", "जैसलमेर"], known: true });
+    expect(tagRuleKeywords("#Jaisalmer", ctx)).toEqual({ keywords: ["Jaisalmer", "जैसलमेर"], known: true });
   });
 
-  it("any other tag: the story's names, then its CamelCase words (4 letters or more, no stop words)", () => {
+  it("any other tag: only its CamelCase words (4 letters or more, no stop words, no places), never the story's names", () => {
     expect(tagWords("#RajasthanPanchayatElection2026")).toEqual(["Panchayat", "Election"]);
     expect(tagWords("#MSDhoni")).toEqual(["Dhoni"]);
     expect(tagWords("#bbhbh")).toEqual([]);
     expect(tagWords("#IPL")).toEqual([]);
-    expect(tagRuleKeywords("#JaswantYadav", ["Jaipur", "जयपुर"], ctx)).toEqual({ keywords: ["Jaipur", "जयपुर", "Jaswant", "Yadav"], known: false });
+    expect(tagRuleKeywords("#JaswantYadav", ctx)).toEqual({ keywords: ["Jaswant", "Yadav"], known: false });
     // Nothing to match on: the rule is saved inactive
-    expect(tagRuleKeywords("#RCA", [], ctx)).toEqual({ keywords: [], known: false });
+    expect(tagRuleKeywords("#RCA", ctx)).toEqual({ keywords: [], known: false });
   });
 });

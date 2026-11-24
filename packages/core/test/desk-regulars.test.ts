@@ -87,4 +87,7 @@ describe("P7: #Jaipur offered on a state-capital story", () => {
     expect(stateCapitalStory("सचिवालय से राजेंद्र छाबड़ा की Report", book)).toBe(true);
     expect(stateCapitalStory("विधानसभा अध्यक्ष वासुदेव देवनानी ने ली बैठक", book)).toBe(true);
   });
+  it("the पूर्व guard holds with a double space, a no-break space or a hyphen", () => {
+    for (const gap of ["  ", "\u00a0", "-", " - "]) expect(stateCapitalStory(`पूर्व${gap}मुख्यमंत्री अशोक गहलोत ने की बातचीत`, book), JSON.stringify(gap)).toBe(false);
+  });
 });

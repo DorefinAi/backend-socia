@@ -118,7 +118,7 @@ function plainHandleSource(h: PlainHandlePick): PlainRuleId {
 export const handleSource = (h: HandlePick): RuleId => (h.reason === "prior" ? h.source : plainHandleSource(h));
 
 /** The line shown for a handle: its own detail, else its title, else the rule */
-export const handleReason = (h: HandlePick): string => h.detail ?? h.title ?? handleSource(h);
+export const handleReason = (h: HandlePick): string => (h.movedFor === "length" ? "length" : h.detail ?? h.title ?? handleSource(h));
 
 /** A HandlePick as a Proposal */
 export function handleProposal(h: HandlePick, layer: ProposalLayer): Proposal {

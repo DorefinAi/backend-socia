@@ -175,6 +175,8 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
     else if (e.role === "police") rules.state.police.push(bare(e));
   }
   if (root!.districts !== undefined && (typeof root!.districts !== "object" || Array.isArray(root!.districts))) fail("districts must be an object keyed by district");
+  // Police forces per district key, across every spelling of the district; pruned once after the loop
+  const forcesByKey = new Map<string, PoliceForce[]>();
   for (const [name, list] of Object.entries(root!.districts ?? {})) {
     if (name.startsWith("_")) continue;
     // districtKey strips everything but ASCII letters and digits, so a name written only in Devanagari
@@ -191,13 +193,15 @@ export function parseHandleRules(json: unknown, problem: (message: string) => vo
       if (!typed(e, `districts.${name}[${i}]`)) continue;
       if (e.verified && !e.alternate && (e.role === "police" || e.role === "collector") && !d[e.role].includes(bare(e))) {
         d[e.role].push(bare(e));
-        if (e.role === "police") (d.forces ??= []).push({ handle: bare(e), towns: (e.towns ?? []).map(fold), words: (e.words ?? []).map(fold) });
+        if (e.role === "police") forcesByKey.set(key, [...(forcesByKey.get(key) ?? []), { handle: bare(e), towns: (e.towns ?? []).map(fold), words: (e.words ?? []).map(fold) }]);
         if (e.role === "collector" && e.offer_on_local) (d.offerLocal ??= []).push(bare(e));
       }
     }
-    // A force list matters only where a district has two forces and the file says which is which
-    if (d.forces && (d.forces.length < 2 || d.forces.every((f) => !f.towns.length && !f.words.length))) delete d.forces;
     rules.districts[key] = d;
+  }
+  // A force list matters only where a district has two forces and the file says which is which
+  for (const [key, forces] of forcesByKey) {
+    if (forces.length >= 2 && forces.some((f) => f.towns.length || f.words.length)) rules.districts[key]!.forces = forces;
   }
   return rules;
 }
@@ -445,6 +449,7 @@ export interface ForceChoice {
  * times, 8 of them on Jaipur-rural towns.
  */
 export function choosePoliceForce(forces: readonly PoliceForce[], copy: { headline: string; points: readonly string[]; town?: string | null }): ForceChoice {
+  if (!forces.length) return { handle: null, offer: [], why: "no police force in the data" };
   const all = forces.map((f) => f.handle);
   const text = fold([copy.headline, ...copy.points].join(" "));
   const named = forces.filter((f) => f.words.some((w) => namesPhrase(text, w)));
@@ -540,6 +545,8 @@ interface HandlePickBase {
   title?: string;
   /** The "why" line for the desk ("rituraj files @RajGovOfficial stories 62% of the time (102 posts)") */
   detail?: string;
+  /** P2: the rule chose it, and it was moved off the post to fit X's 280 (offered first instead; reason "length") */
+  movedFor?: "length";
 }
 
 /** A handle the reporter prior offers: always its rule id, smoothed rate and sample size */
@@ -724,6 +731,7 @@ export function pickHandlesExplained(story: HandlePickInput, rules: HandleRules,
     if (!c) return;
     if (c.handle) {
       picks.push({ handle: c.handle, reason: "police", inHeadline, ...(local?.forces && { detail: `district.police: ${c.why}` }) });
+      for (const h of c.offer) suggested.push({ handle: h, reason: "police", detail: `${district} has two police forces: ${c.why}` });
       return;
     }
     policeOffered = true;

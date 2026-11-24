@@ -121,4 +121,14 @@ describe("P4: district-handles.json towns and words", () => {
       expect(choosePoliceForce(rules.districts.jaipur!.forces!, { headline: "चोरी की वारदात", points: [], town }), town).toMatchObject({ handle: null });
     }
   });
+  it("two spellings of one district merge their forces before the list is judged", () => {
+    const r = parseHandleRules({ version: 2, state: [], districts: {
+      "Sawai Madhopur": [{ handle: "@SPsawaimadhopur", handle_type: "district", role: "police", verified: true, towns: ["गंगापुर"] }],
+      SawaiMadhopur: [{ handle: "@GangapurPolice", handle_type: "district", role: "police", verified: true, words: ["गंगापुर सिटी पुलिस"] }],
+    } });
+    expect(r.districts.sawaimadhopur!.forces?.map((f) => f.handle)).toEqual(["SPsawaimadhopur", "GangapurPolice"]);
+  });
+  it("choosePoliceForce with no forces tags and offers nothing", () => {
+    expect(choosePoliceForce([], { headline: "चोरी", points: [] })).toMatchObject({ handle: null, offer: [] });
+  });
 });

@@ -951,30 +951,54 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // 20 of 36 drafts were over on 23-24 Nov and the desk cut handles on X, the party pair first. Lines 1–2 are laid out at
   // the desk's length; while the whole post is over, the weakest tag-line item goes back to the suggestions (reason
   // "length"), handles only, as the desk does on X: the second party handle, the other party handles, the collector, the
-  // other handles (police, government, desk). Hashtags never move: measured on X (23-24 Nov) moving the election and
-  // party tags avoided 4 removals and lost 10 kept tags, so line 2 gives way instead. The city tags, the brand tag, the
+  // other non-police handles (government, desk); then line 2 shortens down to BREAKING_BODY_FLOOR; only then the police
+  // handle. Hashtags never move: measured on X (23-24 Nov) moving the election and party tags avoided 4 removals and lost
+  // 10 kept tags. The city tags, the brand tag, the
   // reporter byline and the subject and CM handles are never moved. Only when nothing movable is left is the text cut.
+  // Reviewers (25 Nov): the police handle of an incident is the post's one handle, so it moves only after line 2 has
+  // given way (down to BREAKING_BODY_FLOOR), never before: a Jaipur robbery lost @jaipur_police at 321 while line 2
+  // stayed at full length.
   const cap = Math.min(limit, xLimit);
   const lengthHandles: HandlePick[] = [];
-  const nextToMove = (): HandlePick | null => {
+  const isPolice = (h: HandlePick) => h.reason === "police" || h.reason === "state_police";
+  const movable = (h: HandlePick) => h.reason !== "reporter" && h.reason !== "subject" && h.reason !== "cm";
+  const nextToMove = (police: boolean): HandlePick | null => {
     const last = <T,>(xs: readonly T[]) => xs.at(-1);
     const parties = handles.filter((h) => h.reason === "party");
     if (parties.length >= 2) return last(parties)!;
     if (parties.length) return parties[0]!;
     const dm = handles.find((h) => h.reason === "collector");
     if (dm) return dm;
-    return last(handles.filter((h) => h.reason !== "reporter" && h.reason !== "subject" && h.reason !== "cm")) ?? null;
+    const other = last(handles.filter((h) => movable(h) && !isPolice(h)));
+    if (other) return other;
+    return police ? (last(handles.filter((h) => movable(h) && isPolice(h))) ?? null) : null;
+  };
+  const over = (l: { bodyText: string }) => xLen(assemblePostText(l.bodyText, hashtags, mentions)) > cap;
+  const moveOff = (h: HandlePick) => {
+    handles = handles.filter((x) => x !== h);
+    mentions = handles.map((x) => `@${x.handle}`);
+    lengthHandles.push({ ...h, movedFor: "length" });
   };
   let laid = layout(limit);
-  while (xLen(assemblePostText(laid.bodyText, hashtags, mentions)) > cap) {
-    const move = nextToMove();
-    if (!move) break;
-    handles = handles.filter((h) => h !== move);
-    mentions = handles.map((h) => `@${h.handle}`);
-    lengthHandles.push({ ...move, detail: "length" } as HandlePick);
+  // 1. party handles, the collector, the other non-police handles
+  for (let h = over(laid) ? nextToMove(false) : null; h; h = over(laid) ? nextToMove(false) : null) {
+    moveOff(h);
     laid = layout(limit);
   }
-  if (xLen(assemblePostText(laid.bodyText, hashtags, mentions)) > cap) laid = layout(cap);
+  // 2. line 2 gives way, as long as it keeps BREAKING_BODY_FLOOR and the headline stays whole
+  if (over(laid)) {
+    const shorter = layout(cap);
+    const keepsLine2 = !shorter.cutHead && shorter.bodyText.includes("\n\n");
+    if (keepsLine2 && !over(shorter)) laid = shorter;
+  }
+  // 3. then the police handle, and only then whatever text cut still fits the post
+  for (let h = over(laid) ? nextToMove(true) : null; h; h = over(laid) ? nextToMove(true) : null) {
+    moveOff(h);
+    laid = layout(limit);
+    const shorter = layout(cap);
+    if (over(laid) && !shorter.cutHead && shorter.bodyText.includes("\n\n") && !over(shorter)) laid = shorter;
+  }
+  if (over(laid)) laid = layout(cap);
   const { cutHead: headlineCut, bodyText } = laid;
   // What was moved for length is offered first, in the order it came off
   handleSuggestions.unshift(...lengthHandles);

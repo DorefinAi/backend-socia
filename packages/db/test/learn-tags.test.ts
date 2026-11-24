@@ -31,7 +31,7 @@ run("learning from posted breaking stories", () => {
     s = await seed(h);
     const desk = (handle: string) => ({ orgId: s.org.id, entityName: handle, aliases: [], handle, source: "desk", verifiedAt: new Date("2026-11-01"), verifiedBy: s.priya.id });
     await h.db.insert(handleDirectory).values([
-      desk("JaipurLocalNews"), desk("JaipurBuzz"), desk("NitinNabin"), desk("jaipur_police"), desk("somereporter"),
+      desk("JaipurLocalNews"), desk("JaipurBuzz"), { ...desk("NitinNabin"), entityType: "person" }, desk("jaipur_police"), desk("somereporter"),
       { orgId: s.org.id, entityName: "somereporter", aliases: ["SOMEREP"], handle: "@somereporter", source: "reporter", verifiedAt: new Date("2026-11-01") },
     ]);
     // An editor's own rules: one place rule, one topic rule (the second offered on the story below)
@@ -80,7 +80,7 @@ run("learning from posted breaking stories", () => {
     expect(chaksu.verifiedAt!.getTime()).toBeGreaterThan(new Date("2026-11-01").getTime());
     // The composer put @JaipurBuzz on the post: not the desk's choice, nothing learned (the old loop fed on these)
     expect((await row("JaipurBuzz")).aliases).toEqual([]);
-    // A person's handle has no district of its own: never a place
+    // An editor marked @NitinNabin a person (entity_type): a person's handle never learns a place
     expect((await row("NitinNabin")).aliases).toEqual([]);
     expect((await row("jaipur_police")).aliases).toEqual([]);
     expect((await row("somereporter")).aliases).toEqual([]);

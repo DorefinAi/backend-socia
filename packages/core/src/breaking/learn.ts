@@ -32,7 +32,7 @@ import {
   MAX_HANDLE_KEYWORDS, compactLatin, deskHandleKeywords, deskKeywordAuto, deskKeywordOffered, districtKeywordCandidates, handleTypoOf, keywordsForHandle,
   matchHandleKeywords, suggestionRetired, usableHandleName, type DeskHandleRow, type KeywordCandidate, type KeywordsWithheld, type SuggestStats,
 } from "./desk-handles";
-import type { PlaceBook } from "./places";
+import type { Place, PlaceBook } from "./places";
 import type { SubjectRules } from "./subjects";
 
 /** A learned hashtag rule's keywords, at most (the library API's limit for a rule's aliases) */
@@ -218,20 +218,58 @@ export function placeOutsideHandle(handle: string, keyword: string, ctx: { book:
   return !of.some((d) => own.has(d));
 }
 
+/** handle_directory.entity_type values that make a handle known NOT local: it learns no place */
+const NOT_LOCAL_TYPES = new Set(["person", "party", "organisation"]);
+
 /**
- * The names a desk handle learns from a story it was typed on (learning fix 3): the story's district and its
- * place-line town, only when they are in the handle's own district (handlePlaceDistricts), and the subjects named in
- * the story that are the handle's own (the subject's name is in the handle string). Nothing else from the body.
+ * Whether a handle is LOCAL: not known as a person's, party's, institution's or national handle. Known means an editor
+ * typed it so (`type`: person, party, organisation), it is a subject's own handle (its name is in the handle string),
+ * or it names a place outside Rajasthan ("@DelhiUpdates"). Party and data-file handles never learn anyway. A local
+ * handle may learn the places of the stories the desk typed it on.
  */
-export function handleStoryNames(handle: string, story: LearnStory, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }): string[] {
+export function handleIsLocal(handle: string, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }, type?: string | null): boolean {
+  if (type && NOT_LOCAL_TYPES.has(type)) return false;
+  if (handleOwnSubjectNames(handle, ctx.subjects).length) return false;
+  const words = compactLatin(handle);
+  return !(ctx.book?.nationals() ?? []).some((n) => compactLatin(n.name).length >= 4 && words.includes(compactLatin(n.name)));
+}
+
+/**
+ * A story's own places: its stated district (Rajasthan) and its own town, the place-line town or else the town its
+ * headline names inside that district ("चाकसू में हादसा", district Jaipur). Never a place from the rest of the body.
+ * Each as the district it is of and the names to learn.
+ */
+function storyOwnPlaces(story: LearnStory, book: PlaceBook | null): { district: string; names: string[] }[] {
+  const out: { district: string; names: string[] }[] = [];
+  const district = story.district ? (placeDistricts(story.district, book) ?? [])[0] : undefined;
+  if (district) out.push({ district, names: districtNames(district, book) });
+  if (!book) return out;
+  const asPlace = (p: Place | null): { district: string; names: string[] } | null => {
+    if (!p || p.kind === "national") return null;
+    const of = placeDistricts(p.hi, book) ?? [];
+    const d = district ? of.find((x) => x === district) : of.length === 1 ? of[0] : undefined;
+    if (!d) return null;
+    return { district: d, names: p.kind === "town" ? [p.hi] : districtNames(d, book) };
+  };
+  const town = (story.town ? asPlace(book.lookup(story.town)) : null) ?? book.find(story.headline ?? "").map((m) => (m.entry.data.kind === "town" ? asPlace(m.entry.data) : null)).find((x) => x !== null) ?? null;
+  if (town) out.push(town);
+  return out;
+}
+
+/**
+ * The names a desk handle learns from a story it was typed on (learning fix 3): the story's own places
+ * (storyOwnPlaces: its district and its own town), when they are in the handle's own district (handlePlaceDistricts);
+ * a local handle with no district in its string (handleIsLocal: "@ChaksuNews") takes them as they are, a person's,
+ * party's, institution's or national handle never. And the subjects named in the story that are the handle's own (the
+ * subject's name is in the handle string). Nothing else from the body.
+ */
+export function handleStoryNames(handle: string, story: LearnStory, ctx: { book: PlaceBook | null; subjects: SubjectRules | null }, type?: string | null): string[] {
   const out: string[] = [];
   const own = new Set(handlePlaceDistricts(handle, ctx));
-  if (own.size) {
-    const ofDistrict = story.district ? (placeDistricts(story.district, ctx.book) ?? []).find((d) => own.has(d)) : undefined;
-    if (ofDistrict) out.push(...districtNames(ofDistrict, ctx.book));
-    const town = story.town && ctx.book ? ctx.book.lookup(story.town) : null;
-    const townDistrict = town && town.kind !== "national" ? (placeDistricts(town.hi, ctx.book) ?? []).find((d) => own.has(d)) : undefined;
-    if (town && townDistrict) out.push(...(town.kind === "town" ? [town.hi] : districtNames(townDistrict, ctx.book)));
+  const typedNotLocal = !!type && NOT_LOCAL_TYPES.has(type);
+  const local = !own.size && handleIsLocal(handle, ctx, type);
+  for (const p of !typedNotLocal && (own.size || local) ? storyOwnPlaces(story, ctx.book) : []) {
+    if (local || own.has(p.district)) out.push(...p.names);
   }
   const ownSubject = new Set(handleOwnSubjectNames(handle, ctx.subjects).map(key));
   if (ownSubject.size) {
@@ -457,8 +495,8 @@ export class PostedLearner {
   }
 
   /** The names this handle learns from a story the desk typed it on (handleStoryNames) */
-  handleNames(handle: string, story: LearnStory): string[] {
-    return handleStoryNames(handle, story, this.ctx);
+  handleNames(handle: string, story: LearnStory, type?: string | null): string[] {
+    return handleStoryNames(handle, story, this.ctx, type);
   }
 
   /** `protectedHandles`: the Settings-verified directory rows, never typos (nor are the files' handles) */

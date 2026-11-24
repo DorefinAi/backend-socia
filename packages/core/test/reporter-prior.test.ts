@@ -461,13 +461,13 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.warnings.join(" ")).toMatch(/Jaipurr.*not a district/);
   });
-  it("13. a reporter without a policy block, no district: nothing in line 1 (V7 unchanged); b9: #Jaipur in the tag line", () => {
+  it("13. a reporter without a policy block, no district: nothing in line 1 (V7 unchanged); no #Jaipur anywhere (24 Nov 2026)", () => {
     // Vikas carries no desk rule (Naresh, used here before, got one on 23 Nov 2026)
     const { d } = draft(fileFor("VIKAS"), NONE);
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.districtSource).toBeNull();
-    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Jaipur"]);
-    expect(d.headingPlace).toMatchObject({ source: "fallback", placement: "trailing" });
+    expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
+    expect(d.noCity).toBe(true);
   });
   it("the policy is opt-in per reporter: rituraj, the four desk-stated reporters of Changes #3 §2.2, and the three of 17 Nov carry one", () => {
     const policies = Object.fromEntries([...reporters.profiles!.values()].filter((p) => p.districtWhenMissing).map((p) => [p.handle, p.districtWhenMissing]));

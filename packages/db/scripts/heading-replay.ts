@@ -171,8 +171,9 @@ const raj = result.filter((x) => x.rajasthan);
 const nat = result.filter((x) => !x.rajasthan);
 const checked = result.filter((x) => x.cardChecked);
 console.log(`stories: ${n} (Rajasthan ${raj.length}, national ${nat.length})`);
-console.log(`city tag missing, Rajasthan      ${by((x) => !x.cityTagOurs && !x.deskPlaceNoTag, raj)}   (desk wrote a place without a hashtag: ${by((x) => x.deskPlaceNoTag, raj)})`);
-console.log(`national posts flagged no_city   ${by((x) => x.noCity, nat)} of ${nat.length}`);
+console.log(`city tag missing, not flagged   ${by((x) => !x.cityTagOurs && !x.deskPlaceNoTag && !x.noCity)}   (desk wrote a place without a hashtag: ${by((x) => x.deskPlaceNoTag)})`);
+console.log(`flagged no_city                  Rajasthan ${by((x) => x.noCity, raj)} of ${raj.length}, national ${by((x) => x.noCity, nat)} of ${nat.length}`);
+console.log(`#Jaipur not from a reporter rule  ${by((x) => x.ourCity.includes("d:Jaipur") && x.headingPlace.source !== "reporter_rule" && x.headingPlace.district !== "Jaipur")}`);
 console.log(`wrong city (desk used another)   ${by((x) => x.wrongCity)}`);
 console.log(`town said twice                  ours ${by((x) => x.twiceOurs === "town")}   desk ${by((x) => x.twiceDesk === "town")}`);
 console.log(`district said twice              ours ${by((x) => x.twiceOurs === "district")}   desk ${by((x) => x.twiceDesk === "district")}`);
@@ -180,7 +181,7 @@ console.log(`line-1 place = desk              ${pct(by((x) => x.leadEqual))}`);
 console.log(`post city tags = desk            ${pct(by((x) => x.cityEqual))}`);
 console.log(`card place = line-1 place        ${pct(by((x) => x.cardEqual, checked), checked.length)}`);
 const gates: [string, number][] = [
-  ["Rajasthan posts with no city", by((x) => !x.cityTagOurs && !x.deskPlaceNoTag, raj)],
+  ["posts with no city that are not flagged no_city", by((x) => !x.cityTagOurs && !x.deskPlaceNoTag && !x.noCity)],
   ["line 1 naming its town twice", by((x) => x.twiceOurs === "town")],
   ["line 1 naming its district twice", by((x) => x.twiceOurs === "district")],
   ["card place differing from line 1's", by((x) => !x.cardEqual)],

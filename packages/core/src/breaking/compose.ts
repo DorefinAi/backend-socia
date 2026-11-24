@@ -138,8 +138,9 @@ export const BREAKING_CUT = "...";
 export const BREAKING_FORMAT = "b9";
 
 /**
- * The head office: the city a post gets when nothing else names one (owner rule 1, 23 Nov 2026). On 15–22 Nov the
- * desk itself put #Jaipur on 108 of the 214 posted stories that named no district.
+ * The head office: offered (one click, never applied) to a story that names no place. The 23 Nov fallback that PUT
+ * #Jaipur on such a story was removed on 24 Nov 2026 (owner: a Delhi story went out "#Jaipur"); only a reporter's desk
+ * rule still puts #Jaipur on a post.
  */
 export const HEAD_OFFICE_DISTRICT = "Jaipur";
 
@@ -767,9 +768,10 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   //   3. the reporter's desk rule (a video post's too);
   //   4. the file name's district code (a state bureau's included: a TAG only, it picked no handle above);
   //   5. the district the text names (CITY_FROM_COPY_TEXT), in the tag line;
-  //   6. #Jaipur (the head office), in the tag line, for a Rajasthan story only.
-  // A national story (#FirstIndiaNews) skips 4 and 6: after 3 it takes the first place its text names, an outside one
-  // included (#Delhi, #Bihar), and with none it carries NO city: the draft says so (noCity) and offers the three likeliest.
+  //   6. none: NO city tag. The draft says so (noCity, the story's "no_city" check) and offers the three likeliest places,
+  //      one click each. (Owner, 24 Nov 2026: the #Jaipur fallback is gone; only the reporter rule tags #Jaipur.)
+  // A national story (#FirstIndiaNews) skips 4: after 3 it takes the first place its text names, an outside one included
+  // (#Delhi, #Bihar), then 6.
   const video = isVideoHeadline(headline);
   // B1: the desk's own tag run is line 1 as written, so a stated district never reaches line 1 beside it
   if (deskRun) tags = [];
@@ -789,7 +791,6 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     const bureau = !!reporter && (!!reporter.bureau || reporter.districts.length === 0);
     const inferredText = district?.provenance === "inferred" && (district.from === "headline" || district.from === "text") ? district.value : null;
     const guess = inferredText ?? (bureau ? windowDistrict(book, [headline, ...story.points.slice(0, 2)]) : null);
-    const head = book.district(HEAD_OFFICE_DISTRICT);
     // A national story's city is a place its text names, an outside one included ("दिल्ली के द्वारका में…" → #Delhi)
     const named = rajasthan ? null : textPlace(book, [headline, ...story.points]);
     // Step 4 (owner, 23 Nov 2026): a file code reaching here is one storyDistrict did not trust (a bureau reporter such as
@@ -806,9 +807,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
             ? [fileCodeCity, "file_code"]
             : guess && CITY_FROM_COPY_TEXT
               ? [guess, "inferred"]
-              : head
-                ? [head, "fallback"]
-                : null
+              : null
           : named && CITY_FROM_COPY_TEXT
             ? [named, "inferred"]
             : null;
@@ -816,8 +815,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
       [cityInfo, source] = pick;
       const tag = `#${cityInfo.tag}`;
       // A video post takes no leading tag. The reporter's desk rule and the file code lead line 1, as the desk wrote them
-      // (Navin's JPR files went out "#Jaipur: ..."); a district from the text, a stored one of unknown provenance and the
-      // head office go in the tag line (as a lead, the head office matched the desk's line 1 on 126 fewer of 1,689 posts)
+      // (Navin's JPR files went out "#Jaipur: ..."); a district from the text and a stored one of unknown
+      // provenance go in the tag line
       const lead = !video && (source === "reporter_rule" || source === "file_code");
       if (lead) {
         tags = [tag];
@@ -826,15 +825,15 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
         trailing.push(tag);
         placement = "trailing";
       }
-    } else if (!rajasthan) {
-      // D4: no place anywhere: no city on the post, the draft is flagged, and the three likeliest are offered
+    } else {
+      // No place anywhere: no city on the post, the draft is flagged, and the three likeliest are offered (never applied)
       noCity = true;
-      const likely = [...(reporter?.districts ?? []), story.fileDistrict ?? "", "Delhi", HEAD_OFFICE_DISTRICT]
+      const likely = [...(reporter?.districts ?? []), story.fileDistrict ?? "", ...(rajasthan ? [HEAD_OFFICE_DISTRICT, "Delhi"] : ["Delhi", HEAD_OFFICE_DISTRICT])]
         .map((n) => book.district(n))
         .filter((d): d is DistrictInfo => !!d)
         .filter((d, i, all) => all.findIndex((x) => x.name === d.name) === i)
         .slice(0, 3);
-      for (const d of likely) cityOffers.push({ tag: `#${d.tag}`, source: "district.city.candidate", reason: `a national story naming no place: ${d.name} is one of the likeliest (one click)` });
+      for (const d of likely) cityOffers.push({ tag: `#${d.tag}`, source: "district.city.candidate", reason: `a story naming no place: ${d.name} is one of the likeliest (one click)` });
     }
   }
   // Rule 3: line 1 never names its city twice (the desk, Sep–Nov exports: a town tag in place of the word 62 times to 6
@@ -959,7 +958,7 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     bodyText, hashtags, hashtagSuggestions, hashtagSuggestionItems, proposals, mentions, handles, handleSuggestions, cls: picked.cls, why: picked.why,
     warnings: [
       ...picked.warnings, ...codeWarnings, ...policyWarnings, ...priorWarnings, ...flags.map((f) => `hashtag typo: ${f}`),
-      ...(noCity ? ["a national story naming no place: no city hashtag was added; pick one of the offered places"] : []),
+      ...(noCity ? ["a story naming no place: no city hashtag was added; pick one of the offered places"] : []),
     ],
     unmatchedReporter: picked.unmatchedReporter, headlineCut, composeVersion: `${BREAKING_FORMAT}.${version}`,
     // Only when this composer put line 1's district there (the desk's own tag run is left as written)

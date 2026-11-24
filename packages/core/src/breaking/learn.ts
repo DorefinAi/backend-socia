@@ -447,20 +447,27 @@ export function tagRuleKeywords(tag: string, ctx: { book: PlaceBook | null; subj
   return { keywords: uniqueNames([...words, ...subjects.flatMap((c) => c.keywords)], MAX_RULE_KEYWORDS), known: false };
 }
 
-/** The last word of a handle-shaped tag: a police station's, a DM's, a collector's */
-const HANDLE_TAG_ENDINGS = /(police|dm|collector)$/i;
+/** The office a district handle names after the district: <District>Police, <District>DM, <District>Collector */
+const DISTRICT_OFFICE_ENDINGS = ["police", "dm", "collector"];
 
 /**
- * Whether a typed hashtag is really a handle written with a # ("#Balotrapolice" for @BalotraPolice): it ends in
- * police, DM or collector, or it is a known handle's name (case, @ and underscores ignored). Never learned as a rule.
+ * Whether a typed hashtag is really a handle written with a # ("#Balotrapolice" for @BalotraPolice): it is a known
+ * handle's name (case, @ and underscores ignored), or a <District>Police / <District>DM / <District>Collector tag
+ * for which such a handle exists ("#JaipurPolice" when @jaipur_police_rj is known). A topic tag that merely ends in
+ * "police" is not one: #RajasthanPolice is a topic. Never learned as a rule.
  */
 export function tagLooksLikeHandle(tag: string, knownHandles: Iterable<string> = []): boolean {
   const bare = nfc(tag).replace(/^#+/, "");
   if (!bare || isHindi(bare)) return false;
-  if (HANDLE_TAG_ENDINGS.test(bare.replace(/[^A-Za-z]+$/, ""))) return true;
   const k = compactLatin(bare);
-  for (const h of knownHandles) if (k && compactLatin(h) === k) return true;
-  return false;
+  if (!k) return false;
+  const known = [...knownHandles].map(compactLatin).filter(Boolean);
+  if (known.includes(k)) return true;
+  const ending = DISTRICT_OFFICE_ENDINGS.find((e) => k.endsWith(e));
+  if (!ending) return false;
+  const place = k.slice(0, -ending.length);
+  const isDistrict = (districtCandidates ??= districtKeywordCandidates()).some((c) => compactLatin(c.latin) === place);
+  return isDistrict && known.some((h) => h.startsWith(k));
 }
 
 // ─── Everything the learning needs, in one place ────────────────────────────
@@ -497,6 +504,26 @@ export class PostedLearner {
   /** The names this handle learns from a story the desk typed it on (handleStoryNames) */
   handleNames(handle: string, story: LearnStory, type?: string | null): string[] {
     return handleStoryNames(handle, story, this.ctx, type);
+  }
+
+  /**
+   * What a desk handle learns from the stories the desk typed it on: nothing when the add rules withhold it
+   * (handleWithheld), else every name handleStoryNames gives for those stories, each once. The ONE rule both the
+   * learning (db learnFromPost, one story at a time) and learn-cleanup (re-run over the stories the audit names) use.
+   */
+  learnable(
+    handle: string,
+    stories: readonly LearnStory[],
+    opts: { directory?: Iterable<string>; curated?: Iterable<string>; reporters?: Iterable<string>; type?: string | null } = {},
+  ): { withheld: KeywordsWithheld | null; names: string[] } {
+    const directory = [...(opts.directory ?? [])];
+    const curated = [...(opts.curated ?? [])];
+    // A reporter's handle (a directory row the desk taught as a reporter's) never learns, as one of the files' never does
+    const self = handle.trim().replace(/^@+/, "").toLowerCase();
+    if ([...(opts.reporters ?? [])].some((r) => r.trim().replace(/^@+/, "").toLowerCase() === self)) return { withheld: "file_handle", names: [] };
+    const withheld = this.handleWithheld(handle, directory, curated);
+    if (withheld) return { withheld, names: [] };
+    return { withheld: null, names: uniqueNames(stories.flatMap((s) => handleStoryNames(handle, s, this.ctx, opts.type))) };
   }
 
   /** `protectedHandles`: the Settings-verified directory rows, never typos (nor are the files' handles) */

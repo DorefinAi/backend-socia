@@ -133,11 +133,11 @@ export class Dictionaries {
   }
 
   /**
-   * The desk rows with their learned keywords' posted counts: a keyword is offered until DESK_LEARNED_POSTED_USES
-   * posted stories carrying the handle name it, then added on its own; a keyword inside the handle string is added
-   * from the start (it needs the subjects file; without it, none is). Read like the Settings counts: again when the
-   * rows change or after POSTED_USES_MS; a failed read keeps the last stories for the same rows, or none (every
-   * learned keyword offered only), and is tried again after POSTED_USES_RETRY_MS.
+   * The desk rows with their evidence (core withKeywordUses: desk-typed stories, which aliases were learned, all posted
+   * stories, the suggestion record). Read like the Settings counts: again when the rows change or after POSTED_USES_MS.
+   * A failed read keeps the last good evidence (whatever rows it was read for), and a handle it has none for gets
+   * NO_EVIDENCE, which keeps an editor's aliases explicit (offered at once) rather than turning them into learned ones;
+   * tried again after POSTED_USES_RETRY_MS.
    */
   private async learnedDeskRows(rows: readonly DeskHandleRow[], files?: DeskRuleFiles): Promise<DeskHandleRow[]> {
     const keyed = rows.filter((r) => r.aliases.length);
@@ -147,8 +147,8 @@ export class Dictionaries {
       try {
         this.deskStories = { rows: key, at: Date.now(), value: await deskHandleEvidence(this.db, this.orgId, keyed.map((r) => r.handle)) };
       } catch (err) {
-        this.log?.warn({ err }, "desk handles: posted stories not read; learned keywords stay offered only for now");
-        const value = this.deskStories?.rows === key ? this.deskStories.value : new Map<string, DeskHandleEvidence>();
+        this.log?.warn({ err }, "desk handles: evidence not read; the last good evidence is used for now");
+        const value = this.deskStories?.value ?? new Map<string, DeskHandleEvidence>();
         this.deskStories = { rows: key, at: Date.now() - POSTED_USES_MS + POSTED_USES_RETRY_MS, value };
       }
     }
@@ -158,7 +158,7 @@ export class Dictionaries {
       const candidates = files ? [...districtKeywordCandidates(), ...(files.subjects.keywordCandidates ?? [])] : [];
       this.learnedRows = {
         key: built,
-        value: rows.map((r) => (r.aliases.length ? withKeywordUses(r, stories.get(r.handle.trim().replace(/^@+/, "").toLowerCase()) ?? [], candidates) : r)),
+        value: rows.map((r) => (r.aliases.length ? withKeywordUses(r, stories.get(r.handle.trim().replace(/^@+/, "").toLowerCase()) ?? NO_EVIDENCE, candidates) : r)),
       };
     }
     return this.learnedRows.value;
@@ -203,6 +203,9 @@ export class Dictionaries {
     return value;
   }
 }
+
+/** A desk handle's evidence when none could be read: nothing typed, nothing posted, no alias known to be learned */
+const NO_EVIDENCE: DeskHandleEvidence = { stories: [], suggest: { offered: 0, accepted: 0 }, learned: [], postedStories: [] };
 
 /** A short, stable tag for a dictionary fingerprint, for the composeVersion */
 const shortVersion = (v: string) => createHash("sha1").update(v).digest("hex").slice(0, 8);

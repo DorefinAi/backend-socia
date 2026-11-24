@@ -209,11 +209,22 @@ describe("rule 6: a typed hashtag learns its own words, never places; a #handle 
     expect(tagRuleKeywords("#JaipurMetro", ctx)).toEqual({ keywords: ["Metro"], known: false });
     expect(learner.tagKeywords("#bbhbh")).toEqual({ keywords: [], known: false });
   });
-  it("#Balotrapolice (meant @BalotraPolice) and other handle-shaped tags are handles", () => {
-    for (const t of ["#Balotrapolice", "#Khirthalpolice", "#JaipurDM", "#TonkCollector"]) expect(tagLooksLikeHandle(t)).toBe(true);
-    expect(tagLooksLikeHandle("#jaipur_police", ["jaipur_police"])).toBe(true);
-    expect(tagLooksLikeHandle("#JaipurPoliceNews")).toBe(false);
-    for (const t of ["#RajasthanPanchayatElection2026", "#Jaisalmer", "#जयपुर"]) expect(tagLooksLikeHandle(t)).toBe(false);
+  it("#Balotrapolice (meant @BalotraPolice) is a handle: it is a known handle's name, case and _ ignored", () => {
+    expect(tagLooksLikeHandle("#Balotrapolice", ["BalotraPolice"])).toBe(true);
+    expect(tagLooksLikeHandle("#jaipur_police", ["jaipurpolice"])).toBe(true);
+    // @BalotraPolice is in district-handles.json: the learner knows it without the directory
+    expect(learner.tagIsHandle("#Balotrapolice")).toBe(true);
+    // <District>Police / DM / Collector only where such a handle exists
+    expect(tagLooksLikeHandle("#TonkCollector", ["TonkCollectorOffice"])).toBe(true);
+    expect(tagLooksLikeHandle("#TonkCollector", ["jaipur_police"])).toBe(false);
+    expect(tagLooksLikeHandle("#JaipurDM")).toBe(false);
+  });
+  it("a topic tag that merely ends in police, DM or collector is not a handle (#RajasthanPolice)", () => {
+    expect(learner.tagIsHandle("#RajasthanPolice")).toBe(false);
+    expect(learner.tagIsHandle("#RajasthanPolice", ["PoliceRajasthan", "jaipur_police"])).toBe(false);
+    expect(learner.tagIsHandle("#TrafficPolice")).toBe(false);
+    expect(tagLooksLikeHandle("#JaipurPoliceNews", ["jaipur_police"])).toBe(false);
+    for (const t of ["#RajasthanPanchayatElection2026", "#Jaisalmer", "#जयपुर"]) expect(learner.tagIsHandle(t)).toBe(false);
   });
   it("a tag naming a known subject is a topic even when a handle of that name exists (#NarendraModi)", () => {
     expect(learner.tagIsHandle("#NarendraModi", ["narendramodi"])).toBe(false);
@@ -286,5 +297,19 @@ describe("G6: re-running the learning over decisions-like posts", () => {
     expect(learned.get("hbh")).toEqual(["Tonk", "टोंक"]);
     // Typed only on a Delhi story (outside Rajasthan); a lookalike; a data-file handle
     for (const h of ["NitinNabin", "forest", "nwr"]) expect(learned.get(h), h).toEqual([]);
+  });
+});
+
+describe("PostedLearner.learnable: the one rule learning and learn-cleanup share", () => {
+  const s1 = story("चाकसू में हादसा", "मुंबई से टीम", "Jaipur");
+  const s2 = story("जोबनेर में मेला", "", "Jaipur", "जोबनेर");
+  it("is handleStoryNames over the stories, each name once", () => {
+    expect(learner.learnable("ChaksuNews", [s1, s2]).names).toEqual(["Jaipur", "जयपुर", "चाकसू", "जोबनेर"]);
+    expect(learner.learnable("ChaksuNews", [s1, s2]).names).toEqual([...new Set([...handleStoryNames("ChaksuNews", s1, ctx), ...handleStoryNames("ChaksuNews", s2, ctx)])]);
+  });
+  it("withholds a reporter's handle, a typo of a known one, and gives a person's no place", () => {
+    expect(learner.learnable("satyatv99", [s1], { reporters: ["@satyatv99"] })).toEqual({ withheld: "file_handle", names: [] });
+    expect(learner.learnable("forest", [s1], { directory: ["forestRajasthan"] })).toEqual({ withheld: "lookalike", names: [] });
+    expect(learner.learnable("SomeDesk", [s1], { type: "person" })).toEqual({ withheld: null, names: [] });
   });
 });

@@ -21,7 +21,7 @@ import { LEARNED_RULE_PRIORITY, MAX_HANDLE_KEYWORDS, MAX_RULE_KEYWORDS, NATIONAL
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { audit } from "./audit";
 import type { Executor } from "./client";
-import { auditLog, composerCityTags, handleDirectory, hashtagRules, hashtagStaging, postDecisions, postDrafts, stories } from "./schema";
+import { REPORTER_SOURCE, auditLog, composerCityTags, handleDirectory, hashtagRules, hashtagStaging, postDecisions, postDrafts, stories } from "./schema";
 
 /** Who the change is recorded as: the person who posted, or (actorId null) a named script */
 export interface LearnWho {
@@ -53,27 +53,32 @@ type Draft = Pick<typeof postDrafts.$inferSelect, "id" | "orgId" | "storyId" | "
 const bare = (s: string) => s.trim().replace(/^[#@]+/, "");
 const DEVANAGARI = /[ऀ-ॿ]/;
 
-/** The handles of a draft's mention_suggestions ([{ handle: "@JDAJaipur", ... }]); anything else gives none */
-function suggestedMentions(v: unknown): string[] {
+/** The handles of a list of { handle } objects (mention_suggestions, handle_pick entries); anything else gives none */
+function handlesOf(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.map((m) => (m && typeof m === "object" && typeof (m as { handle?: unknown }).handle === "string" ? (m as { handle: string }).handle : "")).filter(Boolean);
 }
 
+/** A handle proposal of the decision log: what the composer emitted (layer "emit") or offered ("suggest") */
+export interface ProposedHandle {
+  item: string;
+  layer: "emit" | "suggest";
+}
+
 /**
- * The handles the DESK typed on the post (learning fix 1), lower-case without the @: its mentions minus every handle
- * the composer put on it or offered (handle_pick handles and suggested, mention_suggestions) and minus every handle the
- * decision log's proposals hold (`proposed`, any layer). A handle the composer emitted or the desk accepted from the
+ * The handles the DESK typed on the post (learning fix 1), lower-case without the @: its mentions minus the handles the
+ * composer EMITTED on it (handle_pick handles, proposals of layer "emit") and minus the suggestions the desk ACCEPTED
+ * (an offered handle that is in the post: handle_pick suggested, mention_suggestions, proposals of layer "suggest").
+ * A suggestion offered and not posted plays no part. A handle the composer emitted or the desk took from the
  * suggestions is never learned from: that only fed the composer back its own picks (@jpr_rural, @JaipurDiscom1).
  */
-export function typedHandles(draft: Pick<Draft, "mentions" | "handlePick" | "mentionSuggestions">, proposed: readonly string[] = []): string[] {
-  const offered = [
-    ...(draft.handlePick?.handles ?? []).map((h) => h.handle),
-    ...(draft.handlePick?.suggested ?? []).map((h) => h.handle),
-    ...suggestedMentions(draft.mentionSuggestions),
-    ...proposed,
-  ];
-  const known = new Set(offered.map((h) => bare(h).toLowerCase()).filter(Boolean));
-  return [...new Set(draft.mentions.map((m) => bare(m).toLowerCase()).filter((k) => k && !known.has(k)))];
+export function typedHandles(draft: Pick<Draft, "mentions" | "handlePick" | "mentionSuggestions">, proposed: readonly ProposedHandle[] = []): string[] {
+  const key = (h: string) => bare(h).toLowerCase();
+  const posted = new Set(draft.mentions.filter((m): m is string => typeof m === "string").map(key).filter(Boolean));
+  const emitted = [...handlesOf(draft.handlePick?.handles), ...proposed.filter((p) => p.layer === "emit").map((p) => p.item)];
+  const offered = [...handlesOf(draft.handlePick?.suggested), ...handlesOf(draft.mentionSuggestions), ...proposed.filter((p) => p.layer === "suggest").map((p) => p.item)];
+  const notTyped = new Set([...emitted.map(key), ...offered.map(key).filter((k) => posted.has(k))]);
+  return [...posted].filter((k) => !notTyped.has(k));
 }
 
 /**
@@ -113,7 +118,8 @@ export async function learnFromPost(tx: Executor, who: LearnWho, draft: Draft, l
       const directory = rows.map((r) => r.handle);
       // Rows an editor verified in Settings (not a desk add): never a typo of anything
       const curated = rows.filter((r) => r.source !== "desk" && r.verifiedAt !== null).map((r) => r.handle);
-      await learnHandles(sp, who, draft, story ?? null, directory, curated, learner, report);
+      const reporters = rows.filter((r) => r.source === REPORTER_SOURCE).map((r) => r.handle);
+      await learnHandles(sp, who, draft, story ?? null, { directory, curated, reporters }, learner, report);
       await learnHashtags(sp, who, draft, directory, learner, report);
       return report;
     });
@@ -123,15 +129,21 @@ export async function learnFromPost(tx: Executor, who: LearnWho, draft: Draft, l
   }
 }
 
-/** The handles the decision log says the composer proposed for this draft (emitted or offered), as written there */
-async function proposedHandles(tx: Executor, draftId: string): Promise<string[]> {
+/** The handle proposals the decision log holds for this draft (emitted or offered); a malformed entry is skipped */
+async function proposedHandles(tx: Executor, draftId: string): Promise<ProposedHandle[]> {
   const [row] = await tx.select({ proposals: postDecisions.proposals }).from(postDecisions).where(eq(postDecisions.draftId, draftId));
-  return (row?.proposals ?? []).filter((p) => p.kind === "handle").map((p) => p.item);
+  const list: unknown[] = Array.isArray(row?.proposals) ? row.proposals : [];
+  return list.flatMap((p): ProposedHandle[] => {
+    const o = p as { kind?: unknown; item?: unknown; layer?: unknown } | null;
+    if (!o || typeof o !== "object" || o.kind !== "handle" || typeof o.item !== "string") return [];
+    return [{ item: o.item, layer: o.layer === "emit" ? "emit" : "suggest" }];
+  });
 }
 
 async function learnHandles(
-  tx: Executor, who: LearnWho, draft: Draft, story: LearnStory | null, directory: string[], curated: string[], learner: PostedLearner, report: LearnedReport,
+  tx: Executor, who: LearnWho, draft: Draft, story: LearnStory | null, dir: { directory: string[]; curated: string[]; reporters: string[] }, learner: PostedLearner, report: LearnedReport,
 ): Promise<void> {
+  const { directory, curated } = dir;
   if (!draft.mentions.length) return;
   const keys = typedHandles(draft, await proposedHandles(tx, draft.id));
   if (!keys.length) return;
@@ -155,9 +167,9 @@ async function learnHandles(
     const handle = `@${bare(row.handle)}`;
     if (done.has(handle.toLowerCase())) continue;
     done.add(handle.toLowerCase());
-    const withheld = learner.handleWithheld(row.handle, directory, curated);
+    // The one learning rule, shared with learn-cleanup
+    const { withheld, names } = learner.learnable(row.handle, story ? [story] : [], { ...dir, type: row.type });
     const like = withheld === "lookalike" ? learner.handleLookalike(row.handle, directory, curated) : null;
-    const names = story ? learner.handleNames(row.handle, story, row.type) : [];
     const { keywords, added } = withheld ? { keywords: row.aliases, added: [] } : mergeKeywords(row.aliases, names, MAX_HANDLE_KEYWORDS);
     report.handles.push({ handle, added, keywords: keywords.length, withheld, ...(like && { like: `@${like}` }), names });
     if (!added.length) continue;

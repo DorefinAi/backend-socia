@@ -299,3 +299,17 @@ describe("G6: re-running the learning over decisions-like posts", () => {
     for (const h of ["NitinNabin", "forest", "nwr"]) expect(learned.get(h), h).toEqual([]);
   });
 });
+
+describe("PostedLearner.learnable: the one rule learning and learn-cleanup share", () => {
+  const s1 = story("चाकसू में हादसा", "मुंबई से टीम", "Jaipur");
+  const s2 = story("जोबनेर में मेला", "", "Jaipur", "जोबनेर");
+  it("is handleStoryNames over the stories, each name once", () => {
+    expect(learner.learnable("ChaksuNews", [s1, s2]).names).toEqual(["Jaipur", "जयपुर", "चाकसू", "जोबनेर"]);
+    expect(learner.learnable("ChaksuNews", [s1, s2]).names).toEqual([...new Set([...handleStoryNames("ChaksuNews", s1, ctx), ...handleStoryNames("ChaksuNews", s2, ctx)])]);
+  });
+  it("withholds a reporter's handle, a typo of a known one, and gives a person's no place", () => {
+    expect(learner.learnable("satyatv99", [s1], { reporters: ["@satyatv99"] })).toEqual({ withheld: "file_handle", names: [] });
+    expect(learner.learnable("forest", [s1], { directory: ["forestRajasthan"] })).toEqual({ withheld: "lookalike", names: [] });
+    expect(learner.learnable("SomeDesk", [s1], { type: "person" })).toEqual({ withheld: null, names: [] });
+  });
+});

@@ -506,6 +506,26 @@ export class PostedLearner {
     return handleStoryNames(handle, story, this.ctx, type);
   }
 
+  /**
+   * What a desk handle learns from the stories the desk typed it on: nothing when the add rules withhold it
+   * (handleWithheld), else every name handleStoryNames gives for those stories, each once. The ONE rule both the
+   * learning (db learnFromPost, one story at a time) and learn-cleanup (re-run over the stories the audit names) use.
+   */
+  learnable(
+    handle: string,
+    stories: readonly LearnStory[],
+    opts: { directory?: Iterable<string>; curated?: Iterable<string>; reporters?: Iterable<string>; type?: string | null } = {},
+  ): { withheld: KeywordsWithheld | null; names: string[] } {
+    const directory = [...(opts.directory ?? [])];
+    const curated = [...(opts.curated ?? [])];
+    // A reporter's handle (a directory row the desk taught as a reporter's) never learns, as one of the files' never does
+    const self = handle.trim().replace(/^@+/, "").toLowerCase();
+    if ([...(opts.reporters ?? [])].some((r) => r.trim().replace(/^@+/, "").toLowerCase() === self)) return { withheld: "file_handle", names: [] };
+    const withheld = this.handleWithheld(handle, directory, curated);
+    if (withheld) return { withheld, names: [] };
+    return { withheld: null, names: uniqueNames(stories.flatMap((s) => handleStoryNames(handle, s, this.ctx, opts.type))) };
+  }
+
   /** `protectedHandles`: the Settings-verified directory rows, never typos (nor are the files' handles) */
   handleWithheld(handle: string, directoryHandles: Iterable<string> = [], protectedHandles: Iterable<string> = []): KeywordsWithheld | null {
     return handleLearnWithheld(handle, { candidates: this.candidates, fileHandles: this.fileHandles, directoryHandles, protectedHandles });

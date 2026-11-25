@@ -1,0 +1,6 @@
+# X Videos media service (Python 3.12). ffmpeg and ffprobe must be on PATH.
+faster-whisper==1.2.1
+numpy>=1.26,<3
+# CUDA 12 libraries for ctranslate2 on Windows (media.py adds their bin folders to the DLL search path)
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*

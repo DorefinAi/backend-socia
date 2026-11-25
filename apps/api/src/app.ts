@@ -10,7 +10,7 @@ import { DeskError, readIngestStatus, readWorkerHeartbeat, setDecisionLogger, wo
 import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyServerOptions } from "fastify";
-import { COOKIE, HttpError, guard, loadSession } from "./auth";
+import { COOKIE, HttpError, guard, loadSession, requirePermission } from "./auth";
 import { ownerKeyFrom, type ApiConfig } from "./config";
 import { orgOwnsKey } from "./dev-files";
 import type { EventFeed } from "./events";
@@ -26,6 +26,7 @@ import { statusRoutes } from "./routes/status";
 import { templateRoutes } from "./routes/templates";
 import { trendRoutes } from "./routes/trends";
 import { setSuggestionLogger } from "./suggestions";
+import { xvideosRoutes } from "@socia/xvideos/api";
 
 export interface AppDeps {
   db: Db;
@@ -170,5 +171,17 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   // The owner console's API exists only with a long enough OWNER_API_KEY; otherwise every /owner path is a 404
   const ownerKey = ownerKeyFrom(deps.config.ownerApiKey ?? undefined);
   if (ownerKey) await app.register(ownerRoutes, { ...deps, ownerKey });
+  // X Videos (apps/xvideos): its routes only where XVIDEOS=true; everywhere else every /xvideos path is a 404
+  if (process.env.XVIDEOS === "true") {
+    await app.register(xvideosRoutes, {
+      db: deps.db,
+      viewer: (req) => {
+        const { user } = guard(req);
+        requirePermission(user, "page.post_studio.x", "x");
+        return { orgId: user.orgId };
+      },
+      httpError: (status, code, message) => new HttpError(status, code, message),
+    });
+  }
   return app;
 }

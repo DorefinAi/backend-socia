@@ -21,6 +21,7 @@
     "@socia/core": "workspace:*",
     "@socia/db": "workspace:*",
     "@socia/providers": "workspace:*",
+    "@socia/xvideos": "workspace:*",
     "basic-ftp": "6.2.3",
     "drizzle-orm": "0.45.4",
     "fastify": "5.12.7",

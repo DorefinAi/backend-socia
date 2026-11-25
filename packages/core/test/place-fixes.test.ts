@@ -378,3 +378,85 @@ describe("the merged districts' hyphenated names are the district, never a route
     expect(p.district).toBe(district);
   });
 });
+
+describe("Desk screenshots of 25 Nov evening: a name twice, and a national post kept Rajasthan", () => {
+  it("a misspelt dateline town takes the headline's spelling: '#Nagaur #कुचामन पंचायत…', the name once on line 1 and the card", () => {
+    const d = worker("BTN_RJ_BREAKING_1085_25NOV_MS_CONTROL_NGR2_big.txt", [
+      "नागौर के कुमाचन से खबर",
+      "कुचामन पंचायत समिति में 27 व 28 को होने वाले प्रधान व उपप्रधान के चुनाव को लेकर प्रशासन सतर्क",
+      "पंचायत समिति के सामने वाले मार्ग यातायात को सुचारू करने के लिए बनाया प्लान",
+    ]);
+    // The owner: Kuchaman stays the reporter's Nagaur (Didwana offered), and the caption keeps the town tag
+    expect(line1(d)).toBe("#Nagaur #कुचामन पंचायत समिति में 27 व 28 को होने वाले प्रधान व उपप्रधान के चुनाव को लेकर प्रशासन सतर्क");
+    expect(line1(d)).not.toContain("कुमाचन");
+    expect(d.headingPlace).toMatchObject({ cardHeadline: "कुचामन पंचायत समिति में 27 व 28 को होने वाले प्रधान व उपप्रधान के चुनाव को लेकर प्रशासन सतर्क" });
+  });
+
+  it("an unknown dateline town that matches nothing in the headline is kept as written", () => {
+    const d = worker(fileFor(null), ["झालावाड़ के मासलपुर से खबर", "पंचायत समिति की बैठक में हंगामा", ...POINTS]);
+    expect(line1(d)).toBe("#Jhalawar #मासलपुर: पंचायत समिति की बैठक में हंगामा");
+  });
+
+  it.each([
+    ["#Chittorgarh #रावतभाटा: रावतभाटा की सियासत में चुनाव बाद सामने आया नया घटनाक्रम", "रावतभाटा की सियासत में चुनाव बाद सामने आया नया घटनाक्रम"],
+    ["#Rajsamand #कुंभलगढ़: कुंभलगढ़ के मजेरा के पास किराना व्यापारी के साथ मारपीट", "कुंभलगढ़ के मजेरा के पास किराना व्यापारी के साथ मारपीट"],
+    ["#Kota: कोटा में हिस्ट्रीशीटर के घर में तोड़फोड़", "कोटा में हिस्ट्रीशीटर के घर में तोड़फोड़"],
+    ["#Kota #लाडपुरा: नदी में डूबा युवक", "लाडपुरा: नदी में डूबा युवक"],
+    ["#Jaisalmer #पोकरण: पोकरण-जोधपुर सड़क मार्ग पर हादसे की सूचना", "पोकरण: पोकरण-जोधपुर सड़क मार्ग पर हादसे की सूचना"],
+  ])("card of '%s' is '%s' (X cards of 23–24 Nov)", (l1, card) => {
+    expect(cardHeadlineOf(book, l1).text).toBe(card);
+  });
+
+  it("the Centre as the subject, Assam only in a later point: national, no @RajGovOfficial, @narendramodi offered or carried", () => {
+    const d = worker("BTN_RJ_BREAKING_25NOV_2720_AM_CONTROL_TV_BIG_.txt", [
+      "कैबिनेट फैसलों पर PM मोदी का X पर पोस्ट",
+      "'बराक घाटी की विकास यात्रा नई ऊंचाइयों को छूने के लिए तैयार है'",
+      "'कैबिनेट ने सिलचर के डोलू में एक ग्रीनफील्ड एयरपोर्ट के विकास को मंजूरी दी'",
+      "'दक्षिणी असम और आसपास के राज्यों के लिए बेहतर हवाई कनेक्टिविटी'",
+    ]);
+    expect(d.hashtags[0]).toBe("#FirstIndiaNews");
+    expect(d.cityFlag).toBe("national_story");
+    expect(d.mentions).not.toContain("@RajGovOfficial");
+    expect(d.hashtagSuggestions).not.toContain("#Jaipur");
+    expect([...d.mentions, ...(d.handleSuggestions ?? []).map((h) => h.handle)]).toContain("@narendramodi");
+  });
+
+  it("Rajasthan's own stay Rajasthan: a former Chief Secretary flying from Jaipur to Silchar, a union minister from Rajasthan", () => {
+    const usha = worker("BTN_RJ_BREAKING_2005_25NOV_mh_CONTROL_Krishan_Murari_big.txt", ["पूर्व मुख्य सचिव उषा शर्मा आज जाएंगी सिलचर (असम)", "इंडिगो फ्लाइट 6E-748 से जयपुर से जाएंगी सिलचर (असम)"]);
+    expect(usha.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+    const shekhawat = worker(fileFor(null), ["केंद्रीय मंत्री गजेंद्र सिंह शेखावत ने की समीक्षा बैठक", "अधिकारियों को दिए निर्देश"]);
+    expect(shekhawat.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+    const visit = worker(fileFor(null), ["PM मोदी का बांसवाड़ा दौरा कल", "तैयारियों का जायजा"]);
+    expect(visit.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+  });
+});
+
+describe("Owner's 100% rule (26 Nov): what the new place and national rules must NOT change", () => {
+  const NO_REPORTER = "btn_rj_breaking_611_bps_05NOV_control_TV_BIG.txt";
+  it("a dateline town is never swapped for a district, a place further in, or a place more than one letter off", () => {
+    // कोटा is a district, not a town: the desk's कोटड़ा stands
+    expect(line1(worker(fileFor(null), ["उदयपुर के कोटड़ा से खबर", "कोटा से आई टीम ने की जांच", ...POINTS]))).not.toContain("#कोटा");
+    // कुचामन named later in the headline, not at its opening: the unknown word stands
+    expect(line1(worker(fileFor(null), ["नागौर के कुमाचन से खबर", "पंचायत समिति कुचामन में चुनाव की तैयारी", ...POINTS]))).toContain("कुमाचन");
+  });
+
+  it("the plain Centre on a Rajasthan reporter's file stays Rajasthan (a village story naming a scheme)", () => {
+    const d = worker(fileFor("DINESH", "JPR"), ["केंद्र सरकार की योजना का लाभ नहीं मिल रहा, ग्रामीण परेशान", "अधिकारियों से की शिकायत"]);
+    expect(d.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+  });
+
+  it("the plain Centre on a desk file with no reporter is national ('दवाओं की सप्लाई चेन पर केंद्र सरकार सख्त')", () => {
+    expect(worker(NO_REPORTER, ["दवाओं की सप्लाई चेन पर केंद्र सरकार सख्त", "नई गाइडलाइन जारी"]).hashtags[0]).toBe("#FirstIndiaNews");
+  });
+
+  it("the Prime Minister named only in a point stays Rajasthan (DGP Conference, posted #Jaipur on 23 Nov)", () => {
+    const d = worker(fileFor("DINESH", "JPR"), ["इस बार आंध्रप्रदेश के तिरुपति में आयोजित होगी DGP Conference", "61वीं DG IG Conference का 4 से 6 दिसंबर तक होगा आयोजन, प्रधानमंत्री नरेंद्र मोदी, गृह मंत्री अमित शाह रहेंगे मौजूद"]);
+    expect(d.hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+  });
+
+  it.each(["केंद्रीय विद्यालय में वार्षिकोत्सव", "केंद्रीय जेल में बंदी की मौत", "प्रधानमंत्री आवास योजना में गड़बड़ी", "केंद्रीय मंत्रालय की टीम पहुंची"])(
+    "'%s' is not the Centre as a subject: no national flip", (headline) => {
+      expect(worker(NO_REPORTER, [headline, "मामले की जांच शुरू"]).hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
+    },
+  );
+});

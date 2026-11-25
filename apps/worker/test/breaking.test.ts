@@ -709,10 +709,12 @@ describe("BreakingShareSource (no database)", () => {
     await put("29_OCTOBER_2026", name, `${name.replace(/\.txt$/, "")}\n\nयमुना प्रदूषण पर सुप्रीम कोर्ट सख्त\nसरकार से मांगा जवाब\n`);
     expect(await settle(ingest)).toBe(1);
     const [story] = await h.db.select().from(stories);
-    expect(story!.needsCheck).toContain("no_city");
+    // P3 (owner, 25 Nov 2026): a story from outside Rajasthan is flagged a national story, and #Jaipur is never offered on it
+    expect(story!.needsCheck).toContain("national_story");
     const [draft] = await h.db.select().from(postDrafts).where(eq(postDrafts.storyId, story!.id));
     expect(draft!.hashtags).toEqual(["#FirstIndiaNews"]);
-    expect(draft!.hashtagSuggestions.slice(0, 2)).toEqual(["#Delhi", "#Jaipur"]);
+    expect(draft!.hashtagSuggestions[0]).toBe("#Delhi");
+    expect(draft!.hashtagSuggestions).not.toContain("#Jaipur");
     expect((draft!.handlePick as { headingPlace: { placement: string } }).headingPlace.placement).toBe("none");
 
     clock += 60_000;
@@ -903,7 +905,8 @@ describe("BreakingShareSource (no database)", () => {
     expect(draft!.hashtags).toEqual(["#RajasthanWithFirstIndia", "#Kota"]);
     expect(draft!.hashtagSuggestions).toEqual([]);
     // The heading place is stored with the draft: the card reads it instead of working its own place out
-    expect((draft!.handlePick as { headingPlace: unknown }).headingPlace).toEqual({ tags: ["#Kota"], district: "Kota", town: null, source: "inferred", placement: "trailing", card: "Kota" });
+    // P10 (owner, 25 Nov 2026): line 1 carries no tag ("कोटा में…"), so the card is line 1 as it stands, no "Kota:" in front
+    expect((draft!.handlePick as { headingPlace: unknown }).headingPlace).toEqual({ tags: ["#Kota"], district: "Kota", town: null, source: "inferred", placement: "trailing", card: null, cardHeadline: "कोटा में हिस्ट्रीशीटर के घर में घुसकर तोड़फोड़ और महिला से मारपीट" });
 
     // The decision log's proposal half (reporter-prior brief §2): written with the draft, undecided, with what the
     // file name said about the reporter (L1: the file name only) and every item with its rule id

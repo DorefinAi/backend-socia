@@ -551,6 +551,20 @@ function placeInText(book: PlaceBook, text: string, hint: string | null): { dist
 }
 
 /**
+ * The Prime Minister or the union cabinet as a story's subject (owner, 25 Nov 2026). A Rajasthan leader who is a union
+ * minister (शेखावत, मेघवाल) is caught by rajasthanSignal first, so their stories stay Rajasthan.
+ */
+const UNION_LEADER =
+  /(?<![\p{L}\p{M}])(?:(?:PM|पीएम|प्रधानमंत्री)\s*(?:नरेंद्र\s*|नरेन्द्र\s*)?मोदी|नरेंद्र\s*मोदी|नरेन्द्र\s*मोदी|(?:केंद्रीय|केन्द्रीय)\s*(?:कैबिनेट|मंत्रिमंडल))(?![\p{L}\p{M}])/u;
+/** The Centre in general ("केंद्र सरकार", "मोदी सरकार", "केंद्रीय मंत्री"): national only on a file no Rajasthan reporter filed */
+const UNION_BODY = /(?<![\p{L}\p{M}])(?:मोदी\s*सरकार|(?:केंद्र|केन्द्र)\s*सरकार|(?:केंद्रीय|केन्द्रीय)\s*(?:मंत्री|सरकार))(?![\p{L}\p{M}])/u;
+/** The file names a reporter who is not known to work only outside Rajasthan (no roster: a reporter counts as Rajasthan's) */
+function rajasthanReporter(tags: FileTags, book: PlaceBook, reporterDistricts: readonly string[] | undefined): boolean {
+  if (!tags.reporter) return false;
+  return !reporterDistricts?.length || reporterDistricts.some((d) => book.district(d)?.rajasthan !== false);
+}
+
+/**
  * A story no district was found for: is it national news (#FirstIndiaNews)? Files from the NWS desk are. The
  * national flash (nat_flash_rj_..., owner 17 Nov 2026, rule b: "#RajasthanWithFirstIndia unless the story is about
  * Delhi or another state"), checked on 16 Nov's 116 flash posts:
@@ -575,6 +589,15 @@ export function nationalWithoutPlace(tags: FileTags | null | undefined, text: St
   // Rule 2 for EVERY file: the headline or the first point names a place outside Rajasthan ("यूपी चुनाव को लेकर बड़ी खबर",
   // "बिहार के वैशाली में PM मोदी"). A place named only further down never flips a story (as before 25 Nov)
   if (outsideInLead(book, lines)) return true;
+  // The Centre is the subject of the headline, and nothing in the story is Rajasthan's ("कैबिनेट फैसलों
+  // पर PM मोदी का X पर पोस्ट" about an airport in Assam, owner 25 Nov 2026): national, like the desk posts it. The Prime
+  // Minister or the union cabinet always; the plain Centre ("केंद्र सरकार", "केंद्रीय मंत्री") only on a file no Rajasthan
+  // reporter filed, since a village story may name the Centre's scheme and no place we know
+  // The HEADLINE only: the Prime Minister named in a point is often a guest of a Rajasthan story ("DGP Conference… प्रधानमंत्री
+  // नरेंद्र मोदी, गृह मंत्री अमित शाह…" went out #Jaipur on 23 Nov)
+  const head = lines[0] ?? "";
+  if (UNION_LEADER.test(head)) return true;
+  if (UNION_BODY.test(head) && !rajasthanReporter(tags, book, reporterDistricts)) return true;
   if (isNationalFlash(tags)) {
     // The flash keeps its own rule 2 on the whole text (17 Nov 2026)
     if (placeInText(book, lines.join(" । "), null)?.national) return true;

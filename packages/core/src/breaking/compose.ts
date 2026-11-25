@@ -121,6 +121,13 @@ export function cardHeadlineOf(book: PlaceBook, line1: string, labels: readonly 
     if (last) {
       const place = cardTagName(book, last);
       const rest = strip(line.slice(m[0].length));
+      // The headline already opens with that place ("#Chittorgarh #रावतभाटा: रावतभाटा की सियासत…"): the desk's card shows it
+      // once, no "रावतभाटा:" in front (owner, 25 Nov 2026; all 5 such X cards of 23–24 Nov). The caption keeps its tags.
+      const p = tagPlace(book, last);
+      const names = [last, place, ...(p ? [p.hi, p.tag, ...(p.kind === "town" ? [] : p.districts.map((d) => d.hi))] : [])];
+      // A route or compound ("पोकरण: पोकरण-जोधपुर सड़क मार्ग पर…") is not the place repeated: the card keeps it in front
+      const opening = rest ? openingPlaceLength(rest, names) : 0;
+      if (opening && !placeWordInCompound(rest, opening)) return { text: rest, place: null };
       return { text: rest ? `${place}: ${rest}` : place, place };
     }
   }

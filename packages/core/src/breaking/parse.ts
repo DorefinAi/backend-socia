@@ -6,7 +6,7 @@
 import { fold } from "../fold";
 import { fileTags, fromNationalDesk, isNationalFlash, type FileTags } from "./filename";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
-import { openingPlaceLength, placeWordInCompound } from "./place-match";
+import { openingPlaceLength, placeMatchKey, placeWordInCompound } from "./place-match";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 
 /**
@@ -401,6 +401,43 @@ function resolvePlace(book: PlaceBook, phrase: string, hint: string | null, allo
   return null;
 }
 
+/** Edit distance between two short strings (code points) */
+function editDistance(a: string, b: string): number {
+  const x = [...a];
+  const y = [...b];
+  let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= y.length; j++) cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (x[i - 1] === y[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[y.length]!;
+}
+
+/** A misspelt dateline town is corrected only when it is at least this long (letters, as placeMatchKey keys them) */
+const MISSPELT_MIN_LETTERS = 4;
+
+/** The same letters, in any order ("कुमाचन" and "कुचामन") */
+const sameLetters = (a: string, b: string) => [...a].sort().join("") === [...b].sort().join("");
+
+/**
+ * The headline's spelling of an unknown dateline town, held tight (owner, 25 Nov 2026: no town may be guessed wrong). Only
+ * a known TOWN that the headline OPENS with, starting with the same letter, and either the same letters reordered ("कुमाचन"
+ * over "कुचामन पंचायत समिति…") or one letter off. Anything else, a district or a place further in the headline: null, and the
+ * desk's word stands as written.
+ */
+function headlineSpelling(book: PlaceBook, town: string, headline: string): string | null {
+  const key = placeMatchKey(town);
+  const letters = [...key];
+  if (letters.length < MISSPELT_MIN_LETTERS) return null;
+  const first = book.find(headline)[0];
+  const place = first?.entry.data;
+  if (!place || place.kind !== "town" || !openingPlaceLength(headline, [place.hi])) return null;
+  const k = placeMatchKey(place.hi);
+  if (k === key || [...k][0] !== letters[0]) return null;
+  return sameLetters(k, key) || editDistance(k, key) === 1 ? place.hi : null;
+}
+
 /** "रेनवाल (जयपुर)" reads town then district; turn it into [_, district, town] */
 function swap(m: RegExpExecArray | null): [string, string, string] | null {
   return m ? [m[0], m[2]!, m[1]!] : null;
@@ -706,6 +743,13 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
     } else if (!where.town && prefix.place.town && prefix.place.district?.name === where.district.name) {
       where.town = prefix.place.town;
     }
+  }
+  // A dateline town the places file doesn't know that is a misspelling of a known place the headline names ("नागौर के
+  // कुमाचन से खबर" over "कुचामन पंचायत समिति…"): the headline's spelling is the town, so line 1 and the card never carry
+  // the name twice, two ways (owner, 25 Nov 2026)
+  if (where?.town && !book.lookup(where.town)) {
+    const fixed = headlineSpelling(book, where.town, headline);
+    if (fixed) where = { ...where, town: fixed };
   }
   const points = lines.slice(1).map((l) => l.replace(BULLET, "")).filter(Boolean);
 

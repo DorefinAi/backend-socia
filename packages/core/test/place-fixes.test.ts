@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  BRAND_RAJASTHAN, PlaceBook, cardHeadlineOf, composeBreaking, isDeskNote, isRajasthanStory, parseBreaking, pickReporter, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
+  BRAND_RAJASTHAN, PlaceBook, assemblePostText, xLen, cardHeadlineOf, composeBreaking, isDeskNote, isRajasthanStory, parseBreaking, pickReporter, parseHandleRules, parseHashtagNormalise, parsePartyHandles, parsePlacesData,
   parseReporterHandles, parseSubjectHandles, slotFromTags, type BreakingDraft,
 } from "../src";
 
@@ -459,4 +459,95 @@ describe("Owner's 100% rule (26 Nov): what the new place and national rules must
       expect(worker(NO_REPORTER, [headline, "मामले की जांच शुरू"]).hashtags[0]).toBe(`#${BRAND_RAJASTHAN}`);
     },
   );
+});
+describe("@ml_vikas (owner, 26 Nov 2026): always '#Jaipur:' and the card 'Jaipur:', always @RajGovOfficial, never on national", () => {
+  const VIKAS = (n: number) => `BTN_RJ_BREAKING_${n}_26NOV_mh_CONTROL_Vikas_big.txt`;
+  it("a story naming no place: '#Jaipur: …', card 'Jaipur: …', @RajGovOfficial tagged (was only offered)", () => {
+    const d = worker(VIKAS(2009), ["Pharmacists के हितों की रक्षा के लिए नया संगठन", "Association of Pharmacist Employees (APE) रजि. का शुभारंभ"]);
+    expect(line1(d)).toBe("#Jaipur: Pharmacists के हितों की रक्षा के लिए नया संगठन");
+    expect(d.headingPlace.cardHeadline).toBe("Jaipur: Pharmacists के हितों की रक्षा के लिए नया संगठन");
+    expect(d.mentions).toContain("@RajGovOfficial");
+    expect(d.proposals.find((p) => p.item === "@RajGovOfficial")).toMatchObject({ layer: "emit" });
+  });
+
+  it("another district in the text (Chhabra, Baran): still '#Jaipur:', as the desk posted it", () => {
+    const d = worker(VIKAS(2063), ["छबड़ा पावर प्लांट की ऐतिहासिक \"Performance\" !", "RVUNL ने 2320 मेगावाट विद्युत उत्पादन करते हुए किया सर्वश्रेष्ठ प्रदर्शन"]);
+    expect(line1(d)).toBe("#Jaipur: छबड़ा पावर प्लांट की ऐतिहासिक \"Performance\" !");
+    expect(d.mentions).toContain("@RajGovOfficial");
+  });
+
+  it("a headline opening with जयपुर: still '#Jaipur:' in front, and the card keeps 'Jaipur:'", () => {
+    const d = worker(VIKAS(5118), ["जयपुर डिस्कॉम से बड़ी खबर", "बिजली चोरी के खिलाफ अभियान"]);
+    expect(line1(d)).toBe("#Jaipur: जयपुर डिस्कॉम से बड़ी खबर");
+    expect(d.headingPlace.cardHeadline).toBe("Jaipur: जयपुर डिस्कॉम से बड़ी खबर");
+  });
+
+  it("a place the desk wrote at the start leads instead (owner: the rule only when no place); no town tag is dropped", () => {
+    const kota = worker(VIKAS(2100), ["कोटा के रामगंजमंडी से खबर", "थर्मल पावर प्लांट की यूनिट में तकनीकी खराबी", "उत्पादन ठप"]);
+    expect(line1(kota)).toBe("#Kota #रामगंजमंडी: थर्मल पावर प्लांट की यूनिट में तकनीकी खराबी");
+    const prefix = worker(VIKAS(2102), ["रामपुरा खुर्द: खेत में मिला शव", "पुलिस मौके पर पहुंची"]);
+    expect(line1(prefix)).not.toContain("#Jaipur");
+    expect(line1(prefix)).toContain("रामपुरा खुर्द");
+  });
+
+  it("a town beside #Jaipur is named once and keeps its tag ('जयपुर के सांगानेर से खबर' over 'सांगानेर में…')", () => {
+    const d = worker(VIKAS(2104), ["जयपुर के सांगानेर से खबर", "सांगानेर में बिजली कटौती से लोग परेशान", "डिस्कॉम ने दी जानकारी"]);
+    expect(line1(d)).toBe("#Jaipur #सांगानेर में बिजली कटौती से लोग परेशान");
+  });
+
+  it("@RajGovOfficial never moves off: a long post is fitted to 300 only when it cannot fit 280 with it", () => {
+    const long = ["बिजली कंपनियों के घाटे पर ऊर्जा विभाग की उच्चस्तरीय समीक्षा बैठक में बड़े फैसले, उपभोक्ताओं को राहत देने की तैयारी तेज",
+      "ऊर्जा राज्यमंत्री हीरालाल नागर ने अधिकारियों को दिए सख्त निर्देश, बकाया वसूली अभियान तेज करने को कहा, लापरवाही पर होगी कार्रवाई",
+      "जयपुर डिस्कॉम, अजमेर डिस्कॉम और जोधपुर डिस्कॉम के प्रबंध निदेशकों के साथ विस्तृत चर्चा, नए बिजली कनेक्शन जल्द जारी होंगे"];
+    const d = worker(VIKAS(2103), long);
+    expect(d.mentions).toContain("@RajGovOfficial");
+    const n = xLen(assemblePostText(d.bodyText, d.hashtags, d.mentions));
+    expect(n).toBeLessThanOrEqual(300);
+    // Another reporter's same post still fits 280
+    const other = worker(fileFor("DIMPLE"), long);
+    expect(xLen(assemblePostText(other.bodyText, other.hashtags, other.mentions))).toBeLessThanOrEqual(280);
+  });
+
+  it("a national story stays national: no #Jaipur, no @RajGovOfficial", () => {
+    const d = worker(VIKAS(2101), ["दिल्ली में ऊर्जा मंत्रियों का राष्ट्रीय सम्मेलन", "कई राज्यों के मंत्री पहुंचे"]);
+    expect(d.hashtags[0]).toBe("#FirstIndiaNews");
+    expect(tagsOf(d)).not.toContain("Jaipur");
+    expect(d.mentions).not.toContain("@RajGovOfficial");
+  });
+
+  it("another reporter's rule is unchanged: rituraj's Kota place line keeps '#Kota:'", () => {
+    const d = worker(fileFor("rituraj"), ["कोटा से खबर", "थर्मल पावर प्लांट की यूनिट में तकनीकी खराबी", "उत्पादन ठप"]);
+    expect(line1(d).startsWith("#Kota")).toBe(true);
+  });
+});
+
+describe("The TV control room's 'FULL_<n>_' label line (26 Nov 2026)", () => {
+  it("Kota: the label goes, the dateline is read: '#Kota: अब राजस्थान…'", () => {
+    const d = worker("BTN_RJ_BREAKING_1041_25NOV_MS_CONTROL_Bhanwar_big_FULL.txt", [
+      "FULL_1041_कोटा से खबर", "कोटा से खबर", "अब राजस्थान का तीसरा प्रमुख क्रिकेट हब बनने की तरफ कोटा", "कोटा क्रिकेट जगत की दशकों पुरानी उम्मीद आज उतरी धरातल पर",
+    ]);
+    expect(line1(d)).toBe("#Kota: अब राजस्थान का तीसरा प्रमुख क्रिकेट हब बनने की तरफ कोटा");
+    expect(d.bodyText).not.toContain("FULL_");
+  });
+
+  it("the district chiefs' results: the headline once, no label", () => {
+    const d = worker("BTN_RJ_BREAKING_6804_VG_25NOV_CONTROL_JNS_BIG_FULL_SCREEN.txt", [
+      "FULL_6804_प्रदेश में 37 जिला प्रमुखों का परिणाम घोषित", "प्रदेश में 37 जिला प्रमुखों का परिणाम घोषित", "24 जिला परिषदों में कांग्रेस के बने जिला प्रमुख",
+    ]);
+    expect(line1(d)).toBe("प्रदेश में 37 जिला प्रमुखों का परिणाम घोषित");
+    expect(d.bodyText).not.toContain("FULL_");
+    expect(d.bodyText.split("\n\n")[1]!.startsWith("24 जिला परिषदों")).toBe(true);
+  });
+
+  it("a label of a letter or two is no copy: its words stay", () => {
+    const d = worker(fileFor(null, "JPR"), ["FULL_5_ए", "खान विभाग की समीक्षा बैठक", "अधिकारियों को दिए निर्देश"]);
+    expect(d.bodyText).not.toContain("FULL_");
+    expect(d.bodyText).toContain("ए");
+  });
+
+  it("a label whose words appear nowhere below keeps them as the headline (no word lost)", () => {
+    const d = worker(fileFor(null, "JPR"), ["full_6099_खान विभाग की समीक्षा बैठक", "जयपुर", "अधिकारियों को दिए निर्देश"]);
+    expect(line1(d)).toContain("खान विभाग की समीक्षा बैठक");
+    expect(d.bodyText).not.toMatch(/full_/i);
+  });
 });

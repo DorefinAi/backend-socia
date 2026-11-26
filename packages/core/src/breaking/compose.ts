@@ -110,7 +110,12 @@ export function cardTagName(book: PlaceBook, tag: string): string {
  * word keeps only the town ("#Bundi #नैनवां में…" → "नैनवां में…"). No such run: line 1 itself, "#" off, NO place in front.
  * `place` is the place the card opens with, or null.
  */
-export function cardHeadlineOf(book: PlaceBook, line1: string, labels: readonly string[] = HEADLINE_LABEL_WORDS): { text: string; place: string | null } {
+export function cardHeadlineOf(
+  book: PlaceBook,
+  line1: string,
+  labels: readonly string[] = HEADLINE_LABEL_WORDS,
+  opts: { keepRepeatedPlace?: boolean } = {},
+): { text: string; place: string | null } {
   const line = line1.normalize("NFC").replace(/\s+/g, " ").trim();
   const strip = (t: string) => t.replace(/#(?=[\p{L}\p{M}\p{N}_])/gu, "").replace(/\s+/g, " ").trim();
   const isPlace = (t: string) => tagPlace(book, t) !== null || deskPlaceTag(book, t, true, labels);
@@ -127,7 +132,7 @@ export function cardHeadlineOf(book: PlaceBook, line1: string, labels: readonly 
       const names = [last, place, ...(p ? [p.hi, p.tag, ...(p.kind === "town" ? [] : p.districts.map((d) => d.hi))] : [])];
       // A route or compound ("पोकरण: पोकरण-जोधपुर सड़क मार्ग पर…") is not the place repeated: the card keeps it in front
       const opening = rest ? openingPlaceLength(rest, names) : 0;
-      if (opening && !placeWordInCompound(rest, opening)) return { text: rest, place: null };
+      if (opening && !placeWordInCompound(rest, opening) && !opts.keepRepeatedPlace) return { text: rest, place: null };
       return { text: rest ? `${place}: ${rest}` : place, place };
     }
   }
@@ -474,6 +479,12 @@ export const BREAKING_BODY_FLOOR = 40;
  * capped at 280 and the desk was cutting handles by hand on X.
  */
 export const BREAKING_POST_MAX = 1000;
+/**
+ * The weighted limit a post is fitted to when a reporter's must-have handle (policy.handles_always) does not fit X's 280
+ * (owner, 26 Nov 2026: "increase the character limit only for special cases like this to 300"). The desk posts by hand and
+ * Copy & Mark Posted allows up to BREAKING_POST_MAX; X itself may refuse a post over 280 from an account without long posts.
+ */
+export const ALWAYS_HANDLE_X_LIMIT = 300;
 
 /** Describing words the payoff follows: "डंपर और कार के बीच हुई जोरदार...." */
 const HANGING_WORDS: ReadonlySet<string> = new Set(
@@ -889,11 +900,26 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
       offered.push({ tag: `#${t}`, source: PROPOSAL_SOURCES.campaign, reason: "a campaign or keyword tag in campaigns.json matched" });
     }
   }
+  // policy.handles_always (owner, 26 Nov 2026: @ml_vikas's @RajGovOfficial, until now only offered): tagged on every Rajasthan
+  // post of the reporter, as the state government's handle
+  if (rajasthan && profile?.handlesAlways.length) {
+    for (const h of profile.handlesAlways) {
+      if (!handles.some((x) => x.handle.toLowerCase() === h.toLowerCase())) handles = [...handles, { handle: h, reason: "government" }];
+    }
+  }
   let mentions = handles.map((h) => `@${h.handle}`);
 
   // P5: with a merged district's desk tag, the town that tag names takes no town tag ("#Khairthal:", not "#Khairthal #खैरथल:")
+  // policy.always (owner, 26 Nov 2026, @ml_vikas): when the reporter's rule leads line 1 (no place written at the start), it
+  // leads even a headline opening with that city ("#Jaipur: जयपुर डिस्कॉम…") and the card keeps "Jaipur:". A place the desk
+  // wrote at the start still wins over the rule, and no town tag is ever dropped (owner: "use the Always rule only when no district")
   const townTag = story.town && story.town !== place?.hi && !deskTagNamesTown(place, story.town) ? townHashtag(book.townTag(story.town) ?? story.town) : "";
   const lineOne = place ?? (policy?.layer === "emit" ? policy.district : null);
+  // Line 1 leads with the reporter's own city: by the rule, or because the place written is that city ("जयपुर DISCOM का…")
+  const alwaysPolicy =
+    profile?.districtAlways && policyDistrict && policyFits && !deskRun && !isVideoHeadline(headline) && lineOne?.name === policyDistrict.name && (place || policy?.layer === "emit")
+      ? policyDistrict
+      : null;
   // A tag the headline already carries without a colon ("#Jaipur जयपुर में…", "…#JaipurNews") is not added again
   // in front of it (desk fixes 14 Nov, point 6)
   const headlineTagKeys = copyTagKeys(book, [headline]);
@@ -997,7 +1023,9 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   let leadHeadline = headline;
   // P6: the town a "<district> के <town>" headline names, written as its tag in place of the words ("#Bundi #केशवरायपाटन में…")
   let headlineTown: { hi: string; tag: string } | null = null;
-  if (placement === "lead" && tags.length) {
+  // policy.always: "#Jaipur:" leads even a headline opening with जयपुर (owner, 26 Nov 2026: "always means always")
+  // With a town tag beside it the usual rule runs, so the town is never named twice nor its tag dropped ("#Jaipur #सांगानेर में…")
+  if (placement === "lead" && tags.length && !(alwaysPolicy && tags.length === 1)) {
     const last = tags.at(-1)!;
     const townOpening = last === townTag ? openingPlaceLength(headline, [story.town ?? "", townTag.slice(1), book.hashtag(townTag.slice(1))?.hi ?? ""]) : 0;
     const first = tags[0] === townTag ? null : tagPlace(book, tags[0]!.slice(1));
@@ -1040,7 +1068,8 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // goes in front ("#Kota #लाडपुरा: …" → "लाडपुरा: …"), every other "#" goes, and a line 1 with no lead run gets NO place in
   // front (the old D1 "Kota:" before "कोटा ग्रामीण की…" broke 94 of 98 such cards). Decided here, once, with line 1.
   const fullLine1 = inlineLine ?? `${tags.length && !deskRun ? `${tags.join(" ")}: ` : ""}${leadHeadline}`;
-  const cardText = cardHeadlineOf(book, fullLine1, headlineLabels);
+  // policy.always: the card is "Jaipur: …" every time, even over a headline opening with जयपुर (owner, 26 Nov 2026)
+  const cardText = cardHeadlineOf(book, fullLine1, headlineLabels, { keepRepeatedPlace: !!alwaysPolicy && placement === "lead" });
   const headingPlace: HeadingPlace = {
     tags: [...written],
     district: placement === "copy" || placement === "none" ? null : (cityInfo?.name ?? null),
@@ -1136,16 +1165,19 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
   // Reviewers (25 Nov): the police handle of an incident is the post's one handle, so it moves only after line 2 has
   // given way (down to BREAKING_BODY_FLOOR), never before: a Jaipur robbery lost @jaipur_police at 321 while line 2
   // stayed at full length.
-  const cap = Math.min(limit, xLimit);
+  // policy.handles_always (owner, 26 Nov 2026): the reporter's must-have handles (@ml_vikas's @RajGovOfficial) never move off.
+  // When the post cannot fit 280 with them on, and only then, it is fitted to ALWAYS_HANDLE_X_LIMIT (300) instead
+  const mustKeep = new Set(rajasthan && profile ? profile.handlesAlways.map((h) => h.toLowerCase()) : []);
+  let cap = Math.min(limit, xLimit);
   const lengthHandles: HandlePick[] = [];
   const isPolice = (h: HandlePick) => h.reason === "police" || h.reason === "state_police";
-  const movable = (h: HandlePick) => h.reason !== "reporter" && h.reason !== "subject" && h.reason !== "cm";
+  const movable = (h: HandlePick) => h.reason !== "reporter" && h.reason !== "subject" && h.reason !== "cm" && !mustKeep.has(h.handle.toLowerCase());
   const nextToMove = (police: boolean): HandlePick | null => {
     const last = <T,>(xs: readonly T[]) => xs.at(-1);
-    const parties = handles.filter((h) => h.reason === "party");
+    const parties = handles.filter((h) => h.reason === "party" && movable(h));
     if (parties.length >= 2) return last(parties)!;
     if (parties.length) return parties[0]!;
-    const dm = handles.find((h) => h.reason === "collector");
+    const dm = handles.find((h) => h.reason === "collector" && movable(h));
     if (dm) return dm;
     const other = last(handles.filter((h) => movable(h) && !isPolice(h)));
     if (other) return other;
@@ -1157,24 +1189,38 @@ export function composeBreaking(story: BreakingComposeInput, rules: HandleRules,
     mentions = handles.map((x) => `@${x.handle}`);
     lengthHandles.push({ ...h, movedFor: "length" });
   };
-  let laid = layout(limit);
-  // 1. party handles, the collector, the other non-police handles
-  for (let h = over(laid) ? nextToMove(false) : null; h; h = over(laid) ? nextToMove(false) : null) {
-    moveOff(h);
-    laid = layout(limit);
-  }
-  // 2. line 2 gives way, as long as it keeps BREAKING_BODY_FLOOR and the headline stays whole
-  if (over(laid)) {
-    const shorter = layout(cap);
-    const keepsLine2 = !shorter.cutHead && shorter.bodyText.includes("\n\n");
-    if (keepsLine2 && !over(shorter)) laid = shorter;
-  }
-  // 3. then the police handle, and only then whatever text cut still fits the post
-  for (let h = over(laid) ? nextToMove(true) : null; h; h = over(laid) ? nextToMove(true) : null) {
-    moveOff(h);
-    laid = layout(limit);
-    const shorter = layout(cap);
-    if (over(laid) && !shorter.cutHead && shorter.bodyText.includes("\n\n") && !over(shorter)) laid = shorter;
+  const startHandles = handles;
+  const startMentions = mentions;
+  const fit = () => {
+    handles = startHandles;
+    mentions = startMentions;
+    lengthHandles.length = 0;
+    let laid = layout(limit);
+    // 1. party handles, the collector, the other non-police handles
+    for (let h = over(laid) ? nextToMove(false) : null; h; h = over(laid) ? nextToMove(false) : null) {
+      moveOff(h);
+      laid = layout(limit);
+    }
+    // 2. line 2 gives way, as long as it keeps BREAKING_BODY_FLOOR and the headline stays whole
+    if (over(laid)) {
+      const shorter = layout(cap);
+      const keepsLine2 = !shorter.cutHead && shorter.bodyText.includes("\n\n");
+      if (keepsLine2 && !over(shorter)) laid = shorter;
+    }
+    // 3. then the police handle, and only then whatever text cut still fits the post
+    for (let h = over(laid) ? nextToMove(true) : null; h; h = over(laid) ? nextToMove(true) : null) {
+      moveOff(h);
+      laid = layout(limit);
+      const shorter = layout(cap);
+      if (over(laid) && !shorter.cutHead && shorter.bodyText.includes("\n\n") && !over(shorter)) laid = shorter;
+    }
+    return laid;
+  };
+  let laid = fit();
+  // A must-have handle kept the post over 280: fit it again at 300, from the start (handles and line 2 as composed)
+  if (over(laid) && handles.some((h) => mustKeep.has(h.handle.toLowerCase())) && cap < Math.min(limit, ALWAYS_HANDLE_X_LIMIT)) {
+    cap = Math.min(limit, ALWAYS_HANDLE_X_LIMIT);
+    laid = fit();
   }
   if (over(laid)) laid = layout(cap);
   const { cutHead: headlineCut, bodyText } = laid;

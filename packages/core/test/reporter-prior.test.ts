@@ -464,8 +464,8 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     expect(d.warnings.join(" ")).toMatch(/Jaipurr.*not a district/);
   });
   it("13. a reporter without a policy block, no district: nothing in line 1 (V7 unchanged); no #Jaipur anywhere (24 Nov 2026)", () => {
-    // Vikas carries no desk rule (Naresh, used here before, got one on 23 Nov 2026)
-    const { d } = draft(fileFor("VIKAS"), NONE);
+    // Dimple carries no desk rule (Naresh, then Vikas, used here before, got one on 23 and 26 Nov 2026)
+    const { d } = draft(fileFor("DIMPLE"), NONE);
     expect(d.bodyText.startsWith("#")).toBe(false);
     expect(d.districtSource).toBeNull();
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
@@ -475,7 +475,10 @@ describe("Step 4: rituraj's '#Jaipur:' when the post names no district", () => {
     const policies = Object.fromEntries([...reporters.profiles!.values()].filter((p) => p.districtWhenMissing).map((p) => [p.handle, p.districtWhenMissing]));
     // 17 Nov 2026 (owner, from 16 Nov's hand-added #Jaipur): Dinesh Dangi, Aishwarya, Satya. 23 Nov 2026 (SOCIA_HEADING_GAPS_AND_PLAN
     // step 4): Nirmal, Naresh and Dinesh Kasana (#Jaipur, replacing 15 Nov Q2), Ashvini (#Delhi)
-    expect(policies).toEqual({ rituraj9999: "Jaipur", parmarshivendra: "Jaipur", vyaskamalkant: "Jaipur", yogesh2727sh1: "Jaipur", bhanwar_83: "Kota", dineshdangi84: "Jaipur", aishwaryam99: "Jaipur", satyatv99_news: "Jaipur", Nirmaltiwaribki: "Jaipur", naresh_jsharma: "Jaipur", DineshKasana15: "Jaipur", ashvinigokul: "Delhi" }); // Satya: @satyatv99_news (owner, 20 Nov 2026)
+    expect(policies).toEqual({ rituraj9999: "Jaipur", parmarshivendra: "Jaipur", vyaskamalkant: "Jaipur", yogesh2727sh1: "Jaipur", bhanwar_83: "Kota", dineshdangi84: "Jaipur", aishwaryam99: "Jaipur", satyatv99_news: "Jaipur", Nirmaltiwaribki: "Jaipur", naresh_jsharma: "Jaipur", DineshKasana15: "Jaipur", ashvinigokul: "Delhi", ml_vikas: "Jaipur" }); // Satya: @satyatv99_news (owner, 20 Nov 2026)
+    // 26 Nov 2026 (owner): Vikas only, always "#Jaipur:" and always @RajGovOfficial
+    const always = [...reporters.profiles!.values()].filter((p) => p.districtAlways || p.handlesAlways.length).map((p) => [p.handle, p.districtAlways, p.handlesAlways]);
+    expect(always).toEqual([["ml_vikas", true, ["RajGovOfficial"]]]);
     expect(reporterProfile(reporters, reporters.byToken.get("RITURAJ"))?.districtWhenMissing).toBe("Jaipur");
   });
 });

@@ -339,13 +339,11 @@ describe("composeBreaking", () => {
     expect(d.composeVersion).toBe("b9.0");
   });
 
-  it("adds the Hindi town tag and cuts line 2 right after a linking word, at the desk's length, with 3 or 4 dots (b8)", () => {
+  it("adds the Hindi town tag and ends line 2 on a whole point, within the desk's 130, with 3 or 4 dots (27 Nov 2026)", () => {
     const { text } = post("BTN_RJ_BREAKING_6072_29OCT_US_CONTROL_REPORTER_karari_big.txt");
     expect(text.split("\n")[0]).toBe("#Chittorgarh #निम्बाहेड़ा: काश, पहले भी जारी हो जाती ऐसी एडवाइजरी !");
     const body = text.split("\n\n")[1]!;
     expect(body).toMatch(/[^.]\.{3,4}$/);
-    expect(LINKING_WORDS.has(body.replace(/\.+$/, "").split(" ").pop()!)).toBe(true);
-    expect(xLen(body)).toBeGreaterThanOrEqual(100);
     expect(xLen(body)).toBeLessThanOrEqual(130);
     expect(xLen(text)).toBeLessThanOrEqual(280);
   });
@@ -416,87 +414,62 @@ ${point}`, "x_breaking.txt", book), rules, book, { topics }).mentions;
   });
 });
 
-describe("the catchy cut (b8 crispPoints scoring)", () => {
-  const lead = "कुंभलगढ़ घूमने आए मध्यप्रदेश के पर्यटकों की कार हादसे का शिकार";
+describe("line 2 by whole points (owner, 27 Nov 2026)", () => {
+  const HMH = ["कांग्रेस ने रामकुमार स्वामी को घोषित किया प्रत्याशी", "भाजपा ने रजनीश कस्वां को बनाया प्रत्याशी", "दोनों दलों के कार्यकर्ताओं में उत्साह, कल होगा नामांकन दाखिल करने का कार्यक्रम"];
 
-  it("stops on a describing word with the payoff still to come", () => {
-    expect(crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर", "भीषण सड़क हादसे में पांच पर्यटक घायल"], "....")).toBe(
-      `${lead}, ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर, भीषण....`,
-    );
+  it("Hanumangarh: whole points from the top, then the dots; never a cut inside a point", () => {
+    expect(crispPoints(HMH, "...")).toBe("कांग्रेस ने रामकुमार स्वामी को घोषित किया प्रत्याशी, भाजपा ने रजनीश कस्वां को बनाया प्रत्याशी...");
   });
 
-  it("stops on the person or thing just before its action", () => {
-    expect(crispPoints(["सादुलपुर पुलिस को मिली बड़ी सफलता", "आरोपी रमेश उर्फ मोनू गिरफ्तार", "आरोपी अनिल उर्फ मोलड़ के गोली मारकर शव फेंक गए थे सूरतपुरा गांव में"], "....")).toBe(
-      "सादुलपुर पुलिस को मिली बड़ी सफलता, आरोपी रमेश उर्फ मोनू गिरफ्तार, आरोपी अनिल उर्फ मोलड़ के गोली मारकर शव फेंक....",
-    );
-  });
-
-  it("never stops inside a number range ('10 से 15')", () => {
-    const out = crispPoints(["जयपुर में तेज बारिश से कई इलाकों में जलभराव की स्थिति", "शहर के निचले इलाकों में पानी भरा", "बारिश के बाद 10 से 15 मकानों में घुसा पानी"], "...");
-    expect(out).not.toMatch(/10 से\.+$/u);
-    expect(out.endsWith("मकानों में...")).toBe(true);
-  });
-
-  it("prefers a linking word over a word that finishes the statement", () => {
-    const out = crispPoints(["पुलिस ने अवैध शराब के खिलाफ अभियान चलाकर बड़ी कार्रवाई की", "तस्करों के ठिकानों पर दबिश देकर शराब बरामद", "दो आरोपियों को किया गिरफ्तार और वाहन जब्त"], "...");
-    expect(out.endsWith("दो आरोपियों को...")).toBe(true);
-  });
-
-  it("counts the dots inside 100–130", () => {
-    for (const dots of ["...", "...."]) {
-      const out = crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर", "भीषण सड़क हादसे में पांच पर्यटक घायल"], dots);
-      expect(xLen(out)).toBeGreaterThanOrEqual(BREAKING_BODY_MIN);
-      expect(xLen(out)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
-    }
-  });
-
-  it("cuts one huge word by letters instead of losing line 2", () => {
-    const out = crispPoints(["अ".repeat(200)], "...");
-    expect(out).toBe(`${"अ".repeat(BREAKING_BODY_MAX - 3)}...`);
-  });
-
-  it("never takes a cut under 40 when one of 40 or more fits (review B2)", () => {
-    const pts = ["पुलिस ने अवैध शराब के खिलाफ अभियान चलाकर", "तस्करों के ठिकानों पर दबिश देकर शराब बरामद की गई और दो आरोपी पकड़े"];
-    expect(crispPoints(pts, "...", 45)).toBe("पुलिस ने अवैध शराब के खिलाफ अभियान चलाकर...");
-    for (const max of [45, 50, 55, 60, 65, 69]) {
-      for (const dots of ["...", "...."]) {
-        const out = crispPoints(pts, dots, max);
-        expect(out === "" || (xLen(out) >= BREAKING_BODY_FLOOR && xLen(out) <= max)).toBe(true);
-        expect(out).not.toBe("");
-      }
-    }
-    expect(crispPoints(pts, "...", 38)).toBe("");
-  });
-
-  it("drops a line 2 under the 40-character floor, never a stub", () => {
-    expect(crispPoints(["पुलिस ने आरोपी को पकड़ा", "जांच जारी"], "....")).toBe("");
-    expect(crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर"], "...", 35)).toBe("");
-    const tight = crispPoints([lead, "ओलादर ब्रिज पर डंपर और कार के बीच हुई जोरदार टक्कर"], "...", 60);
-    expect(xLen(tight)).toBeGreaterThanOrEqual(BREAKING_BODY_FLOOR);
-    expect(xLen(tight)).toBeLessThanOrEqual(60);
-  });
-
-  it("keeps a short story whole, with no dots, when it is over the floor", () => {
+  it("every point fits: all of them, no dots", () => {
     expect(crispPoints(["पुलिस ने हत्या के आरोपी को किया गिरफ्तार", "जांच जारी, परिजनों ने राहत की सांस ली"], "...")).toBe(
       "पुलिस ने हत्या के आरोपी को किया गिरफ्तार, जांच जारी, परिजनों ने राहत की सांस ली",
     );
+    // A short line 2 is kept now (the 40-character floor is gone): it is whole points, never a stub
+    expect(crispPoints(["पुलिस ने आरोपी को पकड़ा", "जांच जारी"], "....")).toBe("पुलिस ने आरोपी को पकड़ा, जांच जारी");
   });
 
-  it("stays fast on a 200-point story (stops scanning past the limit)", () => {
+  it("a first point longer than line 2: shown whole with the dots when the post has room, else no line 2", () => {
+    const long = "वित्तीय आस्तियों का प्रतिभूतिकरण व पुनर्गठन एवं प्रतिभूतिहित का प्रवर्तन एक्ट, 2002 से जुड़ा प्रकरण जिसमें अदालत ने सुनवाई के बाद अहम आदेश दिए";
+    expect(xLen(long)).toBeGreaterThan(BREAKING_BODY_MAX);
+    expect(crispPoints([long, "दूसरा बिंदु"], "....", BREAKING_BODY_MAX, 200)).toBe(`${long}....`);
+    expect(crispPoints([long], "....", BREAKING_BODY_MAX, 200)).toBe(long);
+    expect(crispPoints([long, "दूसरा बिंदु"], "....", BREAKING_BODY_MAX, 100)).toBe("");
+    expect(crispPoints(["अ".repeat(200)], "...")).toBe("");
+  });
+
+  it("a list written as one long point: whole comma-separated items, then the dots", () => {
+    const list = "बिकासर से अमृतलाल भांभू, सिलवा से लालूदान, रायसर से मेघाराम मेघवाल,बंधडा से मुन्नी, जैसलसर से प्रमिला कंवर शेखावत, बिरमसर से रामलाल, उदासर से गोपालराम, कानासर से भंवरलाल";
+    const out = crispPoints([list, "दूसरा बिंदु"], "...");
+    expect(out).toBe("बिकासर से अमृतलाल भांभू, सिलवा से लालूदान, रायसर से मेघाराम मेघवाल, बंधडा से मुन्नी, जैसलसर से प्रमिला कंवर शेखावत...");
+    expect(xLen(out)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
+  });
+
+  it("an end exactly on a point: the dots are counted in the limit", () => {
+    const a = "क".repeat(60);
+    const b = "ख".repeat(63);
+    // a, b = 125; with "...." 129 fits 130; with a third point it does not
+    expect(crispPoints([a, b, "ग".repeat(10)], "....")).toBe(`${a}, ${b}....`);
+    expect(crispPoints([a, b + "ख".repeat(3), "ग".repeat(10)], "....")).toBe(`${a}....`);
+  });
+
+  it("measures Devanagari the way X does and never goes over the limit, ending on a whole point", () => {
+    const points = Array.from({ length: 12 }, (_, i) => `क्षेत्र में ${i} श्रद्धालुओं के लिए व्यवस्था की गई और प्रशासन ने निर्देश दिए`);
+    for (const max of [90, 130, 200]) {
+      const out = crispPoints(points, "...", max);
+      expect(xLen(out)).toBeLessThanOrEqual(max);
+      expect(points.some((_, i) => out === `${points.slice(0, i + 1).join(", ")}...`)).toBe(true);
+    }
+    // Room for less than the first point: no line 2, never a part of a point
+    expect(crispPoints(points, "...", 50)).toBe("");
+  });
+
+  it("stays fast on a 200-point story", () => {
     const big = Array.from({ length: 200 }, (_, i) => `क्षेत्र में ${i} श्रद्धालुओं के लिए व्यवस्था की गई और प्रशासन ने निर्देश दिए`);
     const t = performance.now();
     const out = crispPoints(big, "....");
     expect(performance.now() - t).toBeLessThan(1000);
     expect(xLen(out)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
-  });
-
-  it("measures Devanagari the way X does and never goes over the limit", () => {
-    const points = Array.from({ length: 12 }, (_, i) => `क्षेत्र में ${i} श्रद्धालुओं के लिए व्यवस्था की गई और प्रशासन ने निर्देश दिए`);
-    for (const max of [60, 90, 130]) {
-      const out = crispPoints(points, "...", max);
-      expect(xLen(out)).toBeLessThanOrEqual(max);
-      expect(out).toMatch(/[^,्.]\.\.\.$/u);
-    }
   });
 
   it("seeds the dots with the headline without its tags", () => {
@@ -526,8 +499,8 @@ describe("the whole breaking post (b8 decisions §0.2; since P2 it fits X's 280 
   it("uses the bodyMax option as line 2's ceiling", () => {
     const d = composeBreaking(parseBreaking(`जयपुर\nसमीक्षा बैठक\n${points.join("\n")}`, "x_breaking.txt", book), rules, book, { topics, bodyMax: 80 });
     const line2 = d.bodyText.split("\n\n")[1]!;
-    expect(xLen(line2)).toBeLessThanOrEqual(80);
-    expect(xLen(line2)).toBeGreaterThanOrEqual(BREAKING_BODY_FLOOR);
+    // Whole points within 80, or the whole first point when even it is longer
+    expect(xLen(line2) <= 80 || line2.startsWith(points[0]!)).toBe(true);
   });
 
   it("drops line 2 when a caller's tight limit leaves no room for 40 characters", () => {
@@ -769,20 +742,13 @@ describe("crispPoints (b8 line 2)", () => {
     );
   });
 
-  it("cuts long points to the desk's 100–130 and ends with the given dots", () => {
+  it("long points: whole points within 130, then the given dots", () => {
     for (const dots of ["...", "...."]) {
       const body = crispPoints(points, dots);
       expect(body.endsWith(dots)).toBe(true);
-      expect(body.slice(0, -dots.length).endsWith(".")).toBe(false);
-      expect(xLen(body)).toBeGreaterThanOrEqual(BREAKING_BODY_MIN);
       expect(xLen(body)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
+      expect(points.some((_, i) => body === points.slice(0, i + 1).join(", ") + dots)).toBe(true);
     }
-  });
-
-  it("withholds the payoff: stops on a linking word before the noun, not after a finished verb", () => {
-    const body = crispPoints(points, "...");
-    const last = body.replace(/\.+$/, "").split(" ").pop()!;
-    expect(LINKING_WORDS.has(last)).toBe(true);
   });
 
   it("goes shorter only when it is given less room, and never past it", () => {

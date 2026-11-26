@@ -91,6 +91,10 @@ const NOTE_START = /^(?:नोट|note)\s*[-:–—ः]+/iu;
 const NOTE_START_SPACED = /^(?:नोट|note)\s*[-:–—ः]+(?:\s|$)/iu;
 /** What every desk note asks for (all 340 stored ones); "नोट-बंदी के बाद बाजार में रौनक" asks for nothing: news */
 const DESK_INSTRUCTION = /फोटो|फुल\s*स्क्रीन|full\s*screen|विजुअल|visual|करावें|कराएं|करवाएं|चलाएं|चलावें/iu;
+/** The TV control room's full-screen label line: "FULL_<file number>_<copy of a line below>" (any case) */
+const FULL_LABEL = /^full_\d+_\s*(.*)$/iu;
+/** A FULL_ label's text counts as a copy of a line below only when it is at least this long (letters, placeMatchKey) */
+const FULL_COPY_MIN_LETTERS = 4;
 /**
  * A section label line above the headline that the desk never posts: "बर्थ-डे" (birthday files; their posts lead with
  * "<name> का जन्मदिन आज"). Taken off on purpose. Labels the desk DOES post ("सियासी गपशप !") stay as the headline.
@@ -686,6 +690,17 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   // Separator rows (----, ****) and stray keystrokes ("ब्") carry nothing; a one-letter word ("है", "ॐ") is text
   for (const l of lines) if (isSeparator(l)) removed.push(l);
   lines = lines.filter((l) => !isSeparator(l));
+  // "FULL_1041_कोटा से खबर" (the TV control room's full-screen re-save, from 25 Nov 2026): "FULL_", the file number, then a
+  // copy of a line below. The label goes; its words stay only when none of the next lines carries them (owner, 26 Nov 2026)
+  const full = lines[0] ? FULL_LABEL.exec(lines[0]) : null;
+  if (full) {
+    const rest = full[1]!.trim();
+    const key = placeMatchKey(rest);
+    // A label with no text goes; one of a letter or two ("FULL_5_ए") is no copy of anything: its words stay
+    const repeated = !key || ([...key].length >= FULL_COPY_MIN_LETTERS && lines.slice(1, 4).some((l) => placeMatchKey(l).includes(key)));
+    removed.push(repeated ? lines[0]! : lines[0]!.slice(0, lines[0]!.length - rest.length));
+    lines = repeated ? lines.slice(1) : [rest, ...lines.slice(1)];
+  }
 
   const notes = lines.filter(isDeskNote);
   for (const l of notes) removed.push(l);

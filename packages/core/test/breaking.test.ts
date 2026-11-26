@@ -445,6 +445,14 @@ describe("line 2 by whole points (owner, 27 Nov 2026)", () => {
     expect(xLen(out)).toBeLessThanOrEqual(BREAKING_BODY_MAX);
   });
 
+  it("a comma inside a number is never a list break ('1,50,000 रुपये' stays whole)", () => {
+    const long = "शहर के एक व्यापारी से साइबर ठगों ने निवेश के नाम पर 1,50,000 रुपये की ठगी की और फिर फोन बंद कर फरार हो गए जिसके बाद पीड़ित ने थाने पहुंचकर मामला दर्ज करवाया";
+    expect(xLen(long)).toBeGreaterThan(BREAKING_BODY_MAX);
+    const out = crispPoints([long, "पुलिस जांच में जुटी"], "...", BREAKING_BODY_MAX, 200);
+    expect(out).toBe(`${long}...`);
+    expect(out).not.toMatch(/1, 50/u);
+  });
+
   it("an end exactly on a point: the dots are counted in the limit", () => {
     const a = "क".repeat(60);
     const b = "ख".repeat(63);

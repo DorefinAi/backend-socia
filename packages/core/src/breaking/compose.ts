@@ -485,6 +485,8 @@ export function plainHeadline(line1: string): string {
  */
 /** A point with at least this many comma-separated items is a list written on one line (line 2 takes whole items) */
 const LIST_MIN_ITEMS = 3;
+/** Where a list on one line breaks into items: a comma (not one between two digits, "1,50,000"), "،" or ";" */
+const LIST_BREAK = /\s*(?:[،;]|,(?!\d)|(?<!\d),)\s*/u;
 export function crispPoints(points: string[], dots: string, max = BREAKING_BODY_MAX, room = max): string {
   const parts = points.map(trimPoint).filter(Boolean);
   if (!parts.length || max <= 0) return "";
@@ -500,7 +502,8 @@ export function crispPoints(points: string[], dots: string, max = BREAKING_BODY_
   if (taken) return taken + dots;
   // The first point alone is longer than line 2's length. A list written as one line ("बिकासर से अमृतलाल भांभू, सिलवा से
   // लालूदान, …": a panchayat's results) gives its comma-separated items, taken whole the same way (owner, 27 Nov 2026)
-  const items = parts[0]!.split(/\s*[,،;]\s*/u).filter(Boolean);
+  // A comma between two digits is part of a number ("1,50,000 रुपये"), never a list break
+  const items = parts[0]!.split(LIST_BREAK).filter(Boolean);
   let listed = "";
   for (const item of items) {
     const next = listed ? `${listed}, ${item}` : item;

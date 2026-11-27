@@ -1,7 +1,7 @@
 // X Videos tables, in their own Postgres schema "xvideos" with their own migrations (apps/xvideos/migrations, journal
 // xvideos.__migrations). Nothing here alters a table of the X post desk (schema public); the only link is org_id.
-// Steps 1–4 of apps/xvideos/README.md: the clips found on the share, their work queue, what the media service read
-// from them, and the screen read with the model's headline. Drafts, holds and posts come with steps 5-6.
+// Steps 1–6 of apps/xvideos/README.md: the clips found on the share, their work queue, what the media service read
+// from them, the screen read with the model's headline, and the desk's drafts, holds and decisions (posted, rejected).
 
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, date, index, integer, jsonb, pgSchema, primaryKey, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
@@ -160,6 +160,71 @@ export const xvScreens = xvideos.table("clip_screen", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** The editor's draft as the desk keeps it (frontend deskState.ts XvDraft): saved as is, read back as is */
+export interface XvDeskDraft {
+  title: string;
+  /** Where line 1 came from on the desk ({ kind: "suggested" | "said" | "screen" | "typed", at? }) */
+  source?: { kind: string; at?: number };
+  brandOn: boolean;
+  hashtags: { value: string; on: boolean; added?: boolean }[];
+  mentions: { value: string; on: boolean; added?: boolean }[];
+  trim: { start: number; end: number };
+}
+
+/** Step 6: the editor's saved draft of a clip, and who holds it ("I'm on this one") */
+export const xvDrafts = xvideos.table("clip_draft", {
+  clipId: uuid("clip_id").primaryKey().references(() => xvClips.id, { onDelete: "cascade" }),
+  /** null: no saved draft (the desk opens the composed suggestion) */
+  draft: jsonb("draft").$type<XvDeskDraft>(),
+  heldBy: uuid("held_by"),
+  /** The holder's name as the desk shows it */
+  heldByName: text("held_by_name"),
+  heldAt: timestamp("held_at", { withTimezone: true }),
+  updatedBy: uuid("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const XV_DECISIONS = ["posted", "rejected"] as const;
+export type XvDecision = (typeof XV_DECISIONS)[number];
+
+/**
+ * Step 6: what the desk decided for a clip: posted on X by hand (Copy & Mark Posted) with the text it posted, or
+ * rejected with a reason. Undo and restore keep the row and set undone_at; at most one decision per clip stands
+ * (undone_at null), so two editors cannot post the same clip twice. Posted rows feed the directory once the undo
+ * window has passed (learn, learned_at).
+ */
+export const xvPosts = xvideos.table(
+  "clip_post",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    clipId: uuid("clip_id").notNull().references(() => xvClips.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id").notNull().references(() => orgs.id),
+    action: text("action").$type<XvDecision>().notNull(),
+    /** The whole post as copied to X (title, tags, handles) */
+    text: text("text"),
+    title: text("title"),
+    hashtags: text("hashtags").array(),
+    mentions: text("mentions").array(),
+    /** Why it was rejected */
+    reason: text("reason"),
+    by: uuid("by"),
+    byName: text("by_name"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+    undoneBy: uuid("undone_by"),
+    /** When learn added it to the directory */
+    learnedAt: timestamp("learned_at", { withTimezone: true }),
+  },
+  (t) => [
+    // One standing decision per clip
+    uniqueIndex("clip_post_standing").on(t.clipId).where(sql`undone_at is null`),
+    // Every decision of a clip (its history; a clip's delete cascades through it)
+    index("clip_post_clip").on(t.clipId, t.at),
+    // learn: posted, standing, not learned yet
+    index("clip_post_to_learn").on(t.at).where(sql`action = 'posted' and undone_at is null and learned_at is null`),
+  ],
+);
+
 /**
  * The desk's Refresh button: a day folder to walk now (API → watcher). The watcher takes the row, walks the day, and
  * walks it once more a few seconds later so new files settle.
@@ -177,3 +242,5 @@ export const xvScanRequests = xvideos.table(
 export type XvClipRow = typeof xvClips.$inferSelect;
 export type XvJobRow = typeof xvJobs.$inferSelect;
 export type XvScreenRow = typeof xvScreens.$inferSelect;
+export type XvDraftRow = typeof xvDrafts.$inferSelect;
+export type XvPostRow = typeof xvPosts.$inferSelect;

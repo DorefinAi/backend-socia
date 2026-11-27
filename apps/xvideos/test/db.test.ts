@@ -12,6 +12,12 @@ import Fastify from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { xvideosRoutes } from "../src/api/routes";
 import {
+  xvDecide,
+  xvReleasePosts,
+  xvTakePostsToLearn,
+  xvSaveDraft,
+  xvSetHold,
+  xvUndoDecision,
   xvDayScreens,
   xvDeferJob,
   xvFailJob,
@@ -241,7 +247,7 @@ describe.skipIf(!url || !orgId)("X Videos database (test copy)", () => {
       expect(await xvFinishJob(db, { ...held, leaseUntil: new Date(LEASE.getTime() + 1) }, null, (tx) => xvSaveHeadline(tx, id.a5!, "पुरानी दौड़", result([])))).toBe(false);
       expect(await xvFinishJob(db, held, null, (tx) => xvSaveHeadline(tx, id.a5!, "स्क्रीन से हेडलाइन", result(["पहली लाइन"])))).toBe(true);
       expect((await job("a5", "headline"))?.status).toBe("done");
-      const listed = (await xvListClips(db, orgId, { day: D })).map((r) => xvWireClip(r.clip, null, false, r.screenHeadline));
+      const listed = (await xvListClips(db, orgId, { day: D })).map((r) => xvWireClip(r, null, false));
       const wire = Object.fromEntries(listed.map((w) => [w.fileName, [w.suggestedHeadline, w.headlineSource]]));
       expect(wire["a5.mp4"]).toEqual(["स्क्रीन से हेडलाइन", "screen"]);
       expect(wire["named.mp4"]).toEqual(["पाँच शब्दों वाली पूरी हेडिंग", "file_name"]);
@@ -273,6 +279,130 @@ describe.skipIf(!url || !orgId)("X Videos database (test copy)", () => {
       await xvRecordScan(db, orgId, [file(5, "b5.mp4", 502), file(5, "c5.mp4", 503)]);
       expect((await clipOf("b5"))?.status).toBe("new");
       expect((await clipOf("c5"))?.status).toBe("failed");
+    });
+  });
+
+  // Step 6: the desk's drafts, holds and decisions, in the queries and through the routes
+  describe("step 6: drafts, holds, posted, undo, reject, restore", () => {
+    const D6 = "1999-01-06";
+    const OTHER_ORG = "00000000-0000-4000-8000-0000000000ff";
+    const RAVI = "11111111-2222-4333-8444-555555555555";
+    const id: Record<string, string> = {};
+    const asha = { id: null, name: "Asha" };
+    const needs: (string | undefined)[] = [];
+    const app = Fastify().withTypeProvider<TypeBoxTypeProvider>();
+    beforeAll(async () => {
+      await xvRecordScan(db, orgId, [file(6, "p6.mp4", 601), file(6, "q6.mp4", 602), file(6, "r6.mp4", 603), file(6, "s6.mp4", 604), { ...file(6, "x...done...t6.mp4", 605), done: true }]);
+      for (const r of (await db.execute<{ id: string; file_name: string }>(sql`select id, file_name from xvideos.clip where org_id = ${orgId} and day = ${D6}`)).rows) {
+        id[r.file_name.replace(".mp4", "").replace("x...done...", "")] = r.id;
+      }
+      app.setValidatorCompiler(TypeBoxValidatorCompiler);
+      await app.register(xvideosRoutes, {
+        db,
+        // The header picks another org, to try reaching a clip that is not the viewer's
+        viewer: (req, need) => {
+          needs.push(need);
+          return { orgId: req.headers["x-org"] === "other" ? OTHER_ORG : orgId, userId: RAVI, userName: "Ravi" };
+        },
+        httpError: (status, code, message) => Object.assign(new Error(message), { statusCode: status, code }),
+        shareRoot: "S:\\none",
+        cacheDir: "S:\\none",
+      });
+    });
+    afterAll(() => app.close());
+    const draft = { title: "हेडलाइन | Kota News", brandOn: true, hashtags: [{ value: "#Kota", on: true }], mentions: [], trim: { start: 0, end: 30 } };
+    const standingOf = async (clipId: string) =>
+      (await db.execute<{ id: string; action: string; by: string | null }>(sql`select id, action, by from xvideos.clip_post where clip_id = ${clipId} and undone_at is null`)).rows;
+
+    it("one decision stands per clip, also when two editors act at once", async () => {
+      const both = await Promise.all([xvDecide(db, orgId, id.p6!, { action: "posted", text: "एक" }, asha), xvDecide(db, orgId, id.p6!, { action: "posted", text: "दो" }, asha)]);
+      expect(both.filter(Boolean)).toHaveLength(1);
+      expect(await xvDecide(db, orgId, id.p6!, { action: "rejected", reason: "x" }, asha)).toBeNull();
+      expect(await xvDecide(db, OTHER_ORG, id.q6!, { action: "posted", text: "x" }, asha)).toBeNull();
+      expect(await xvUndoDecision(db, orgId, id.p6!, "rejected", asha)).toBe("none");
+      const postId = Number((await standingOf(id.p6!))[0]!.id);
+      expect(await xvUndoDecision(db, OTHER_ORG, id.p6!, "posted", asha, { withinS: 360 })).toBe("none");
+      expect(await xvUndoDecision(db, orgId, id.p6!, "posted", asha, { postId: postId + 999, withinS: 360 })).toBe("none");
+      expect(await xvUndoDecision(db, orgId, id.p6!, "posted", asha, { postId, withinS: 360 })).toBe("undone");
+      expect(await xvDecide(db, orgId, id.p6!, { action: "rejected", reason: "Not news" }, asha)).toMatchObject({ action: "rejected" });
+      expect(await xvUndoDecision(db, orgId, id.p6!, "rejected", asha)).toBe("undone");
+    });
+
+    it("a post can be undone only inside the window", async () => {
+      await xvDecide(db, orgId, id.q6!, { action: "posted", text: "क्यू" }, asha);
+      await db.execute(sql`update xvideos.clip_post set at = now() - interval '10 minutes' where clip_id = ${id.q6} and undone_at is null`);
+      expect(await xvUndoDecision(db, orgId, id.q6!, "posted", asha, { withinS: 360 })).toBe("too_late");
+    });
+
+    it("learn takes standing posts past the window once, and can give them back", async () => {
+      const mine = <T extends { clipId: string }>(rows: T[]) => rows.filter((p) => p.clipId === id.q6);
+      const taken = mine(await xvTakePostsToLearn(db, orgId, 420));
+      expect(taken.map((p) => p.text)).toEqual(["क्यू"]);
+      expect(mine(await xvTakePostsToLearn(db, orgId, 420))).toEqual([]);
+      await xvReleasePosts(db, taken.map((p) => p.id));
+      expect(mine(await xvTakePostsToLearn(db, orgId, 420))).toHaveLength(1);
+      // An undone post is never taken
+      expect((await xvTakePostsToLearn(db, orgId, 0)).some((p) => p.clipId === id.p6)).toBe(false);
+    });
+
+    it("draft and hold are kept for the org's clips only, and a decision lets the hold go", async () => {
+      expect(await xvSaveDraft(db, OTHER_ORG, id.r6!, draft, asha)).toBe(false);
+      expect(await xvSaveDraft(db, orgId, id.r6!, draft, asha)).toBe(true);
+      await xvSetHold(db, orgId, id.r6!, true, asha);
+      const [row] = (await xvListClips(db, orgId, { day: D6 })).filter((r) => r.clip.id === id.r6);
+      expect(row?.desk).toMatchObject({ draft, heldByName: "Asha" });
+      await xvDecide(db, orgId, id.r6!, { action: "posted", text: "आर" }, asha);
+      const [after] = (await xvListClips(db, orgId, { day: D6 })).filter((r) => r.clip.id === id.r6);
+      expect(after?.desk).toMatchObject({ draft, heldByName: null });
+      expect(after?.decision).toMatchObject({ action: "posted", text: "आर", byName: "Asha" });
+      expect(await xvUndoDecision(db, orgId, id.r6!, "posted", asha, { withinS: 360 })).toBe("undone");
+      // Letting go of a clip nobody holds writes no row
+      await xvSetHold(db, orgId, id.s6!, false, asha);
+      expect((await db.execute(sql`select 1 from xvideos.clip_draft where clip_id = ${id.s6}`)).rows).toHaveLength(0);
+    });
+
+    it("the routes: draft, hold, posted, a second post refused, undo by post id, reject, restore", async () => {
+      const at = (path: string) => `/xvideos/clips/${id.r6}/${path}`;
+      needs.length = 0;
+      const put = await app.inject({ method: "PUT", url: at("draft"), payload: { draft } });
+      expect(put.statusCode).toBe(200);
+      expect(put.json().clip).toMatchObject({ draft, status: "new" });
+      expect((await app.inject({ method: "POST", url: at("hold"), payload: { held: true } })).json().clip.heldBy).toBe("Ravi");
+      const posted = await app.inject({ method: "POST", url: at("posted"), payload: { text: "हेडलाइन | Kota News #RajasthanWithFirstIndia #FINVideo #Kota", title: "हेडलाइन | Kota News", hashtags: ["#Kota"], mentions: [] } });
+      expect(posted.statusCode).toBe(200);
+      const clip = posted.json().clip;
+      expect(clip).toMatchObject({ status: "posted", postedBy: "Ravi" });
+      expect(clip.heldBy).toBeUndefined();
+      expect((await standingOf(id.r6!))[0]?.by).toBe(RAVI);
+      const again = await app.inject({ method: "POST", url: at("posted"), payload: { text: "again" } });
+      expect([again.statusCode, again.json().message]).toEqual([409, "Already posted by Ravi."]);
+      expect((await app.inject({ method: "PUT", url: at("draft"), payload: { draft } })).statusCode).toBe(409);
+      expect((await app.inject({ method: "POST", url: at("undo"), payload: { postId: clip.postId + 999 } })).statusCode).toBe(409);
+      expect((await app.inject({ method: "POST", url: at("undo"), payload: { postId: clip.postId } })).json().clip.status).toBe("new");
+      expect((await app.inject({ method: "POST", url: at("undo"), payload: { postId: clip.postId } })).statusCode).toBe(409);
+      expect((await app.inject({ method: "POST", url: at("restore") })).statusCode).toBe(409);
+      expect((await app.inject({ method: "POST", url: at("reject"), payload: { reason: "Poor video or sound" } })).json().clip).toMatchObject({ status: "rejected", rejectedReason: "Poor video or sound" });
+      expect((await app.inject({ method: "POST", url: at("restore") })).json().clip.status).toBe("new");
+      expect((await app.inject({ method: "DELETE", url: at("draft") })).json().clip.draft).toBeUndefined();
+      expect(needs).toEqual(["draft.edit", "draft.edit", "post.mark_posted", "post.mark_posted", "draft.edit", "post.undo", "post.undo", "post.undo", "draft.reject", "draft.reject", "draft.reject", "draft.edit"]);
+    });
+
+    it("the routes refuse: another org's clip, a post too late to undo, a clip done on the share, bad input", async () => {
+      const other = await app.inject({ method: "POST", url: `/xvideos/clips/${id.s6}/hold`, headers: { "x-org": "other" }, payload: { held: true } });
+      expect(other.statusCode).toBe(404);
+      const late = (await standingOf(id.q6!))[0]!;
+      const tooLate = await app.inject({ method: "POST", url: `/xvideos/clips/${id.q6}/undo`, payload: { postId: Number(late.id) } });
+      expect([tooLate.statusCode, tooLate.json().message]).toEqual([409, "A post can be undone for 6 minutes only; delete it on X and mark the clip again if needed."]);
+      const done = await app.inject({ method: "POST", url: `/xvideos/clips/${id.t6}/posted`, payload: { text: "x" } });
+      expect([done.statusCode, done.json().message]).toEqual([409, "Already posted by hand (the file is marked done on the share)."]);
+      const s6 = (path: string) => `/xvideos/clips/${id.s6}/${path}`;
+      expect((await app.inject({ method: "POST", url: s6("posted"), payload: { text: "   " } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "POST", url: s6("posted"), payload: { text: "x", hashtags: ["#two words"] } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "POST", url: s6("reject"), payload: { reason: " " } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "PUT", url: s6("draft"), payload: { draft: { ...draft, extra: 1 } } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "PUT", url: s6("draft"), payload: { draft: { ...draft, trim: { start: 20, end: 10 } } } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "PUT", url: s6("draft"), payload: { draft: { ...draft, mentions: [{ value: "@a\nb", on: true }] } } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "POST", url: "/xvideos/clips/00000000-0000-4000-8000-000000000000/hold", payload: { held: true } })).statusCode).toBe(404);
     });
   });
 });

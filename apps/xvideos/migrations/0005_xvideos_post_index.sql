@@ -1,0 +1,1 @@
+CREATE INDEX "clip_post_clip" ON "xvideos"."clip_post" USING btree ("clip_id","at");

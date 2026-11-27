@@ -166,6 +166,19 @@ describe("the composer's directory", () => {
     expect(none[0]).toMatch(/nothing is composed until it loads/);
   });
 
+  it("follows a folder given as a function (learn's current build) and reloads when it switches", () => {
+    const first = copy();
+    const second = copy();
+    const tags = JSON.parse(readFileSync(`${second.video}tags.json`, "utf8")) as { entries: object[] };
+    tags.entries.push({ tag: "#SwitchTag", kind: "topic", rule: "suggest", keywords_hi: ["टेस्टकीवर्ड"], keywords_en: [] });
+    writeFileSync(`${second.video}tags.json`, JSON.stringify(tags));
+    let folder = first.video;
+    const composer = new XvComposer(() => folder, first.shared, 10, 0);
+    expect(composer.compose(input)?.hashtags.map((h) => h.value)).not.toContain("#SwitchTag");
+    folder = second.video;
+    expect(composer.compose(input)?.hashtags.map((h) => h.value)).toContain("#SwitchTag");
+  });
+
   it("drops the least recently used compose when full", () => {
     const { video, shared } = copy();
     const composer = new XvComposer(video, shared, 2, 60_000);

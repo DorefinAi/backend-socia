@@ -6,8 +6,8 @@ video post gets an entry with how often and how recently it was used. Its keywor
 directory when that directory knows it (so the two desks match the same words); otherwise the entry is marked
 `needs_keywords` with example titles for the desk to fill in. Nothing is guessed.
 
-Run (read-only on every input; writes only next to this file):
-  python build.py [--shared <apps/worker/config>] [--until YYYY-MM-DD]
+Run (read-only on every input; writes only next to this file, or to --out):
+  python build.py [--shared <apps/worker/config>] [--until YYYY-MM-DD] [--extra-posts <jsonl>] [--out <folder>]
 --until builds from posts up to that day only (eval.py uses this to test on later days).
 """
 import argparse, json, re, sys
@@ -27,6 +27,8 @@ MIN_USES = 2   # a tag or handle used once is a one-off, not directory material 
 def load_posts(path: Path, until: str | None, normalise: dict):
     posts = []
     for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
         r = json.loads(line)
         if until and r["posted_ist"][:10] > until:
             continue
@@ -35,7 +37,7 @@ def load_posts(path: Path, until: str | None, normalise: dict):
         if IDENTIFIER not in tags:
             continue
         posts.append({"day": r["posted_ist"][:10], "title": text.split("\n")[0].strip(), "tags": tags,
-                      "handles": re.findall(r"@\w+", text)})
+                      "handles": re.findall(r"@\w+", text), "id": r.get("post_id")})
     return posts
 
 
@@ -104,12 +106,22 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shared", type=Path, default=HERE.parent.parent / "worker" / "config")
     ap.add_argument("--posts", type=Path, default=HERE / "data" / "finvideo-posts.jsonl")
+    ap.add_argument("--extra-posts", type=Path, help="more posts in the same form: the desk's own (learn, apps/xvideos/src/worker/learn.ts)")
     ap.add_argument("--until", help="build from posts up to this IST day only")
     ap.add_argument("--out", type=Path, default=HERE)
     args = ap.parse_args()
 
     shared, places, campaigns, normalise = load_shared(args.shared)
     posts = load_posts(args.posts, args.until, normalise)
+    if args.extra_posts and args.extra_posts.is_file():
+        # A desk post later captured from X too is one post: same day, same headline
+        # A post listed twice (same post_id) is one post too
+        known, ids = {(p["day"], title_head(p["title"])) for p in posts}, set()
+        for p in load_posts(args.extra_posts, args.until, normalise):
+            if (p["day"], title_head(p["title"])) in known or (p["id"] and p["id"] in ids):
+                continue
+            ids.add(p["id"])
+            posts.append(p)
     n = len(posts)
     days = sorted({p["day"] for p in posts})
     recent_from = days[-3] if len(days) >= 3 else days[0]           # the last 3 posting days = "how the desk does it now"
@@ -250,6 +262,7 @@ def main():
 
     meta = {"version": 1, "built_from": {"posts": n, "days": days, "until": args.until, "shared_directory": str(args.shared)},
             "min_uses": MIN_USES}
+    args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "format.json").write_text(json.dumps(fmt, ensure_ascii=False, indent=1), encoding="utf-8")
     (args.out / "tags.json").write_text(json.dumps({**meta, "_note": "Hashtags the desk used on #FINVideo posts. rule emit = put in the draft; suggest = one click. Keywords come from the breaking desk's directory (keyword_source) or are empty with status needs_keywords.", "entries": tags}, ensure_ascii=False, indent=1), encoding="utf-8")
     (args.out / "handles.json").write_text(json.dumps({**meta, "_note": "@handles the desk used on #FINVideo posts, with the breaking desk's names and keywords for each. Handles not in that directory are listed with status needs_keywords and are never added on their own.", "entries": handles}, ensure_ascii=False, indent=1), encoding="utf-8")

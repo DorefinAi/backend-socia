@@ -8,13 +8,19 @@ import { and, desc, eq, inArray, isNotNull, lt, ne, notInArray, sql } from "driz
 import type { Db, Executor } from "@socia/db";
 import {
   xvClips,
+  xvDrafts,
   xvEvidence,
   xvJobs,
+  xvPosts,
   xvScanRequests,
   xvScreens,
   type XvClipRow,
   type XvClipStatus,
+  type XvDecision,
+  type XvDeskDraft,
+  type XvDraftRow,
   type XvEvidence,
+  type XvPostRow,
   type XvHeadlineResult,
   type XvJobRow,
   type XvScreenRead,
@@ -454,6 +460,140 @@ export async function xvQueueMissingHeadlines(db: Db, orgId: string, sinceDay: s
   return added.length;
 }
 
+// ─── step 6: the desk's drafts, holds and decisions ─────────────────────────
+// Every write names the org and acts only on a clip of that org (the routes check it first as well).
+
+/** Who acts on the desk */
+export interface XvActor {
+  id: string | null;
+  name: string | null;
+}
+
+/** The clip, when it belongs to the org */
+const ofOrg = (orgId: string, clipId: string) => sql`exists (select 1 from xvideos.clip c where c.id = ${clipId} and c.org_id = ${orgId})`;
+
+/** Saves the editor's draft (null: back to the composed suggestion). False when the clip is not the org's. */
+export async function xvSaveDraft(db: Db, orgId: string, clipId: string, draft: XvDeskDraft | null, by: XvActor): Promise<boolean> {
+  const rows = await db.execute(sql`
+    insert into xvideos.clip_draft (clip_id, draft, updated_by)
+    select ${clipId}, ${draft === null ? null : JSON.stringify(draft)}::jsonb, ${by.id} where ${ofOrg(orgId, clipId)}
+    on conflict (clip_id) do update set draft = excluded.draft, updated_by = excluded.updated_by, updated_at = now()
+    returning clip_id`);
+  return rows.rows.length > 0;
+}
+
+/**
+ * Holds the clip for `by` ("I'm on this one"), or lets it go; anyone may take a hold over (the desk shows who holds
+ * it). Letting go of a clip nobody holds writes nothing.
+ */
+export async function xvSetHold(db: Db, orgId: string, clipId: string, held: boolean, by: XvActor): Promise<void> {
+  if (!held) {
+    await db
+      .update(xvDrafts)
+      .set({ heldBy: null, heldByName: null, heldAt: null, updatedBy: by.id })
+      .where(and(eq(xvDrafts.clipId, clipId), ofOrg(orgId, clipId)));
+    return;
+  }
+  await db.execute(sql`
+    insert into xvideos.clip_draft (clip_id, held_by, held_by_name, held_at, updated_by)
+    select ${clipId}, ${by.id}, ${by.name}, now(), ${by.id} where ${ofOrg(orgId, clipId)}
+    on conflict (clip_id) do update set held_by = excluded.held_by, held_by_name = excluded.held_by_name, held_at = now(),
+      updated_by = excluded.updated_by`);
+}
+
+export interface XvDecisionInput {
+  action: XvDecision;
+  text?: string | null;
+  title?: string | null;
+  hashtags?: readonly string[];
+  mentions?: readonly string[];
+  reason?: string | null;
+}
+
+/**
+ * Records the desk's decision. Null when one already stands (posted or rejected and not undone; the unique index
+ * decides, so two editors acting at once cannot both post) or the clip is not the org's. Either decision lets the hold
+ * go (the draft itself stays as saved).
+ */
+export async function xvDecide(db: Db, orgId: string, clipId: string, d: XvDecisionInput, by: XvActor): Promise<XvPostRow | null> {
+  return db.transaction(async (tx) => {
+    const [mine] = await tx.select({ id: xvClips.id }).from(xvClips).where(and(eq(xvClips.id, clipId), eq(xvClips.orgId, orgId)));
+    if (!mine) return null;
+    const [row] = await tx
+      .insert(xvPosts)
+      .values({
+        clipId,
+        orgId,
+        action: d.action,
+        text: d.text ?? null,
+        title: d.title ?? null,
+        hashtags: d.hashtags ? [...d.hashtags] : null,
+        mentions: d.mentions ? [...d.mentions] : null,
+        reason: d.reason ?? null,
+        by: by.id,
+        byName: by.name,
+      })
+      .onConflictDoNothing({ target: xvPosts.clipId, where: sql`undone_at is null` })
+      .returning();
+    if (row) await tx.update(xvDrafts).set({ heldBy: null, heldByName: null, heldAt: null }).where(eq(xvDrafts.clipId, clipId));
+    return row ?? null;
+  });
+}
+
+/**
+ * Takes back a standing decision of `action`: undo a post, restore a rejected clip. `postId`: only that decision (a
+ * stale tab or a second click must not take back a newer one). `withinS`: only when it was made that recently (the
+ * desk's undo window). "none": no such decision stands; "too_late": it stands but the window has passed.
+ */
+export async function xvUndoDecision(
+  db: Db,
+  orgId: string,
+  clipId: string,
+  action: XvDecision,
+  by: XvActor,
+  opts: { postId?: number; withinS?: number } = {},
+): Promise<"undone" | "none" | "too_late"> {
+  return db.transaction(async (tx) => {
+    const standing = and(
+      eq(xvPosts.clipId, clipId),
+      eq(xvPosts.orgId, orgId),
+      eq(xvPosts.action, action),
+      sql`${xvPosts.undoneAt} is null`,
+      opts.postId === undefined ? undefined : eq(xvPosts.id, opts.postId),
+    );
+    const [row] = await tx.select({ id: xvPosts.id, fresh: sql<boolean>`${xvPosts.at} > now() - make_interval(secs => ${opts.withinS ?? 0})` }).from(xvPosts).where(standing).for("update");
+    if (!row) return "none";
+    if (opts.withinS !== undefined && !row.fresh) return "too_late";
+    await tx.update(xvPosts).set({ undoneAt: sql`now()`, undoneBy: by.id }).where(eq(xvPosts.id, row.id));
+    return "undone";
+  });
+}
+
+/**
+ * Takes the posted decisions learn may add to the directory: standing, past `olderThanS` (longer than the undo window)
+ * and not taken before. They are marked taken in the same statement, so two learn runs never take one post twice and a
+ * post undone a moment earlier is never taken. Oldest first.
+ */
+export async function xvTakePostsToLearn(db: Db, orgId: string, olderThanS: number, limit = 200): Promise<XvPostRow[]> {
+  const res = await db.execute<{ id: string | number }>(sql`
+    update xvideos.clip_post set learned_at = now()
+    where id in (
+      select id from xvideos.clip_post
+      where org_id = ${orgId} and action = 'posted' and undone_at is null and learned_at is null
+        and at < now() - make_interval(secs => ${olderThanS})
+      order by at limit ${limit}
+      for update skip locked)
+    returning id`);
+  const ids = res.rows.map((r) => Number(r.id));
+  if (!ids.length) return [];
+  return db.select().from(xvPosts).where(inArray(xvPosts.id, ids)).orderBy(xvPosts.at);
+}
+
+/** Gives taken posts back (the build that should have learned them failed), so the next round takes them again */
+export async function xvReleasePosts(db: Db, ids: readonly number[]): Promise<void> {
+  if (ids.length) await db.update(xvPosts).set({ learnedAt: null }).where(inArray(xvPosts.id, [...ids]));
+}
+
 // ─── reads for the API ───────────────────────────────────────────────────────
 
 export interface XvListOptions {
@@ -463,11 +603,62 @@ export interface XvListOptions {
   limit?: number;
 }
 
-/** A clip and its screen read's outcome (step 4), when it has one: the model's headline and what else it said */
+/**
+ * A clip with what the desk needs around it: its screen read's outcome (step 4), the editor's saved draft and hold, and
+ * the decision that stands (step 6)
+ */
 export interface XvListedClip {
   clip: XvClipRow;
   screenHeadline: string | null;
   screenResult: XvHeadlineResult | null;
+  desk: Pick<XvDraftRow, "draft" | "heldByName" | "heldAt" | "updatedAt"> | null;
+  decision: Pick<XvPostRow, "id" | "action" | "text" | "reason" | "byName" | "at"> | null;
+}
+
+const LISTED = {
+  clip: xvClips,
+  screenHeadline: xvScreens.headline,
+  screenResult: xvScreens.result,
+  draft: xvDrafts.draft,
+  heldByName: xvDrafts.heldByName,
+  heldAt: xvDrafts.heldAt,
+  draftAt: xvDrafts.updatedAt,
+  postId: xvPosts.id,
+  action: xvPosts.action,
+  postText: xvPosts.text,
+  reason: xvPosts.reason,
+  byName: xvPosts.byName,
+  decidedAt: xvPosts.at,
+};
+
+/** One row of LISTED as the left joins give it (drizzle infers the same; a column type change fails here) */
+interface ListedRow {
+  clip: XvClipRow;
+  screenHeadline: string | null;
+  screenResult: XvHeadlineResult | null;
+  draft: XvDeskDraft | null;
+  heldByName: string | null;
+  heldAt: Date | null;
+  draftAt: Date | null;
+  postId: number | null;
+  action: XvDecision | null;
+  postText: string | null;
+  reason: string | null;
+  byName: string | null;
+  decidedAt: Date | null;
+}
+
+function listed(r: ListedRow): XvListedClip {
+  return {
+    clip: r.clip,
+    screenHeadline: r.screenHeadline,
+    screenResult: r.screenResult,
+    desk: r.draftAt ? { draft: r.draft, heldByName: r.heldByName, heldAt: r.heldAt, updatedAt: r.draftAt } : null,
+    decision:
+      r.postId !== null && r.action && r.decidedAt
+        ? { id: r.postId, action: r.action, text: r.postText, reason: r.reason, byName: r.byName, at: r.decidedAt }
+        : null,
+  };
 }
 
 /** One day folder's clips, every video (x-marked or not), newest file first */
@@ -475,13 +666,15 @@ export async function xvListClips(db: Db, orgId: string, opts: XvListOptions): P
   const where = [eq(xvClips.orgId, orgId), eq(xvClips.day, opts.day)];
   if (opts.statuses?.length) where.push(inArray(xvClips.status, [...opts.statuses]));
   const rows = await db
-    .select({ clip: xvClips, screenHeadline: xvScreens.headline, screenResult: xvScreens.result })
+    .select(LISTED)
     .from(xvClips)
     .leftJoin(xvScreens, eq(xvScreens.clipId, xvClips.id))
+    .leftJoin(xvDrafts, eq(xvDrafts.clipId, xvClips.id))
+    .leftJoin(xvPosts, and(eq(xvPosts.clipId, xvClips.id), sql`${xvPosts.undoneAt} is null`))
     .where(and(...where))
     .orderBy(desc(xvClips.mtime))
     .limit(Math.min(opts.limit ?? 500, 1000));
-  return rows.map((r) => ({ clip: r.clip, screenHeadline: r.screenHeadline ?? null, screenResult: r.screenResult ?? null }));
+  return rows.map((r): XvListedClip => listed(r));
 }
 
 export interface XvDayCount {
@@ -520,11 +713,13 @@ export async function xvGetClip(
   id: string,
 ): Promise<(XvListedClip & { evidence: XvEvidence | null }) | null> {
   const rows = await db
-    .select({ clip: xvClips, evidence: xvEvidence.evidence, screenHeadline: xvScreens.headline, screenResult: xvScreens.result })
+    .select({ ...LISTED, evidence: xvEvidence.evidence })
     .from(xvClips)
     .leftJoin(xvEvidence, eq(xvEvidence.clipId, xvClips.id))
     .leftJoin(xvScreens, eq(xvScreens.clipId, xvClips.id))
+    .leftJoin(xvDrafts, eq(xvDrafts.clipId, xvClips.id))
+    .leftJoin(xvPosts, and(eq(xvPosts.clipId, xvClips.id), sql`${xvPosts.undoneAt} is null`))
     .where(and(eq(xvClips.orgId, orgId), eq(xvClips.id, id)));
   const row = rows[0];
-  return row ? { clip: row.clip, evidence: row.evidence ?? null, screenHeadline: row.screenHeadline ?? null, screenResult: row.screenResult ?? null } : null;
+  return row ? { ...listed(row), evidence: row.evidence ?? null } : null;
 }

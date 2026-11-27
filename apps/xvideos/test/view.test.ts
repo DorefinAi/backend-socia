@@ -56,9 +56,12 @@ describe("xvGroupDays", () => {
   });
 });
 
+/** A bare clip as the list gives it (no screen read, draft or decision) */
+const W = (c: ReturnType<typeof clip>, ev: Parameters<typeof xvWireClip>[1], withTranscript: boolean) => xvWireClip({ clip: c, screenHeadline: null }, ev, withTranscript);
+
 describe("xvWireClip", () => {
   it("gives the desk's fields: folder under the month, API media paths, done = posted", () => {
-    const w = xvWireClip(clip(), null, false);
+    const w = W(clip(), null, false);
     expect(w.folder).toEqual(["24-11-2026", "Convert 3 pm to"]);
     expect(w.src).toBe("/xvideos/clips/11111111-1111-4111-8111-111111111111/video");
     expect(w.poster).toBe("/xvideos/clips/11111111-1111-4111-8111-111111111111/poster");
@@ -70,7 +73,7 @@ describe("xvWireClip", () => {
   });
 
   it("gives the day, the inner folders, the x / done marks, and the heading from the file name", () => {
-    const w = xvWireClip(
+    const w = W(
       clip({ folder: ["2026", "NOVEMBER 2026", "24-11-2026", "Convert 3 pm to", "New folder"], picked: false, done: false, heading: "हत्या का खुलासा, दो गिरफ्तार | Kota News" }),
       null,
       false,
@@ -78,20 +81,32 @@ describe("xvWireClip", () => {
     expect(w).toMatchObject({ day: "2026-11-24", innerFolder: "Convert 3 pm to / New folder", picked: false, done: false, gone: false });
     expect(w.suggestedHeadline).toBe("हत्या का खुलासा, दो गिरफ्तार | Kota News");
     expect(w.headlineSource).toBe("file_name");
-    expect(xvWireClip(clip({ folder: ["2026", "NOVEMBER 2026", "24-11-2026"], status: "gone" }), null, false)).toMatchObject({ innerFolder: "", gone: true });
+    expect(W(clip({ folder: ["2026", "NOVEMBER 2026", "24-11-2026"], status: "gone" }), null, false)).toMatchObject({ innerFolder: "", gone: true });
   });
 
   it("shows progress while reading and the reason when failed", () => {
-    expect(xvWireClip(clip({ status: "reading", progress: 20, done: false }), null, false)).toMatchObject({ readingProgress: 20, status: "new" });
-    expect(xvWireClip(clip({ status: "failed", error: "probe: no video" }), null, false).error).toBe("probe: no video");
+    expect(W(clip({ status: "reading", progress: 20, done: false }), null, false)).toMatchObject({ readingProgress: 20, status: "new" });
+    expect(W(clip({ status: "failed", error: "probe: no video" }), null, false).error).toBe("probe: no video");
   });
 
   it("adds the transcript only when asked, and the first, middle and last stills", () => {
-    expect(xvWireClip(clip(), evidence, false).transcript).toEqual([]);
-    const w = xvWireClip(clip(), evidence, true);
+    expect(W(clip(), evidence, false).transcript).toEqual([]);
+    const w = W(clip(), evidence, true);
     expect(w.transcript).toEqual([{ at: 0, text: "नमस्कार" }]);
     expect(w.frames?.map((f) => [f.where, f.at])).toEqual([["first", 0], ["mid", 4], ["last", 8]]);
     expect(w.frames?.[0]?.src).toMatch(/\/frames\/f_0001\.jpg$/);
     expect(w.contactSheet).toMatch(/\/frames\/sheet\.jpg$/);
+  });
+
+  it("the desk's decision wins over the share's done mark; a hold and a saved draft come through", () => {
+    const at = new Date("2026-11-27T10:00:00Z");
+    const posted = xvWireClip({ clip: clip({ done: false }), screenHeadline: null, decision: { id: 41, action: "posted", text: "हेडलाइन | Kota News #Kota", reason: null, byName: "Asha", at }, desk: null }, null, false);
+    expect(posted).toMatchObject({ status: "posted", postId: 41, postedAt: at.toISOString(), postedText: "हेडलाइन | Kota News #Kota", postedBy: "Asha" });
+    const rejected = xvWireClip({ clip: clip({ done: true }), screenHeadline: null, decision: { id: 42, action: "rejected", text: null, reason: "Not news", byName: null, at }, desk: null }, null, false);
+    expect(rejected).toMatchObject({ status: "rejected", rejectedReason: "Not news" });
+    expect(rejected.postedAt).toBeUndefined();
+    const draft = { title: "t", brandOn: true, hashtags: [], mentions: [], trim: { start: 0, end: 10 } };
+    const held = xvWireClip({ clip: clip({ done: false }), screenHeadline: null, decision: null, desk: { draft, heldByName: "Ravi", heldAt: at, updatedAt: at } }, null, false);
+    expect(held).toMatchObject({ status: "new", heldBy: "Ravi", draft, draftSavedAt: at.toISOString() });
   });
 });

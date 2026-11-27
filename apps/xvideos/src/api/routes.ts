@@ -6,14 +6,15 @@
 
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { extname, resolve, sep } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { Db } from "@socia/db";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { xvGetClip, xvListClips, xvListDays, xvRequestScan, type XvDayCount } from "../db/clips";
+import { xvDecide, xvGetClip, xvListClips, xvListDays, xvRequestScan, xvSaveDraft, xvSetHold, xvUndoDecision, type XvActor, type XvDayCount, type XvListedClip } from "../db/clips";
+import { xvLearnedDir } from "../worker/learn";
 import { XV_CLIP_STATUSES, type XvClipStatus } from "../db/schema";
 import { xvDayDate, xvToday } from "../share/rules";
-import { XvComposer } from "../compose/compose";
+import { XV_DIRECTORY_FILES, XvComposer } from "../compose/compose";
 import { xvComposeInput, xvWireClip } from "./view";
 
 const DAY_PATTERN = "^\\d{4}-\\d{2}-\\d{2}$";
@@ -37,8 +38,11 @@ export function xvGroupDays(today: string, counts: readonly XvDayCount[]): { mon
 
 export interface XvRouteOptions {
   db: Db;
-  /** The api's sign-in and permission check for viewing the desk: the viewer's org, or it throws */
-  viewer: (req: FastifyRequest) => { orgId: string };
+  /**
+   * The api's sign-in and permission check for the desk: the viewer's org, and who they are (recorded on drafts, holds,
+   * posts and rejects), or it throws. `need`: the X desk's permission an action needs besides viewing.
+   */
+  viewer: (req: FastifyRequest, need?: XvPermission) => { orgId: string; userId?: string; userName?: string };
   /** The api's own error type, so its error handler answers as for every other route */
   httpError: (status: number, code: string, message: string) => Error;
   /** The video share (read only) and the local cache; default XVIDEOS_SHARE / XVIDEOS_CACHE */
@@ -53,6 +57,33 @@ const VIDEO_TYPES: Record<string, string> = { ".mp4": "video/mp4", ".m4v": "vide
 const STILL_NAME = /^[\w.-]{1,80}\.jpg$/;
 
 const Id = Type.Object({ id: Type.String({ format: "uuid" }) });
+
+/** Copy & Mark Posted can be undone this long (the desk's UNDO_MS, 5 min, and a minute for a slow click) */
+export const XV_UNDO_S = 6 * 60;
+
+/** The X desk's permissions the video desk's actions use, as its own desk does (apps/api routes/desk.ts) */
+export type XvPermission = "draft.edit" | "post.mark_posted" | "post.undo" | "draft.reject";
+
+/** A hashtag or @handle: one word after its mark (no spaces or line breaks) */
+const TAG_PATTERN = "^[#@][^\\s#@]{1,139}$";
+const Part = Type.Object({ value: Type.String({ pattern: TAG_PATTERN }), on: Type.Boolean(), added: Type.Optional(Type.Boolean()) }, { additionalProperties: false });
+/** The editor's draft as the desk keeps it (frontend deskState.ts XvDraft) */
+const Draft = Type.Object(
+  {
+    title: Type.String({ maxLength: 2000 }),
+    source: Type.Optional(Type.Object({ kind: Type.String({ maxLength: 20 }), at: Type.Optional(Type.Number()) }, { additionalProperties: false })),
+    brandOn: Type.Boolean(),
+    hashtags: Type.Array(Part, { maxItems: 60 }),
+    mentions: Type.Array(Part, { maxItems: 60 }),
+    trim: Type.Object({ start: Type.Number({ minimum: 0 }), end: Type.Number({ minimum: 0 }) }, { additionalProperties: false }),
+    savedAt: Type.Optional(Type.String({ maxLength: 40 })),
+    scheduledAt: Type.Optional(Type.String({ maxLength: 40 })),
+  },
+  { additionalProperties: false },
+);
+const Tag = Type.String({ pattern: TAG_PATTERN });
+/** Text with something in it besides spaces */
+const Filled = (maxLength: number) => Type.String({ minLength: 1, maxLength, pattern: "\\S" });
 
 /** `child` under `root`, or null: a stored path can never reach outside its folder */
 function inside(root: string, ...parts: string[]): string | null {
@@ -90,14 +121,20 @@ async function sendFile(reply: FastifyReply, httpError: HttpErrorOf, path: strin
 
 export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (app, opts) => {
   const { db, viewer, httpError } = opts;
-  // Step 5: the post around each headline, from the directory (reloaded when its files change, cached per clip state).
-  // Loaded now, so a broken directory file shows in the log at start-up, not on the desk's first list.
-  const composer = opts.composer ?? new XvComposer(undefined, undefined, undefined, undefined, (message) => app.log.warn(message));
-  composer.directory();
-  const compose = (input: ReturnType<typeof xvComposeInput>) => (input ? composer.compose(input) : null);
   const shareRoot = opts.shareRoot ?? process.env.XVIDEOS_SHARE ?? "";
   const cacheDir = opts.cacheDir ?? process.env.XVIDEOS_CACHE ?? "";
   if (!shareRoot || !cacheDir) throw new Error("X Videos routes need XVIDEOS_SHARE and XVIDEOS_CACHE");
+
+  // Step 5: the post around each headline, from the directory (reloaded when its files change, cached per clip state):
+  // the one learn builds from the desk's posts (<XVIDEOS_CACHE>/directory) once it exists, else the committed one.
+  // Loaded now, so a broken directory file shows in the log at start-up, not on the desk's first list.
+  const learnedRoot = join(cacheDir, "directory");
+  const videoDir = () => xvLearnedDir(learnedRoot) ?? XV_DIRECTORY_FILES.videoDir;
+  const composer = opts.composer ?? new XvComposer(videoDir, undefined, undefined, undefined, (message) => app.log.warn(message));
+  composer.directory();
+  const compose = (input: ReturnType<typeof xvComposeInput>) => (input ? composer.compose(input) : null);
+  const wire = (row: XvListedClip, evidence: Parameters<typeof xvWireClip>[1], withTranscript: boolean) =>
+    xvWireClip(row, evidence, withTranscript, compose(xvComposeInput(row.clip, row.screenHeadline, row.screenResult)));
 
   // One day folder's videos, all of them (x-marked or not). Without `day`: today's (IST) only, never yesterday's.
   app.get(
@@ -123,7 +160,7 @@ export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (a
         statuses: statuses.length ? (statuses as XvClipStatus[]) : ["seen", "reading", "new", "failed"],
         limit: req.query.limit,
       });
-      return { day, clips: rows.map((r) => xvWireClip(r.clip, null, false, r.screenHeadline, compose(xvComposeInput(r.clip, r.screenHeadline, r.screenResult)))) };
+      return { day, clips: rows.map((r) => wire(r, null, false)) };
     },
   );
 
@@ -153,7 +190,128 @@ export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (a
     const user = viewer(req);
     const found = await xvGetClip(db, user.orgId, req.params.id);
     if (!found) throw httpError(404, "not_found", "No such clip.");
-    return { clip: xvWireClip(found.clip, found.evidence, true, found.screenHeadline, compose(xvComposeInput(found.clip, found.screenHeadline, found.screenResult))) };
+    return { clip: wire(found, found.evidence, true) };
+  });
+
+  // ─── step 6: the desk's actions. Each answers with the clip as the desk now shows it. ───
+
+  /** The clip of the viewer's org (404 otherwise), checked for the action's permission, and who is acting */
+  const target = async (req: FastifyRequest, id: string, need: XvPermission) => {
+    const user = viewer(req, need);
+    const found = await xvGetClip(db, user.orgId, id);
+    if (!found) throw httpError(404, "not_found", "No such clip.");
+    const by: XvActor = { id: user.userId ?? null, name: user.userName ?? null };
+    return { user, found, by };
+  };
+  const fresh = async (orgId: string, id: string) => {
+    const found = await xvGetClip(db, orgId, id);
+    if (!found) throw httpError(404, "not_found", "No such clip.");
+    return { clip: wire(found, found.evidence, false) };
+  };
+
+  /** Why a clip cannot take a new decision, draft or hold: one stands already, or the share says it was posted by hand */
+  const decided = (found: XvListedClip): Error | null => {
+    if (found.decision) {
+      return httpError(
+        409,
+        "conflict",
+        found.decision.action === "posted" ? `Already posted${found.decision.byName ? ` by ${found.decision.byName}` : ""}.` : "This clip was rejected; restore it first.",
+      );
+    }
+    if (found.clip.done) return httpError(409, "conflict", "Already posted by hand (the file is marked done on the share).");
+    return null;
+  };
+  /** After a decision lost a race: what stands now (a 404 when the clip went meanwhile) */
+  const lost = async (orgId: string, id: string): Promise<Error> => {
+    const now = await xvGetClip(db, orgId, id);
+    if (!now) return httpError(404, "not_found", "No such clip.");
+    return decided(now) ?? httpError(409, "conflict", "Someone else acted on this clip a moment ago; look again.");
+  };
+
+  // Save the editor's draft (the desk opens it instead of the suggestion); DELETE goes back to the suggestion
+  app.put("/xvideos/clips/:id/draft", { schema: { params: Id, body: Type.Object({ draft: Draft }, { additionalProperties: false }) } }, async (req) => {
+    const { user, found, by } = await target(req, req.params.id, "draft.edit");
+    const d = req.body.draft;
+    if (d.trim.end < d.trim.start) throw httpError(400, "invalid", "The trim ends before it starts.");
+    const no = decided(found);
+    if (no) throw no;
+    await xvSaveDraft(db, user.orgId, req.params.id, d, by);
+    return fresh(user.orgId, req.params.id);
+  });
+  app.delete("/xvideos/clips/:id/draft", { schema: { params: Id } }, async (req) => {
+    const { user, by } = await target(req, req.params.id, "draft.edit");
+    await xvSaveDraft(db, user.orgId, req.params.id, null, by);
+    return fresh(user.orgId, req.params.id);
+  });
+
+  // Hold ("I'm on this one") or let go; anyone may take a hold over, the desk shows who holds it. A decided clip
+  // cannot be held.
+  app.post("/xvideos/clips/:id/hold", { schema: { params: Id, body: Type.Object({ held: Type.Boolean() }, { additionalProperties: false }) } }, async (req) => {
+    const { user, found, by } = await target(req, req.params.id, "draft.edit");
+    const no = req.body.held ? decided(found) : null;
+    if (no) throw no;
+    await xvSetHold(db, user.orgId, req.params.id, req.body.held, by);
+    return fresh(user.orgId, req.params.id);
+  });
+
+  // Copy & Mark Posted: the text the editor copied to X
+  app.post(
+    "/xvideos/clips/:id/posted",
+    {
+      schema: {
+        params: Id,
+        body: Type.Object(
+          {
+            text: Filled(5000),
+            title: Type.Optional(Type.String({ maxLength: 2000 })),
+            hashtags: Type.Optional(Type.Array(Tag, { maxItems: 60 })),
+            mentions: Type.Optional(Type.Array(Tag, { maxItems: 60 })),
+          },
+          { additionalProperties: false },
+        ),
+      },
+    },
+    async (req) => {
+      const { user, found, by } = await target(req, req.params.id, "post.mark_posted");
+      const no = decided(found);
+      if (no) throw no;
+      if (found.clip.status === "gone") throw httpError(409, "conflict", "The file has left the share; it can no longer be posted.");
+      const b = req.body;
+      if (!(await xvDecide(db, user.orgId, req.params.id, { action: "posted", text: b.text, title: b.title ?? null, hashtags: b.hashtags ?? [], mentions: b.mentions ?? [] }, by))) {
+        throw await lost(user.orgId, req.params.id);
+      }
+      return fresh(user.orgId, req.params.id);
+    },
+  );
+
+  // Undo the post named (postId from the clip as the desk shows it) within XV_UNDO_S of it, as the desk's undo bar
+  app.post("/xvideos/clips/:id/undo", { schema: { params: Id, body: Type.Object({ postId: Type.Integer({ minimum: 1 }) }, { additionalProperties: false }) } }, async (req) => {
+    const { user, by } = await target(req, req.params.id, "post.undo");
+    const out = await xvUndoDecision(db, user.orgId, req.params.id, "posted", by, { postId: req.body.postId, withinS: XV_UNDO_S });
+    if (out === "none") throw httpError(409, "conflict", "That post is not standing (already undone, or a newer one replaced it).");
+    if (out === "too_late") throw httpError(409, "conflict", `A post can be undone for ${XV_UNDO_S / 60} minutes only; delete it on X and mark the clip again if needed.`);
+    return fresh(user.orgId, req.params.id);
+  });
+
+  app.post(
+    "/xvideos/clips/:id/reject",
+    { schema: { params: Id, body: Type.Object({ reason: Filled(200) }, { additionalProperties: false }) } },
+    async (req) => {
+      const { user, found, by } = await target(req, req.params.id, "draft.reject");
+      const no = decided(found);
+      if (no) throw no;
+      if (!(await xvDecide(db, user.orgId, req.params.id, { action: "rejected", reason: req.body.reason.trim() }, by))) {
+        throw await lost(user.orgId, req.params.id);
+      }
+      return fresh(user.orgId, req.params.id);
+    },
+  );
+
+  // A rejected clip back on the desk (any time)
+  app.post("/xvideos/clips/:id/restore", { schema: { params: Id } }, async (req) => {
+    const { user, by } = await target(req, req.params.id, "draft.reject");
+    if ((await xvUndoDecision(db, user.orgId, req.params.id, "rejected", by)) === "none") throw httpError(409, "conflict", "This clip is not rejected.");
+    return fresh(user.orgId, req.params.id);
   });
 
   app.get("/xvideos/clips/:id/video", { schema: { params: Id } }, async (req, reply) => {

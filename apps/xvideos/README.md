@@ -32,7 +32,7 @@ digital\
     README.md                        this file
     .env.example                     every setting, with defaults (copy to .env: the worker, the api and media.py read it)
     src\share\rules.ts               the share layout, x / done marks, the title left in a file name (pure)
-    src\worker\                      its own process: watch, probe, headline (screen read), compose, learn
+    src\worker\                      its own process: watch, probe, headline (screen read), learn
     src\headline\                    step 4's rules: the day's programme filler (lines.ts), the model's prompt and answer (model.ts)
     src\compose\compose.ts           step 5: place, channel label, hashtags and @handles around the headline (the api runs it)
     src\db\  migrations\             schema "xvideos", own migrations
@@ -83,8 +83,8 @@ qwen3:14b stays in Ollama's own store (other tools on this PC use the same Ollam
 | 3 | Title from the file name | The name without the `x` / `done` marks and the extension. It is a heading when it has 5+ words and 8+ Devanagari letters. Windows does not allow `\|` in a name, so two or more spaces stand for ` \| `: the posted title comes back with its suffix. | `src/share/rules.ts` (`xvHeading`), stored as `clip.heading` | Built |
 | 4 | Screen read | Only when step 3 finds no heading: `POST /screen` on the media service, the day's programme filler dropped, `POST /speech` when under 2 bar lines are left, qwen3:14b writes the headline (§4.2). | `src/worker/headline.ts`, `src/headline/`, `media/headline.py` | Built (`XVIDEOS_HEADLINE`) |
 | 5 | Compose | Place, channel label (`\| Jaipur News`), then tags and handles from the directory (§5), each on (emit) or offered (suggest). The desk adds the brand tag and `#FINVideo`. Composed when the desk reads a clip, so it always uses the current directory. | `src/compose/compose.ts` | Built |
-| 6 | Desk | Shows **every video in the chosen day folder**, with its inner folder and its `x` / done mark shown on the row. Opens on **today's day folder only** (IST), not yesterday's. A month / day selector outside the clip list picks another day. Edit, hold, Copy & Mark Posted, undo, reject (§8). | `src/api/` + frontend | List built (last 48 h); today-only + selector **next**; actions **to build** |
-| 7 | Learn | A posted clip's final title, tags and handles go into the directory counts and become examples. | `src/worker/learn.ts` + `directory/build.py` | **To build** |
+| 6 | Desk | Shows **every video in the chosen day folder**, with its inner folder and its `x` / done mark shown on the row. Opens on **today's day folder only** (IST), not yesterday's. A month / day selector outside the clip list picks another day. Save a draft, hold, Copy & Mark Posted, undo (6 min), reject, restore (§8). | `src/api/` + frontend | Built (backend); the desk still keeps actions in its own state until it is wired to the routes |
+| 7 | Learn | Every 10 min, posts past their undo window go into the desk's post list (each once) and `build.py` rebuilds the directory from the captures and them into a new folder under `XVIDEOS_CACHE\directory\builds`; the one-line `current` file switches to it in one rename, and the composer follows (§5). It also rebuilds when the committed captures, `build.py` or the breaking desk's files change. A failed build changes nothing and its posts wait. | `src/worker/learn.ts` + `directory/build.py` | Built |
 
 **Files are cleared from the share after about 6 days. A file not on the share is gone for good:** the desk no longer lists
 it or its day, and nothing is archived. Its row stays only as `gone` (no video is copied), so a file that comes back is
@@ -229,8 +229,8 @@ Settings that matter:
 | `clip_job` | Work queue (probe, read, headline), lease, attempts | Built |
 | `clip_evidence` | What `/read` found: transcript, cuts, stills | Built |
 | `clip_screen` | Step 4: the screen read (bar lines, other text, the anchor's words when read) and the model's headline with how it was made (lines used, filler dropped, place, topics) | Built |
-| `clip_draft` | The editor's saved draft: title, tags and handles as the editor left them (the suggestion itself is composed on read, §5) | Step 6 |
-| `clip_post` | Posted text, by whom, when, X link, undone | To build |
+| `clip_draft` | The editor's saved draft (title, tags, handles, trim as the desk keeps it) and who holds the clip | Built |
+| `clip_post` | The desk's decisions: posted (the text copied to X, title, tags, handles) or rejected (reason), by whom, when, undone, learned. At most one stands per clip (unique index), so two editors cannot post a clip twice | Built |
 | `scan_request` | The desk's Refresh requests (one per day), taken by the watcher | Built |
 
 ---
@@ -243,8 +243,19 @@ Settings that matter:
 | `GET /xvideos/folders` | Today and every day whose folder holds videos, grouped by month, with counts (videos, x-marked, done), for the desk's month / day selector | Built |
 | `POST /xvideos/rescan?day=` | The desk's Refresh: the watcher walks that day (default today) within seconds, and again 10 s later so new files settle | Built |
 | `GET /xvideos/clips/:id` · `/video` · `/poster` · `/frames/:name` | One clip, the video with byte ranges, stills | Built |
-| `PATCH /xvideos/clips/:id` | Save the editor's draft | To build |
-| `POST /xvideos/clips/:id/hold` · `posted` · `undo` · `reject` | Desk actions | To build |
+| `PUT` · `DELETE /xvideos/clips/:id/draft` | Save the editor's draft / back to the suggestion | Built |
+| `POST /xvideos/clips/:id/hold` `{held}` | Hold the clip ("on it", the desk shows who) or let it go; anyone may take a hold over | Built |
+| `POST /xvideos/clips/:id/posted` `{text, title, hashtags, mentions}` | Copy & Mark Posted; 409 when the clip is already posted or rejected | Built |
+| `POST /xvideos/clips/:id/undo` `{postId}` | Undo that post within 6 min (409 after, or when a newer post replaced it) | Built |
+| `POST /xvideos/clips/:id/reject` `{reason}` · `restore` | Reject with a reason; bring it back | Built |
+
+Each action needs the X desk's own permission for it, as the X post desk does: `draft.edit` (draft, hold),
+`post.mark_posted`, `post.undo`, `draft.reject` (reject, restore). A clip already posted or rejected, or marked done on the
+share, takes no new decision, draft or hold (409); a file gone from the share cannot be posted.
+
+Every action answers with the clip as the desk now shows it (`status` posted / rejected / new, `postId`, `postedAt`, `postedText`,
+`postedBy`, `rejectedReason`, `heldBy`, `draft`). A file marked done on the share counts as posted when the desk has no
+decision of its own.
 
 ---
 
@@ -263,7 +274,7 @@ pnpm --filter @socia/xvideos migrate
 Running (PowerShell; Git Bash cannot see the share):
 
 ```
-pnpm --filter @socia/xvideos worker                watch, probe, headline (needs the media service and Ollama)
+pnpm --filter @socia/xvideos worker                watch, probe, headline (needs the media service and Ollama), learn
 ..\x-requirements\env\Scripts\python.exe -I apps\xvideos\media\media.py
 node --env-file=… --import tsx apps/api/src/index.ts    the api with XVIDEOS=true
 ```
@@ -282,8 +293,8 @@ database.
 | 3 | Day folder + file-name title | Month + day scan at any depth, all videos, IST date; `GET /xvideos/folders`; `GET /xvideos/clips?day=` (today by default); title from the file name; desk: month / day selector, `x` mark and inner folder on each row | After 1 | Built (27 Nov 2026) |
 | 4 | Screen read | `x-requirements` + `setup.ps1`; `headline.py` (trial flow); `/screen` + `/speech`; programme-bar fix A, C in the worker; headline job only for clips whose name has no heading | After 3 | Built (27 Nov 2026) |
 | 5 | Tags and handles | Directory built from the 427 saved `#FINVideo` posts (9 Sep-27 Nov 2026); `compose.ts` (place, label, tags, handles, emit / suggest) on the desk's reads; campaign patterns kept with their own dates | After 4 | Built (27 Nov 2026) |
-| 6 | Desk actions + learn | Edit (`clip_draft`), hold, Copy & Mark Posted, undo, reject; `clip_post`; posted text feeds the directory counts | After 5 | |
-| 7 | Main | Whole flow on the test database, reviews, move to the live database, merge to `main` | Last | |
+| 6 | Desk actions + learn | Draft (`clip_draft`), hold, Copy & Mark Posted, undo, reject, restore (`clip_post`); learn rebuilds the directory from the desk's posts | After 5 | Built, backend (27 Nov 2026); the desk is wired to these routes in step 7 |
+| 7 | Main | Wire the desk's actions to the step 6 routes; whole flow on the test database, reviews, move to the live database, merge to `main` | Last | |
 
 ## 11. Decided
 

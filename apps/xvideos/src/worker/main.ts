@@ -1,8 +1,8 @@
 // X Videos worker: its own process, apart from the X post desk's worker (which it never touches).
 //   pnpm --filter @socia/xvideos worker      (reads apps/xvideos/.env; run from PowerShell: Git Bash cannot see the share)
-// XVIDEOS_ROLES picks the loops: watch (the share), probe (ffprobe + poster) and headline (the screen read and the
-// model's headline for clips whose name holds none; XVIDEOS_HEADLINE=off stops it) by default; read (the media service:
-// speech, cuts, stills) only with XVIDEOS_SPEECH=on.
+// XVIDEOS_ROLES picks the loops: watch (the share), probe (ffprobe + poster), headline (the screen read and the
+// model's headline for clips whose name holds none; XVIDEOS_HEADLINE=off stops it) and learn (the desk's posts into the
+// directory) by default; read (the media service: speech, cuts, stills) only with XVIDEOS_SPEECH=on.
 // Set UV_THREADPOOL_SIZE=16 in the environment: a hung share call holds one of Node's pool threads until it returns.
 
 import { createDb } from "@socia/db";
@@ -13,6 +13,10 @@ import { Loops } from "./loop";
 import { loadXvConfig } from "./config";
 import { XvModelClient } from "../headline/model";
 import { XvHeadlineStep } from "./headline";
+import { XvLearnStep } from "./learn";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { readdirSync } from "node:fs";
 import { xvNextSteps } from "./steps";
 import { XvProbeStep } from "./probe";
 import { XvMediaClient, XvReadStep } from "./read";
@@ -61,6 +65,19 @@ if (config.roles.includes("read")) {
 if (config.roles.includes("headline")) {
   const headline = new XvHeadlineStep(db, config.orgId, share, media, new XvModelClient(config.ollamaUrl, config.headlineModel), log.child({ role: "headline" }));
   loops.start({ name: "xv-headline", tick: () => headline.tick(), idleMs: 3000, log });
+}
+if (config.roles.includes("learn")) {
+  const dir = (p: string) => fileURLToPath(new URL(`../../directory/${p}`, import.meta.url));
+  // The breaking desk's directory files build.py reads keywords from: a change there rebuilds the learned directory too
+  const shared = fileURLToPath(new URL("../../../worker/config/", import.meta.url));
+  const inputs = [dir("build.py"), dir("data/finvideo-posts.jsonl"), ...readdirSync(shared).filter((f) => f.endsWith(".json")).map((f) => join(shared, f))];
+  const learn = new XvLearnStep(
+    db,
+    config.orgId,
+    { python: config.python, buildScript: dir("build.py"), posts: dir("data/finvideo-posts.jsonl"), inputs, outDir: join(config.cacheDir, "directory") },
+    log.child({ role: "learn" }),
+  );
+  loops.start({ name: "xv-learn", tick: () => learn.tick(), idleMs: 60_000, log });
 }
 log.info({ roles: config.roles, speech: config.speech, headline: config.headline, db: dbName }, "x videos worker started");
 

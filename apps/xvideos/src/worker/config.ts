@@ -1,6 +1,6 @@
 // X Videos worker settings (apps/xvideos/.env). Its own process: nothing here is read by the X post desk's worker.
 
-export const XV_ROLES = ["watch", "probe", "read", "headline"] as const;
+export const XV_ROLES = ["watch", "probe", "read", "headline", "learn"] as const;
 export type XvRole = (typeof XV_ROLES)[number];
 
 export interface XvWorkerConfig {
@@ -35,6 +35,8 @@ export interface XvWorkerConfig {
   monthScanSeconds: number;
   ffprobe: string;
   ffmpeg: string;
+  /** Python 3 for the learn role's directory build (build.py needs only the standard library) */
+  python: string;
 }
 
 function need(name: string): string {
@@ -54,7 +56,7 @@ function num(name: string, fallback: number, min: number): number {
 export function loadXvConfig(): XvWorkerConfig {
   const speech = process.env.XVIDEOS_SPEECH === "on";
   const headline = (process.env.XVIDEOS_HEADLINE ?? "on") !== "off";
-  const fallback = ["watch", "probe", ...(speech ? ["read"] : []), ...(headline ? ["headline"] : [])].join(",");
+  const fallback = ["watch", "probe", ...(speech ? ["read"] : []), ...(headline ? ["headline"] : []), "learn"].join(",");
   const roles = (process.env.XVIDEOS_ROLES ?? fallback).split(",").map((r) => r.trim()).filter(Boolean);
   const bad = roles.filter((r) => !XV_ROLES.includes(r as XvRole));
   if (bad.length || !roles.length) throw new Error(`XVIDEOS_ROLES must list some of: ${XV_ROLES.join(", ")} (got "${roles.join(",")}")`);
@@ -79,5 +81,6 @@ export function loadXvConfig(): XvWorkerConfig {
     monthScanSeconds: num("XVIDEOS_MONTH_SCAN_SECONDS", 600, 30),
     ffprobe: process.env.XVIDEOS_FFPROBE ?? "ffprobe",
     ffmpeg: process.env.XVIDEOS_FFMPEG ?? "ffmpeg",
+    python: process.env.XVIDEOS_PYTHON?.trim() || "python",
   };
 }

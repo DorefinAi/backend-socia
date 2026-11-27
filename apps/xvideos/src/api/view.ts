@@ -5,7 +5,8 @@
 // src/compose): on = in the post as drafted, off = offered.
 
 import type { XvComposeInput, XvComposed } from "../compose/compose";
-import type { XvClipRow, XvEvidence, XvHeadlineResult } from "../db/schema";
+import type { XvListedClip } from "../db/clips";
+import type { XvClipRow, XvDeskDraft, XvEvidence, XvHeadlineResult } from "../db/schema";
 
 export type XvWireStatus = "new" | "posted" | "rejected";
 
@@ -60,8 +61,23 @@ export interface XvWireClip {
   /** Without the brand tag and #FINVideo (the desk adds both); `why` says where each came from */
   hashtags: { value: string; on: boolean; why?: string }[];
   mentions: { value: string; on: boolean; why?: string }[];
-  /** done on the share = the desk already posted it on X by hand */
+  /**
+   * The desk's decision (step 6): posted (Copy & Mark Posted) or rejected, and not undone; else a file marked done on the
+   * share was posted by hand before the desk existed; else new
+   */
   status: XvWireStatus;
+  postedAt?: string;
+  /** The standing post's id: undo names it, so a stale tab cannot take back a newer post */
+  postId?: number;
+  /** The text copied to X */
+  postedText?: string;
+  postedBy?: string;
+  rejectedReason?: string;
+  /** The editor who holds the clip ("on it"), by name */
+  heldBy?: string;
+  /** The editor's saved draft (the desk opens it instead of the suggestion), and when it was saved */
+  draft?: XvDeskDraft;
+  draftSavedAt?: string;
   /** Why the clip could not be read (probe or speech failed after its retries) */
   error?: string;
 }
@@ -94,13 +110,10 @@ export function xvComposeInput(clip: XvClipRow, screenHeadline: string | null, s
   return { headline, fileTitle: clip.title, day: clip.day, model };
 }
 
-export function xvWireClip(
-  clip: XvClipRow,
-  evidence: XvEvidence | null,
-  withTranscript: boolean,
-  screenHeadline: string | null = null,
-  composed: XvComposed | null = null,
-): XvWireClip {
+export function xvWireClip(row: Pick<XvListedClip, "clip" | "screenHeadline"> & Partial<XvListedClip>, evidence: XvEvidence | null, withTranscript: boolean, composed: XvComposed | null = null): XvWireClip {
+  const { clip, screenHeadline } = row;
+  const decision = row.decision ?? null;
+  const desk = row.desk ?? null;
   const reading = clip.status === "reading" || clip.status === "seen";
   // The file's own heading wins: the desk wrote it
   const suggested = clip.heading ?? screenHeadline;
@@ -137,7 +150,15 @@ export function xvWireClip(
     channelLabel: composed?.channelLabel ?? null,
     hashtags: composed?.hashtags ?? [],
     mentions: composed?.mentions ?? [],
-    status: clip.done ? "posted" : "new",
+    status: decision ? decision.action : clip.done ? "posted" : "new",
+    postedAt: decision?.action === "posted" ? decision.at.toISOString() : undefined,
+    postId: decision?.action === "posted" ? decision.id : undefined,
+    postedText: decision?.action === "posted" ? (decision.text ?? undefined) : undefined,
+    postedBy: decision?.action === "posted" ? (decision.byName ?? undefined) : undefined,
+    rejectedReason: decision?.action === "rejected" ? (decision.reason ?? undefined) : undefined,
+    heldBy: desk?.heldByName ?? undefined,
+    draft: desk?.draft ?? undefined,
+    draftSavedAt: desk?.draft ? desk.updatedAt.toISOString() : undefined,
     error: clip.status === "failed" ? (clip.error ?? "could not be read") : undefined,
   };
 }

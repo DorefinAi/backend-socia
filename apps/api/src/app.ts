@@ -5,7 +5,7 @@ import { extname } from "node:path";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { TypeBoxValidatorCompiler, type TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
-import type { PaceStore } from "@socia/core";
+import type { PaceStore, PermissionKey } from "@socia/core";
 import { DeskError, readIngestStatus, readWorkerHeartbeat, setDecisionLogger, workerLiveness, type Db } from "@socia/db";
 import { LocalStorage, type Storage, type WebGet } from "@socia/providers";
 import { sql } from "drizzle-orm";
@@ -175,10 +175,12 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   if (process.env.XVIDEOS === "true") {
     await app.register(xvideosRoutes, {
       db: deps.db,
-      viewer: (req) => {
+      viewer: (req, need) => {
         const { user } = guard(req);
         requirePermission(user, "page.post_studio.x", "x");
-        return { orgId: user.orgId };
+        // Each desk action needs the X desk's own permission for it (draft.edit, post.mark_posted, post.undo, draft.reject)
+        if (need) requirePermission(user, need as PermissionKey, "x");
+        return { orgId: user.orgId, userId: user.id, userName: user.name };
       },
       httpError: (status, code, message) => new HttpError(status, code, message),
     });

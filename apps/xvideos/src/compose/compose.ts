@@ -301,7 +301,8 @@ export class XvComposer {
   private lastError = "";
 
   constructor(
-    private readonly videoDir = XV_DIRECTORY_FILES.videoDir,
+    /** The video directory's folder, or a function giving it (the learned one once learn has built it) */
+    private readonly videoDirOf: string | (() => string) = XV_DIRECTORY_FILES.videoDir,
     private readonly sharedDir = XV_DIRECTORY_FILES.sharedDir,
     private readonly maxCached = 5000,
     private readonly checkEveryMs = 30_000,
@@ -309,8 +310,13 @@ export class XvComposer {
     private readonly report: (message: string) => void = () => undefined,
   ) {}
 
-  private stampNow(): string {
-    return [...VIDEO_FILES.map((f) => `${this.videoDir}${f}`), ...SHARED_FILES.map((f) => `${this.sharedDir}${f}`)].map((f) => statSync(f).mtimeMs).join(":");
+  private get videoDir(): string {
+    return typeof this.videoDirOf === "string" ? this.videoDirOf : this.videoDirOf();
+  }
+
+  /** The files' times and the video folder itself, so a switch to the learned folder reloads too */
+  private stampNow(videoDir: string): string {
+    return [videoDir, ...[...VIDEO_FILES.map((f) => `${videoDir}${f}`), ...SHARED_FILES.map((f) => `${this.sharedDir}${f}`)].map((f) => statSync(f).mtimeMs)].join(":");
   }
 
   /** The current directory, or null when it has never loaded */
@@ -319,9 +325,10 @@ export class XvComposer {
     if (now - this.checkedAt < this.checkEveryMs) return this.dir;
     this.checkedAt = now;
     try {
-      const stamp = this.stampNow();
+      const videoDir = this.videoDir;
+      const stamp = this.stampNow(videoDir);
       if (!this.dir || stamp !== this.stamp) {
-        const dir = xvLoadDirectory(this.videoDir, this.sharedDir);
+        const dir = xvLoadDirectory(videoDir, this.sharedDir);
         this.dir = dir;
         this.stamp = stamp;
         this.cache.clear();

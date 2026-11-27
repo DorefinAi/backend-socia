@@ -1,0 +1,65 @@
+{
+ "entries": [
+  {
+   "tag": "#FINVideo",
+   "kind": "identifier",
+   "rule": "emit"
+  },
+  {
+   "tag": "#TonkNews",
+   "kind": "place",
+   "rule": "emit"
+  },
+  {
+   "tag": "#Election2026",
+   "kind": "campaign",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "पंचायत चुनाव|मतगणना",
+     "start": "2026-10-01",
+     "end": "2026-11-28"
+    },
+    {
+     "pattern": "(?:कांग्रेस|भाजपा)[^।]{0,40}?बढ़त",
+     "start": "2026-10-01",
+     "end": "2026-11-28"
+    }
+   ]
+  },
+  {
+   "tag": "#Broken",
+   "kind": "campaign",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?P<x>a)"
+    }
+   ]
+  },
+  {
+   "tag": "#RoadAccident",
+   "kind": "topic",
+   "rule": "suggest",
+   "keywords_hi": [
+    "सड़क हादसा"
+   ],
+   "keywords_en": []
+  },
+  {
+   "tag": "#CppNews",
+   "kind": "topic",
+   "rule": "suggest",
+   "keywords_hi": [],
+   "keywords_en": [
+    "C++"
+   ]
+  },
+  {
+   "kind": "topic",
+   "keywords_hi": [
+    "बिना टैग"
+   ]
+  }
+ ]
+}

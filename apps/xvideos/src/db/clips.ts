@@ -463,10 +463,11 @@ export interface XvListOptions {
   limit?: number;
 }
 
-/** A clip and the model's headline from its screen read (step 4), when it has one */
+/** A clip and its screen read's outcome (step 4), when it has one: the model's headline and what else it said */
 export interface XvListedClip {
   clip: XvClipRow;
   screenHeadline: string | null;
+  screenResult: XvHeadlineResult | null;
 }
 
 /** One day folder's clips, every video (x-marked or not), newest file first */
@@ -474,13 +475,13 @@ export async function xvListClips(db: Db, orgId: string, opts: XvListOptions): P
   const where = [eq(xvClips.orgId, orgId), eq(xvClips.day, opts.day)];
   if (opts.statuses?.length) where.push(inArray(xvClips.status, [...opts.statuses]));
   const rows = await db
-    .select({ clip: xvClips, screenHeadline: xvScreens.headline })
+    .select({ clip: xvClips, screenHeadline: xvScreens.headline, screenResult: xvScreens.result })
     .from(xvClips)
     .leftJoin(xvScreens, eq(xvScreens.clipId, xvClips.id))
     .where(and(...where))
     .orderBy(desc(xvClips.mtime))
     .limit(Math.min(opts.limit ?? 500, 1000));
-  return rows.map((r) => ({ clip: r.clip, screenHeadline: r.screenHeadline ?? null }));
+  return rows.map((r) => ({ clip: r.clip, screenHeadline: r.screenHeadline ?? null, screenResult: r.screenResult ?? null }));
 }
 
 export interface XvDayCount {
@@ -517,13 +518,13 @@ export async function xvGetClip(
   db: Db,
   orgId: string,
   id: string,
-): Promise<{ clip: XvClipRow; evidence: XvEvidence | null; screenHeadline: string | null } | null> {
+): Promise<(XvListedClip & { evidence: XvEvidence | null }) | null> {
   const rows = await db
-    .select({ clip: xvClips, evidence: xvEvidence.evidence, screenHeadline: xvScreens.headline })
+    .select({ clip: xvClips, evidence: xvEvidence.evidence, screenHeadline: xvScreens.headline, screenResult: xvScreens.result })
     .from(xvClips)
     .leftJoin(xvEvidence, eq(xvEvidence.clipId, xvClips.id))
     .leftJoin(xvScreens, eq(xvScreens.clipId, xvClips.id))
     .where(and(eq(xvClips.orgId, orgId), eq(xvClips.id, id)));
   const row = rows[0];
-  return row ? { clip: row.clip, evidence: row.evidence ?? null, screenHeadline: row.screenHeadline ?? null } : null;
+  return row ? { clip: row.clip, evidence: row.evidence ?? null, screenHeadline: row.screenHeadline ?? null, screenResult: row.screenResult ?? null } : null;
 }

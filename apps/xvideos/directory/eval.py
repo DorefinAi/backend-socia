@@ -28,7 +28,8 @@ DM_WORDS = re.compile(r"कलेक्टर|जिला प्रशासन
 def js_pattern(p: str) -> str:
     """campaigns.json holds JavaScript patterns (the composer runs them with the u flag); Python's re has no \\p{...}.
     Only letters, marks and digits are used: map them to classes that cover Latin, Devanagari and digits."""
-    return p.replace(r"\p{L}", r"A-Za-zऀ-ॿ").replace(r"\p{M}", r"ऀ-ॿ").replace(r"\p{N}", r"0-9०-९")
+    # The nukta goes, as in the title it is matched against (predict() strips it there)
+    return p.replace(r"\p{L}", r"A-Za-zऀ-ॿ").replace(r"\p{M}", r"ऀ-ॿ").replace(r"\p{N}", r"0-9०-९").replace("़", "")
 
 
 def has(term: str, text: str) -> bool:
@@ -69,12 +70,12 @@ def predict(title, day, D, mode, places, other_states, shared):
     for e in entries:
         if e["kind"] in ("identifier", "brand", "state", "place"):
             continue
-        if e.get("start") and not (e["start"] <= day <= (e.get("end") or "9999")):
-            continue
         words = (e.get("keywords_hi") or []) + (e.get("keywords_en") or [])
         if mode == "video+":
             words += e.get("keywords_proposed") or []
-        if (e.get("pattern") and re.search(js_pattern(e["pattern"]), text, re.I)) or any_has(words, text):
+        # Each campaign pattern counts only inside its own dates
+        live = [p for p in e.get("patterns") or [] if p.get("pattern") and (not p.get("start") or p["start"] <= day <= (p.get("end") or "9999"))]
+        if any(re.search(js_pattern(p["pattern"]), text, re.I) for p in live) or any_has(words, text):
             tags.add(e["tag"])
     pool = D["handles"] if mode != "shared" else list(shared.values())
     if mode == "video+":
@@ -116,7 +117,7 @@ def main():
     other_states = [w for v in (other_states.values() if isinstance(other_states, dict) else [other_states]) for w in (v if isinstance(v, list) else [])] \
         if not isinstance(other_states, list) else other_states
     # shared-only tag list: campaign / keyword patterns, person tags by name, party tags
-    D["shared_tags"] = [{"tag": "#" + c["tag"], "kind": c.get("kind"), "pattern": c.get("pattern"), "start": c.get("start"), "end": c.get("end")} for c in campaigns] + \
+    D["shared_tags"] = [{"tag": "#" + c["tag"], "kind": c.get("kind"), "patterns": [{"pattern": c.get("pattern"), "start": c.get("start"), "end": c.get("end")}]} for c in campaigns] + \
         [{"tag": "#" + e["hashtag"], "kind": "party", "keywords_hi": e["keywords_hi"], "keywords_en": e["keywords_en"]} for e in shared.values() if e.get("hashtag")]
 
     test = [p for p in B.load_posts(HERE / "data" / "finvideo-posts.jsonl", None, normalise) if args.until < p["day"] <= args.test_until]

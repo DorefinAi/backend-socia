@@ -1,0 +1,4664 @@
+{
+ "version": 1,
+ "built_from": {
+  "posts": 427,
+  "days": [
+   "2026-09-09",
+   "2026-10-20",
+   "2026-10-21",
+   "2026-10-30",
+   "2026-11-09",
+   "2026-11-10",
+   "2026-11-11",
+   "2026-11-12",
+   "2026-11-13",
+   "2026-11-21",
+   "2026-11-27"
+  ],
+  "until": null,
+  "shared_directory": "C:\\vartmaan\\code\\digital\\backend-xvideos\\apps\\worker\\config"
+ },
+ "min_uses": 2,
+ "_note": "Hashtags the desk used on #FINVideo posts. rule emit = put in the draft; suggest = one click. Keywords come from the breaking desk's directory (keyword_source) or are empty with status needs_keywords.",
+ "entries": [
+  {
+   "tag": "#FINVideo",
+   "uses": 427,
+   "share": 1.0,
+   "last_seen": "2026-11-27",
+   "kind": "identifier",
+   "rule": "emit",
+   "position": 2
+  },
+  {
+   "tag": "#RajasthanWithFirstIndia",
+   "uses": 347,
+   "share": 0.813,
+   "last_seen": "2026-11-27",
+   "kind": "brand",
+   "rule": "emit",
+   "position": 1,
+   "when": "rajasthan"
+  },
+  {
+   "tag": "#RajasthanNews",
+   "uses": 192,
+   "share": 0.45,
+   "last_seen": "2026-11-27",
+   "kind": "state",
+   "rule": "suggest",
+   "when": "rajasthan story"
+  },
+  {
+   "tag": "#FirstIndiaNews",
+   "uses": 83,
+   "share": 0.194,
+   "last_seen": "2026-11-27",
+   "kind": "brand",
+   "rule": "emit",
+   "position": 1,
+   "when": "outside"
+  },
+  {
+   "tag": "#JaipurNews",
+   "uses": 78,
+   "share": 0.183,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jaipur",
+   "form": "<City>News",
+   "keywords_hi": [
+    "जयपुर"
+   ],
+   "keywords_en": [
+    "Jaipur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Jaipur",
+   "uses": 76,
+   "share": 0.178,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jaipur",
+   "form": "<City>",
+   "keywords_hi": [
+    "जयपुर"
+   ],
+   "keywords_en": [
+    "Jaipur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#BhajanlalSharma",
+   "uses": 26,
+   "share": 0.061,
+   "last_seen": "2026-11-12",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@BhajanlalBjp",
+   "keywords_hi": [
+    "भजनलाल शर्मा",
+    "भजन लाल शर्मा",
+    "सीएम भजनलाल",
+    "सीएम भजनलाल शर्मा",
+    "मुख्यमंत्री भजनलाल शर्मा",
+    "मुख्यमंत्री भजनलाल",
+    "सीएम शर्मा",
+    "मुख्यमंत्री शर्मा"
+   ],
+   "keywords_en": [
+    "Bhajanlal Sharma",
+    "Bhajan Lal Sharma",
+    "CM Bhajanlal Sharma",
+    "CM Bhajan Lal Sharma"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#Rajasthan",
+   "uses": 26,
+   "share": 0.061,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "निशुल्क",
+    "दीपोत्सव",
+    "खेल",
+    "यूनिफॉर्म",
+    "अत्याधुनिक",
+    "योजना"
+   ],
+   "examples": [
+    "लोकतंत्र बचाओ-अराजकता हटाओ' अभियान का CM Bhajanlal Sharma ने किया शुभारंभ",
+    "अब बस एक महीना बाकी! CM भजनलाल शर्मा ने X पर की खास पोस्ट",
+    "Rajasthan NEET UG 2026 MBBS की 136, BDS की 21 सीटें खाली, 11 नवंबर को"
+   ]
+  },
+  {
+   "tag": "#Congress",
+   "uses": 25,
+   "share": 0.059,
+   "last_seen": "2026-11-27",
+   "kind": "party",
+   "rule": "suggest",
+   "linked_handle": "@INCIndia",
+   "keywords_hi": [
+    "कांग्रेस"
+   ],
+   "keywords_en": [
+    "Congress",
+    "INC"
+   ],
+   "keyword_source": "party-handles.json"
+  },
+  {
+   "tag": "#CMBhajanlalSharma",
+   "uses": 25,
+   "share": 0.059,
+   "last_seen": "2026-11-13",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@BhajanlalBjp",
+   "keywords_hi": [
+    "भजनलाल शर्मा",
+    "भजन लाल शर्मा",
+    "सीएम भजनलाल",
+    "सीएम भजनलाल शर्मा",
+    "मुख्यमंत्री भजनलाल शर्मा",
+    "मुख्यमंत्री भजनलाल",
+    "सीएम शर्मा",
+    "मुख्यमंत्री शर्मा"
+   ],
+   "keywords_en": [
+    "Bhajanlal Sharma",
+    "Bhajan Lal Sharma",
+    "CM Bhajanlal Sharma",
+    "CM Bhajan Lal Sharma"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#Jodhpur",
+   "uses": 21,
+   "share": 0.049,
+   "last_seen": "2026-11-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jodhpur",
+   "form": "<City>",
+   "keywords_hi": [
+    "जोधपुर"
+   ],
+   "keywords_en": [
+    "Jodhpur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#BJP",
+   "uses": 18,
+   "share": 0.042,
+   "last_seen": "2026-11-27",
+   "kind": "party",
+   "rule": "suggest",
+   "linked_handle": "@BJP4India",
+   "keywords_hi": [
+    "भाजपा",
+    "बीजेपी"
+   ],
+   "keywords_en": [
+    "BJP"
+   ],
+   "keyword_source": "party-handles.json"
+  },
+  {
+   "tag": "#RajasthanPanchayatElection2026",
+   "uses": 17,
+   "share": 0.04,
+   "last_seen": "2026-11-27",
+   "kind": "campaign",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "पंचायत चुनाव|पंचायती ?राज चुनाव|पंचायतीराज|सरपंच|पंच पद|पंचायत समिति सदस्य|जिला परिषद सदस्य|मतदाता|मतदान की रफ्तार|मतगणना|चुनाव परिणाम|चुनावी नतीज|चुनाव नतीज|जिला प्रमुख|परिषद चुनाव|पंस चुनाव|रुझान",
+     "start": "2026-10-01",
+     "end": "2026-11-28"
+    },
+    {
+     "pattern": "(?:पंचायत समिति|समिति|जिला परिषद|जिले परिषद|जिप|वार्ड|सरपंच|प्रधान|प्रत्याशी|उम्मीदवार)[^।\\n]{0,80}?(?:जीत|विजयी|परिणाम|नतीजे|रिजल्ट|आगे|बढ़त|हार|मतों|वोटों|खाता|सीट|बहुमत|कब्जा)",
+     "start": "2026-10-01",
+     "end": "2026-11-28"
+    },
+    {
+     "pattern": "(?:कांग्रेस|भाजपा|बीजेपी|RLP|आरएलपी)[^।\\n]{0,60}?(?:जीत|जीती|जीते|विजयी|आगे|बढ़त|सीटों|बहुमत|खाता|बोर्ड)",
+     "start": "2026-10-01",
+     "end": "2026-11-28"
+    },
+    {
+     "pattern": "मतदान केंद्र",
+     "start": "2026-10-01",
+     "end": "2026-11-30"
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#RajasthanPolitics",
+   "uses": 15,
+   "share": 0.035,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "समाप्त",
+    "जीरो",
+    "कमिश्नरेट",
+    "FIR"
+   ],
+   "examples": [
+    "विधायक Gopal Sharma ने लगाई सरकार और राज्य निर्वाचन आयोग से गुहार, अपनी जान को खतरा बताते ",
+    "कांग्रेस का पुलिस कमिश्नर दफ्तर पर प्रदर्शन, Tika Ram Jully और Dharmendra Rathore से खास ब",
+    "Ritu Barala Case: पुलिस कमिश्नरेट में कांग्रेस का प्रदर्शन, कार्यकर्ताओं ने कमिश्नरेट के ब"
+   ]
+  },
+  {
+   "tag": "#JodhpurNews",
+   "uses": 15,
+   "share": 0.035,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jodhpur",
+   "form": "<City>News",
+   "keywords_hi": [
+    "जोधपुर"
+   ],
+   "keywords_en": [
+    "Jodhpur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Jaisalmer",
+   "uses": 14,
+   "share": 0.033,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jaisalmer",
+   "form": "<City>",
+   "keywords_hi": [
+    "जैसलमेर"
+   ],
+   "keywords_en": [
+    "Jaisalmer"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#CrimeNews",
+   "uses": 13,
+   "share": 0.03,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "तलवार",
+    "हत्या",
+    "हत्याकांड",
+    "सात",
+    "देर",
+    "रात"
+   ],
+   "examples": [
+    "देर रात सड़कों पर असामाजिक तत्वों का आतंक, तलवार-डंडे लहराने का VIDEO वायरल",
+    "आबूरोड में देर रात स्कूटी सवारों से मारपीट, तीन बाइकों पर आए युवकों ने किया हमला",
+    "जयपुर की पत्रकार कॉलोनी में महिला की हत्या, पत्थर से वार कर वारदात को दिया अंजाम"
+   ]
+  },
+  {
+   "tag": "#BreakingNews",
+   "uses": 13,
+   "share": 0.03,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "देर रात सड़कों पर असामाजिक तत्वों का आतंक, तलवार-डंडे लहराने का VIDEO वायरल",
+    "जयपुर में कांग्रेस का ‘निद्रा आसन’, रितु बराला मामले में FIR की मांग",
+    "Rajasthan Police को जीरो FIR दर्ज करने में क्या दिक्कत है Govind Singh Dotasra। Ritu Baral"
+   ]
+  },
+  {
+   "tag": "#NikayChunav2026",
+   "uses": 12,
+   "share": 0.028,
+   "last_seen": "2026-09-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "वार्डों",
+    "सितंबर",
+    "समर्थक",
+    "पारीक",
+    "दीपक",
+    "कल्ला"
+   ],
+   "examples": [
+    "ये सरकार कोई काम नहीं कर रही, Ashok Gehlot ने साधा निशाना",
+    "BJP अब कितना ही प्रचार कर ले उनसे हर वर्ग दुखी है,  जरूर हार होगी: Supriya Shrinate",
+    "पुष्पेंद्र भारद्वाज ने संभाली कांग्रेस की चुनावी कमान, 21 वार्डों में कांग्रेस प्रत्याशियो"
+   ]
+  },
+  {
+   "tag": "#CongressProtest",
+   "uses": 12,
+   "share": 0.028,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "जूली",
+    "डोटासरा",
+    "मामले",
+    "बाहर",
+    "बराला",
+    "नेताओं"
+   ],
+   "examples": [
+    "कांग्रेस का पुलिस कमिश्नर दफ्तर पर प्रदर्शन, Tika Ram Jully और Dharmendra Rathore से खास ब",
+    "Ritu Barala Case: पुलिस कमिश्नरेट में कांग्रेस का प्रदर्शन, कार्यकर्ताओं ने कमिश्नरेट के ब",
+    "जयपुर में कांग्रेस का ‘निद्रा आसन’, रितु बराला मामले में FIR की मांग"
+   ]
+  },
+  {
+   "tag": "#JaipurPolice",
+   "uses": 12,
+   "share": 0.028,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "बाहर"
+   ],
+   "examples": [
+    "कांग्रेस का पुलिस कमिश्नर दफ्तर पर प्रदर्शन, Tika Ram Jully और Dharmendra Rathore से खास ब",
+    "जयपुर की पत्रकार कॉलोनी में महिला की हत्या, पत्थर से वार कर वारदात को दिया अंजाम",
+    "Ritu Barala Case: पुलिस कमिश्नरेट में कांग्रेस का प्रदर्शन, कार्यकर्ताओं ने कमिश्नरेट के ब"
+   ]
+  },
+  {
+   "tag": "#RoadAccident",
+   "uses": 12,
+   "share": 0.028,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "ट्रक",
+    "आने",
+    "अनियंत्रित",
+    "हादसे",
+    "कार"
+   ],
+   "examples": [
+    "तेज रफ्तार कार ने स्कूटी और कार को मारी टक्कर, नशे में होने की बात -भी आई सामने",
+    "दौसा के सिकंदरा में NH-21 पर दर्दनाक हादसा, बाइक सवार दो लोगों की मौत",
+    "जोधपुर के बालेसर में दर्दनाक सड़क हादसा, युवक की मौत के बाद ग्रामीणों ने लगाया जाम"
+   ]
+  },
+  {
+   "tag": "#AshokGehlot",
+   "uses": 11,
+   "share": 0.026,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@ashokgehlot51",
+   "keywords_hi": [
+    "अशोक गहलोत",
+    "पूर्व मुख्यमंत्री अशोक गहलोत",
+    "पूर्व सीएम गहलोत",
+    "पूर्व सीएम अशोक गहलोत"
+   ],
+   "keywords_en": [
+    "Ashok Gehlot"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#KotaNews",
+   "uses": 11,
+   "share": 0.026,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Kota",
+   "form": "<City>News",
+   "keywords_hi": [
+    "कोटा"
+   ],
+   "keywords_en": [
+    "Kota"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Kota",
+   "uses": 11,
+   "share": 0.026,
+   "last_seen": "2026-11-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Kota",
+   "form": "<City>",
+   "keywords_hi": [
+    "कोटा"
+   ],
+   "keywords_en": [
+    "Kota"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#RajasthanPolice",
+   "uses": 11,
+   "share": 0.026,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "शहीद"
+   ],
+   "examples": [
+    "जोधपुर पुलिस लाइन में शहीद दिवस कार्यक्रम, वीर जवानों को किया याद। Police Martyrs Day 2026",
+    "जुड़वां भाइयों की हत्या से गांव में सनसनी, पीड़ित परिवार से मिलने पहुंचे गृह राज्य मंत्री ",
+    "वी. श्रीनिवास ने सोशल मीडिया पर पोस्ट कर किया शहीद पुलिस कर्मियों को किया नमन"
+   ]
+  },
+  {
+   "tag": "#RajasthanCongress",
+   "uses": 10,
+   "share": 0.023,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "जूली",
+    "डोटासरा",
+    "कमिश्नरेट",
+    "Dotasra"
+   ],
+   "examples": [
+    "मतदान में सब जगह से अच्छी ख़बर आ रही है: Govind Singh Dotasra। Rajasthan Nikay Chunav 2026",
+    "Ritu Barala Case: जयपुर पुलिस कमिश्नरेट में कांग्रेसियों का धरना जारी",
+    "Ritu Barala Case: पुलिस कमिश्नरेट में कांग्रेस का प्रदर्शन, कार्यकर्ताओं ने कमिश्नरेट के ब"
+   ]
+  },
+  {
+   "tag": "#RituBaralaCase",
+   "uses": 10,
+   "share": 0.023,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "कांग्रेसियों",
+    "रितु",
+    "मामले",
+    "बराला",
+    "कमिश्नरेट",
+    "FIR"
+   ],
+   "examples": [
+    "जयपुर पुलिस कमिश्नरेट में कांग्रेसियों का धरना, Congress नेता Pratap Khachariyavas से खास ",
+    "Ritu Barala Case: जयपुर पुलिस कमिश्नरेट में कांग्रेसियों का धरना जारी",
+    "रितु को न्याय दिलाने के लिए जयपुर पहुंचेंगे Tika Ram Jully"
+   ]
+  },
+  {
+   "tag": "#NarendraModi",
+   "uses": 9,
+   "share": 0.021,
+   "last_seen": "2026-11-21",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Nn][Aa][Rr][Ee][Nn][Dd][Rr][Aa]\\s?[Mm][Oo][Dd][Ii])(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#PoliticalNews",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "FIR"
+   ],
+   "examples": [
+    "संजय राउत के अल्बानिया वाले बयान पर विवाद, SC में आगजनी की घटना से सबक लेने की बात पर BJP ",
+    "कांग्रेस का पुलिस कमिश्नर दफ्तर पर प्रदर्शन, Tika Ram Jully और Dharmendra Rathore से खास ब",
+    "Ritu Barala Case में FIR की मांग, Congress के धरने पर Madan Rathore का पलटवार। Rajasthan N"
+   ]
+  },
+  {
+   "tag": "#HindiNews",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-13",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "रहिए",
+    "जुडी",
+    "अपडेट",
+    "Live",
+    "बने"
+   ],
+   "examples": [
+    "🛑Rajasthan News Live: राजस्थान से जुड़ी पल पल की अपडेट के लिए बने रहिए",
+    "राहुल गांधी का विदेश दौरा एक बार फिर चर्चाओं में",
+    "🛑Rajasthan News Live: राजस्थान से जुड़ी पल पल की अपडेट के लिए बने रहिए"
+   ]
+  },
+  {
+   "tag": "#PanchayatElection2026",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "पार्टियां",
+    "Kharra",
+    "Jhabar",
+    "होंगी",
+    "पोलिंग"
+   ],
+   "examples": [
+    "पंचायत चुनाव के पहले चरण की तैयारी पूरी, आज रवाना होंगी पोलिंग पार्टियां",
+    "Rajasthan Panchayat Election 2026: कल मतदान, आज रवाना होंगी पोलिंग पार्टियां; चुनावी तैयार",
+    "Rajasthan Panchayat Election: BJP प्रदेश कार्यालय में आज 17 जिलों की बैठकें, CM भजनलाल शर्"
+   ]
+  },
+  {
+   "tag": "#VSrinivas",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-27",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@svoruganti1466",
+   "keywords_hi": [
+    "मुख्य सचिव वी. श्रीनिवास",
+    "मुख्य सचिव वी श्रीनिवास",
+    "वी. श्रीनिवास"
+   ],
+   "keywords_en": [
+    "V. Srinivas",
+    "Chief Secretary V Srinivas"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#PMModi",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-21",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Pp][Mm]\\s?[Mm][Oo][Dd][Ii]|मोदी)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#Diwali2026",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "Birla",
+    "रामा",
+    "लोकसभा",
+    "आमजन"
+   ],
+   "examples": [
+    "फालना में एक ही परिवार की उठीं 3 अर्थियां, कांग्रेस पार्षद समेत तीन की मौत",
+    "बीकानेर में पटाखा चलाते समय दर्दनाक घटना, घायल बच्चे की इलाज के दौरान मौत",
+    "पूर्व मंत्री Lalchand Kataria के आवास पर रामा-श्यामा, आमजन को दी दीपावली और गोवर्धन पूजा क"
+   ]
+  },
+  {
+   "tag": "#RajasthanCM",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "टर्मिनल",
+    "स्टेट",
+    "भूमि",
+    "दर्शन",
+    "संवाद",
+    "तनोट"
+   ],
+   "examples": [
+    "स्टेट हैंगर पहुंचे मुख्यमंत्री Bhajanlal Sharma, पूंछरी का लौठा में श्रीनाथजी के करेंगे दर",
+    "जयपुर पहुंचे मुख्यमंत्री Bhajanlal Sharma, CMR में करेंगे दिवाली की रामा-श्यामा, आगंतुकों ",
+    "CM Bhajanlal Sharma का जैसलमेर दौरा, क्लब महिंद्रा में पार्टी कार्यकर्ताओं से मुलाकात"
+   ]
+  },
+  {
+   "tag": "#BhajanlalSharmaJaisalmerVisit",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "जैसलमेर",
+    "कार्यकर्ताओं",
+    "संवाद",
+    "तनोट"
+   ],
+   "examples": [
+    "जैसलमेर दौरे के लिए स्टेट हैंगर पहुंचे CM Bhajanlal Sharma",
+    "CM Bhajanlal Sharma का जैसलमेर दौरा, क्लब महिंद्रा में पार्टी कार्यकर्ताओं से मुलाकात",
+    "जैसलमेर पहुंचे CM Bhajanlal Sharma, एयरपोर्ट पर हुआ स्वागत"
+   ]
+  },
+  {
+   "tag": "#JaipurAirport",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-21",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Jj][Aa][Ii][Pp][Uu][Rr]\\s?[Aa][Ii][Rr][Pp][Oo][Rr][Tt])(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#Bikaner",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bikaner",
+   "form": "<City>",
+   "keywords_hi": [
+    "बीकानेर"
+   ],
+   "keywords_en": [
+    "Bikaner"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Vijayadashami",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "दशहरा",
+    "विजयादशमी",
+    "Dussehra"
+   ],
+   "examples": [
+    "केंद्रीय मंत्री Gajendra Singh Shekhawat जोधपुर प्रवास पर, मीडिया से हुए रूबरू। Jodhpur Ne",
+    "दशहरा के साथ पंचायत चुनाव की तैयारी में जुटी पुलिस, बड़ी संख्या में तैनात होंगे पुलिस के ज",
+    "पोकरण में विजयादशमी की धूम, भव्य दशहरा मेले की तैयारियां पूरी। Pokhran। Jaisalmer News"
+   ]
+  },
+  {
+   "tag": "#Sikar",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Sikar",
+   "form": "<City>",
+   "keywords_hi": [
+    "सीकर"
+   ],
+   "keywords_en": [
+    "Sikar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#RajasthanPanchayatElection",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-11",
+   "kind": "campaign",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Rr][Aa][Jj][Aa][Ss][Tt][Hh][Aa][Nn]\\s?[Pp][Aa][Nn][Cc][Hh][Aa][Yy][Aa][Tt]\\s?[Ee][Ll][Ee][Cc][Tt][Ii][Oo][Nn])(?![\\p{L}\\p{M}\\p{N}])",
+     "start": "2026-10-21",
+     "end": "2026-11-14"
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#Delhi",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-27",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:दिल्ली|नई दिल्ली|सुप्रीम कोर्ट|सीबीआई|CBI)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#BhaiDooj2026",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-11",
+   "kind": "campaign",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Bb][Hh][Aa][Ii]\\s?[Dd][Oo][Oo][Jj]\\s?2026)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": "2026-11-11",
+     "end": "2026-11-14"
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#VasundharaRaje",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-13",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@VasundharaBJP",
+   "keywords_hi": [
+    "वसुंधरा राजे",
+    "वसुन्धरा राजे",
+    "पूर्व मुख्यमंत्री वसुंधरा राजे"
+   ],
+   "keywords_en": [
+    "Vasundhara Raje"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#Ajmer",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Ajmer",
+   "form": "<City>",
+   "keywords_hi": [
+    "अजमेर"
+   ],
+   "keywords_en": [
+    "Ajmer"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#JaisalmerNews",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jaisalmer",
+   "form": "<City>News",
+   "keywords_hi": [
+    "जैसलमेर"
+   ],
+   "keywords_en": [
+    "Jaisalmer"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#DiyaKumari",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-12",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@KumariDiya",
+   "keywords_hi": [
+    "दिया कुमारी",
+    "दीया कुमारी",
+    "उपमुख्यमंत्री दिया कुमारी",
+    "डिप्टी सीएम दिया कुमारी",
+    "उप मुख्यमंत्री दिया कुमारी",
+    "वित्त मंत्री दिया कुमारी"
+   ],
+   "keywords_en": [
+    "Diya Kumari",
+    "Deputy CM Diya Kumari"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#Alwar",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Alwar",
+   "form": "<City>",
+   "keywords_hi": [
+    "अलवर"
+   ],
+   "keywords_en": [
+    "Alwar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#GovardhanPuja2026",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-10",
+   "kind": "campaign",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Gg][Oo][Vv][Aa][Rr][Dd][Hh][Aa][Nn]\\s?[Pp][Uu][Jj][Aa]\\s?2026)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": "2026-11-10",
+     "end": "2026-11-13"
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#GovardhanPuja",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-10",
+   "kind": "campaign",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Gg][Oo][Vv][Aa][Rr][Dd][Hh][Aa][Nn]\\s?[Pp][Uu][Jj][Aa])(?![\\p{L}\\p{M}\\p{N}])",
+     "start": "2026-11-10",
+     "end": "2026-11-13"
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#BhaiDooj",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "भाईदूज",
+    "दीपोत्सव",
+    "दूज"
+   ],
+   "examples": [
+    "CM Bhajanlal Sharma कल जैसलमेर दौरे पर, BSF जवानों के भाईदूज कार्यक्रम में होंगे शामिल",
+    "भाई दूज के साथ आज दीपोत्सव का समापन, गोविंद देवजी मंदिर में उमड़ा श्रद्धालुओं का सैलाब",
+    "भाई दूज पर मोती डूंगरी गणेश मंदिर में उमड़े श्रद्धालु, दीपोत्सव का अंतिम दिन, बप्पा के दरब"
+   ]
+  },
+  {
+   "tag": "#PanchayatElectionsResult",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "संतरा",
+    "शाहपुरा",
+    "निर्विरोध",
+    "गुर्जर",
+    "प्रधान",
+    "समिति"
+   ],
+   "examples": [
+    "शाहपुरा पंचायत समिति में कांग्रेस की संतरा गुर्जर बनी निर्विरोध प्रधान",
+    "शाहपुरा पंचायत समिति में कांग्रेस की संतरा गुर्जर बनी निर्विरोध प्रधान",
+    "हदां पंचायत समिति से कांग्रेस की ममता मेघवाल निर्विरोध प्रधान निर्वाचित"
+   ]
+  },
+  {
+   "tag": "#NikayChunav",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-09-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "सभा"
+   ],
+   "examples": [
+    "Nikay Chunav 2026: झालामंड में वार्ड 51 से BJP प्रत्याशी के समर्थन में चुनावी सभा, केंद्री",
+    "Nikay Chunav 2026: वार्ड 51 और 48 के मतदान पर विवाद, तनाव के बीच पुलिस की निगरानी में मतदा",
+    "Nikay Chunav 2026: घंटाघर में कांग्रेस की ऐतिहासिक सभा के दौरान आमने-सामने हुए दोनों पार्ट"
+   ]
+  },
+  {
+   "tag": "#RajasthanElection",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-09-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "वार्डों",
+    "हंगामा"
+   ],
+   "examples": [
+    "Nikay Chunav 2026: जयपुर नगर निगम के 150 वार्डों के लिए आज थमेगा चुनाव प्रचार",
+    "Rajasthan Nikay Chunav 2026: वार्ड 40 में हंगामा, पुलिसकर्मी पर बुजुर्ग की कॉलर पकड़ने का ",
+    "Nikay Chunav 2026: जयपुर में 11 सितंबर को मतदान के चलते रहेगा ड्राई डे, 150 वार्डों की परि"
+   ]
+  },
+  {
+   "tag": "#Udaipur",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Udaipur",
+   "form": "<City>",
+   "keywords_hi": [
+    "उदयपुर"
+   ],
+   "keywords_en": [
+    "Udaipur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Accident",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "टक्कर"
+   ],
+   "examples": [
+    "Ajmer Road Accident: मसूदा में भीषण सड़क हादसा, बस-ट्रैक्टर ट्रॉली की जबरदस्त टक्कर, 2 की ",
+    "भंवरगढ़ थाना क्षेत्र में NH 27 पर हुआ सड़क हादसा, ट्रेलर की टक्कर से मौके पर हुई मौत",
+    "बस्सी स्टैंड के पास तुंगा रोड पर हुआ दर्दनाक हादसा, डंपर की टक्कर से बाइक सवार की मौत"
+   ]
+  },
+  {
+   "tag": "#SMSHospital",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "मरीज",
+    "Hospital",
+    "Cylinder",
+    "Blast",
+    "Bansur",
+    "SMS"
+   ],
+   "examples": [
+    "आखिर कब तक \"रक्त\" के लिए भटकेंगे गंभीर श्रेणी के मरीज ?",
+    "दिल के मरीजों को मिलेगी बड़ी राहत! कार्डियक टावर में जल्द शुरू होंगी IPD सेवाएं",
+    "Bansur Cylinder Blast: SMS Hospital पहुंचे 10 झुलसे मरीज, 2 महिलाओं की हालत गंभीर"
+   ]
+  },
+  {
+   "tag": "#RajasthanGovernment",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-12",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Rr][Aa][Jj][Aa][Ss][Tt][Hh][Aa][Nn]\\s?[Gg][Oo][Vv][Ee][Rr][Nn][Mm][Ee][Nn][Tt])(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#FireAccident",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "Cylinder",
+    "Blast",
+    "Bansur",
+    "झुलसे",
+    "मरीज",
+    "SMS"
+   ],
+   "examples": [
+    "उत्तराखंड से गुजरात जा रहा था फाइबर से भरा टैंकरर में लगी आग",
+    "श्रीपुरा कबाड़ी मार्केट में भीषण आग, 7 दमकलों ने पाया काबू",
+    "सिलेंडर लीकेज से टेंट में लगी आग, 20-25 लोग झुलसे"
+   ]
+  },
+  {
+   "tag": "#AlwarNews",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Alwar",
+   "form": "<City>News",
+   "keywords_hi": [
+    "अलवर"
+   ],
+   "keywords_en": [
+    "Alwar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Jhalawar",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jhalawar",
+   "form": "<City>",
+   "keywords_hi": [
+    "झालावाड़",
+    "झालावाड"
+   ],
+   "keywords_en": [
+    "Jhalawar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#GovindSinghDotasra",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@GovindDotasra",
+   "keywords_hi": [
+    "गोविंद सिंह डोटासरा",
+    "गोविन्द सिंह डोटासरा",
+    "पीसीसी चीफ डोटासरा"
+   ],
+   "keywords_en": [
+    "Govind Singh Dotasra"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#NagarNigamElection2026",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-09-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "वार्डों",
+    "हंगामा"
+   ],
+   "examples": [
+    "Nikay Chunav 2026: जयपुर नगर निगम के 150 वार्डों के लिए आज थमेगा चुनाव प्रचार",
+    "Rajasthan Nikay Chunav 2026: वार्ड 40 में हंगामा, पुलिसकर्मी पर बुजुर्ग की कॉलर पकड़ने का ",
+    "Nikay Chunav 2026: जयपुर में 11 सितंबर को मतदान के चलते रहेगा ड्राई डे, 150 वार्डों की परि"
+   ]
+  },
+  {
+   "tag": "#NagarNikayChunav",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-09-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "वार्डों",
+    "हंगामा"
+   ],
+   "examples": [
+    "Nikay Chunav 2026: जयपुर नगर निगम के 150 वार्डों के लिए आज थमेगा चुनाव प्रचार",
+    "Rajasthan Nikay Chunav 2026: वार्ड 40 में हंगामा, पुलिसकर्मी पर बुजुर्ग की कॉलर पकड़ने का ",
+    "Nikay Chunav 2026: जयपुर में 11 सितंबर को मतदान के चलते रहेगा ड्राई डे, 150 वार्डों की परि"
+   ]
+  },
+  {
+   "tag": "#RahulGandhi",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@RahulGandhi",
+   "keywords_hi": [
+    "राहुल गांधी"
+   ],
+   "keywords_en": [
+    "Rahul Gandhi"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#Bhopal",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "भोपाल"
+   ],
+   "examples": [
+    "भोपाल में इंटर्न डॉक्टरों का आंदोलन जारी, स्टाइपेंड बढ़ाने की मांग पर डॉक्टरों का प्रदर्शन",
+    "ट्रॉली बैग में सलवार सूट की पैकिंग के बीच 7 करोड़ की ड्रग्स, Delhi का रहने वाला आरोपी युवक",
+    "भोपाल में गोपूजन और पशुपालक सम्मान समारोह, मुख्यमंत्री Dr. Mohan Yadav ने की पूजा-अर्चना"
+   ]
+  },
+  {
+   "tag": "#MPNews",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "भोपाल"
+   ],
+   "examples": [
+    "भोपाल में इंटर्न डॉक्टरों का आंदोलन जारी, स्टाइपेंड बढ़ाने की मांग पर डॉक्टरों का प्रदर्शन",
+    "Digvijaya Singh की 'सत्य सनातन स्वाभिमान यात्रा', उज्जैन से यात्रा का हुआ शुभारंभ। Madhya ",
+    "ट्रॉली बैग में सलवार सूट की पैकिंग के बीच 7 करोड़ की ड्रग्स, Delhi का रहने वाला आरोपी युवक"
+   ]
+  },
+  {
+   "tag": "#Dussehra",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "दशहरा"
+   ],
+   "examples": [
+    "केंद्रीय मंत्री Gajendra Singh Shekhawat जोधपुर प्रवास पर, मीडिया से हुए रूबरू। Jodhpur Ne",
+    "दशहरा के साथ पंचायत चुनाव की तैयारी में जुटी पुलिस, बड़ी संख्या में तैनात होंगे पुलिस के ज",
+    "पोकरण में विजयादशमी की धूम, भव्य दशहरा मेले की तैयारियां पूरी। Pokhran। Jaisalmer News"
+   ]
+  },
+  {
+   "tag": "#PanchayatElection",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Rajasthan Panchayat Election 2026: जिला परिषद सदस्य के दूसरे चरण में 984 उम्मीदवार मैदान म",
+    "पंचायत चुनाव को लेकर पुलिस अलर्ट, सुरक्षा के पुख्ता इंतजाम",
+    "Rajasthan Panchayat Election 2026 First Phase: राजस्थान पंचायत चुनाव का पहला चरण कल। Big F"
+   ]
+  },
+  {
+   "tag": "#DrJagdeeshChandra",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "Jagdeesh",
+    "Chandra",
+    "एडिटर",
+    "CMD",
+    "चीफ",
+    "एवं"
+   ],
+   "examples": [
+    "Damru Restaurant की दूसरी ब्रांच का भव्य शुभारंभ, First India के CMD एवं एडिटर-इन-चीफ Dr J",
+    "होटल मान पैलेस में सजी पिंकसिटी डांडिया नाइट्स, First India के CMD एवं एडिटर इन चीफ Dr Jag",
+    "CM Bhajanlal Sharma का दीपावली दरबार ! आज 8, सिविल लाइंस पर सजा दरबार"
+   ]
+  },
+  {
+   "tag": "#ViralVideo",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "देर रात सड़कों पर असामाजिक तत्वों का आतंक, तलवार-डंडे लहराने का VIDEO वायरल",
+    "जयपुर में कांग्रेस का ‘निद्रा आसन’, रितु बराला मामले में FIR की मांग",
+    "राहुल गांधी का विदेश दौरा एक बार फिर चर्चाओं में"
+   ]
+  },
+  {
+   "tag": "#PunjabNews",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "पुलिसकर्मी ने परिवार पर की फायरिंग, सरकारी बंदूक से पत्नी और दो बेटों को मारी गोली। Punjab",
+    "लुधियाना में Amit Shah का बयान, कहा-'पंजाब में नशे का कारोबार बेलगाम'",
+    "Amritsar Rural Police ने एक नेटवर्क का भंडाफोड़ किया, सात आरोपी गिरफ्तार"
+   ]
+  },
+  {
+   "tag": "#Bhilwara",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bhilwara",
+   "form": "<City>",
+   "keywords_hi": [
+    "भीलवाड़ा",
+    "भीलवाडा"
+   ],
+   "keywords_en": [
+    "Bhilwara"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Sirohi",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Sirohi",
+   "form": "<City>",
+   "keywords_hi": [
+    "सिरोही"
+   ],
+   "keywords_en": [
+    "Sirohi"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#MurderCase",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "हत्या"
+   ],
+   "examples": [
+    "जयपुर की पत्रकार कॉलोनी में महिला की हत्या, पत्थर से वार कर वारदात को दिया अंजाम",
+    "Atar Singh Bhadana Murder Case: अतर सिंह भड़ाना हत्याकांड का एक और वीडियो आया सामने। Bhara",
+    "जुड़वां भाइयों की हत्या से गांव में सनसनी, पीड़ित परिवार से मिलने पहुंचे गृह राज्य मंत्री "
+   ]
+  },
+  {
+   "tag": "#PoliceInvestigation",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "कार सवार भाई-बहन के साथ मारपीट का आरोप, रास्ता रोककर हमला करने की सामने आई जानकारी। Jodhpu",
+    "Atar Singh Bhadana Murder Case: अतर सिंह भड़ाना हत्याकांड का एक और वीडियो आया सामने। Bhara",
+    "Congress प्रत्याशी ने अपने खेत में किया सुसाइड, घटना की जानकारी मिलने के बाद पुलिस पहुंची "
+   ]
+  },
+  {
+   "tag": "#MadhyaPradesh",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "MP के सेठ ने अंग्रेजों को दिया था ₹35 हजार का कर्ज, 109 साल बाद मांगा वापस",
+    "Digvijaya Singh की 'सत्य सनातन स्वाभिमान यात्रा', उज्जैन से यात्रा का हुआ शुभारंभ। Madhya ",
+    "भोपाल में गोपूजन और पशुपालक सम्मान समारोह, मुख्यमंत्री Dr. Mohan Yadav ने की पूजा-अर्चना"
+   ]
+  },
+  {
+   "tag": "#ZeroFIR",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "डोटासरा"
+   ],
+   "examples": [
+    "Ritu Barala Case: डोटासरा समेत कांग्रेस नेताओं ने पुलिस कमिश्नर दफ्तर में गुजारी दूसरी रात",
+    "रितु बराला मारपीट मामले में Congress का प्रदर्शन, डोटासरा, गहलोत, जूली भी प्रदर्शन में हुए",
+    "Congress Protest: Ritu Barala Case में Zero FIR की मांग, पुलिस कमिश्नर दफ्तर में कांग्रेस "
+   ]
+  },
+  {
+   "tag": "#ChildSafety",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "बच्चे"
+   ],
+   "examples": [
+    "रील के चक्कर में बच्ची की जान आफत में",
+    "अलवर में 12 वर्षीय बच्चे की आंखें झुलसीं, राजीव गांधी अस्पताल से जयपुर रेफर",
+    "रंगोली बना रहे 7 साल के बच्चे को बाइक से घसीटा, मासूम की मौत, बचाने आई महिला भी घायल"
+   ]
+  },
+  {
+   "tag": "#SachinPilot",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-13",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@SachinPilot",
+   "keywords_hi": [
+    "सचिन पायलट"
+   ],
+   "keywords_en": [
+    "Sachin Pilot"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#DelhiNews",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "पुरस्कार",
+    "दिल्ली"
+   ],
+   "examples": [
+    "दिल्ली की हवा लगातार हो रही जहरीली, चांदनी चौक में AQI 400 के करीब, सेहत पर बढ़ा खतरा",
+    "दिल्ली में बीजेपी की प्रेस कॉन्फ्रेंस, कांग्रेस पर साधा निशाना",
+    "Swachh Survekshan Awards 2025-26: राष्ट्रपति Droupadi Murmu दे रहीं पुरस्कार, दिल्ली के वि"
+   ]
+  },
+  {
+   "tag": "#Nagaur",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Nagaur",
+   "form": "<City>",
+   "keywords_hi": [
+    "नागौर"
+   ],
+   "keywords_en": [
+    "Nagaur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#UdaipurNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Udaipur",
+   "form": "<City>News",
+   "keywords_hi": [
+    "उदयपुर"
+   ],
+   "keywords_en": [
+    "Udaipur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Churu",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Churu",
+   "form": "<City>",
+   "keywords_hi": [
+    "चूरू",
+    "चुरू"
+   ],
+   "keywords_en": [
+    "Churu"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Dussehra2026",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "Dussehra",
+    "दशहरा"
+   ],
+   "examples": [
+    "Dussehra 2026:  RSS नागपुर महानगर शताब्दी वर्ष विजयादशमी उत्सव, संघ प्रमुख Mohan Bhagwat क",
+    "Dussehra 2026: आदर्श नगर में दशहरा आयोजन 2026, CM Bhajanlal Sharma का संबोधन। Vijayadasham",
+    "Dussehra 2026: BJP प्रदेशाध्यक्ष Madan Rathore ने किया दशहरा महोत्सव का शुभारंभ"
+   ]
+  },
+  {
+   "tag": "#RajasthanPanchyatElection2026",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "दशहरा के साथ पंचायत चुनाव की तैयारी में जुटी पुलिस, बड़ी संख्या में तैनात होंगे पुलिस के ज",
+    "सेवापुरा गांव में चुनावी पोस्टर फाड़ने पर गरमाया माहौल, पपलेश कंवर और सजना देवी के पोस्टर ",
+    "निकाय चुनाव के बाद जायल में गरमाई सियासत, आगजनी और तोड़फोड़ से मचा बवाल"
+   ]
+  },
+  {
+   "tag": "#Pokhran",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "पोकरण"
+   ],
+   "examples": [
+    "पोकरण में विजयादशमी की धूम, भव्य दशहरा मेले की तैयारियां पूरी। Pokhran। Jaisalmer News",
+    "पंचायत राज चुनावों में पार्टी का झंडा लगाने पर दो पक्षों में हुआ खूनी संघर्ष, 5 लोग हुए गं",
+    "दीपावली के बाद परमाणु नगरी पोकरण में पर्यटकों का बूम, पर्यटन स्थलों पर रौनक"
+   ]
+  },
+  {
+   "tag": "#RajastahnNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "कन्या",
+    "Deputy",
+    "Kumari",
+    "Diya"
+   ],
+   "examples": [
+    "Deputy CM Diya Kumari कर रहीं कन्या पूजन, कन्या पूजन कार्यक्रम में कई कन्याएं मौजूद। Jaipu",
+    "Deputy CM Diya Kumari ने किया कन्या पूजन, मीडिया से हुई रूबरू",
+    "रितु को न्याय दिलाने के लिए जयपुर पहुंचेंगे Tika Ram Jully"
+   ]
+  },
+  {
+   "tag": "#MadanRathore",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "प्रदेशाध्यक्ष",
+    "Rathore",
+    "Madan"
+   ],
+   "examples": [
+    "BJP प्रदेशाध्यक्ष Madan Rathore मीडिया से हुए रूबरू, Congress पर साधा निशाना। Jaipur News",
+    "Ritu Barala Case में FIR की मांग, Congress के धरने पर Madan Rathore का पलटवार। Rajasthan N",
+    "Dussehra 2026: BJP प्रदेशाध्यक्ष Madan Rathore ने किया दशहरा महोत्सव का शुभारंभ"
+   ]
+  },
+  {
+   "tag": "#AbuRoad",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "आबूरोड में देर रात स्कूटी सवारों से मारपीट, तीन बाइकों पर आए युवकों ने किया हमला",
+    "नाकाबंदी में अफीम तस्करी का बड़ा खुलासा, जब्त अफीम की कीमत 1 करोड़ रुपए से अधिक",
+    "रेवदर के मालगांव में युवक की हत्या, घर पर हथियार से हमला, पुराने विवाद की आशंका"
+   ]
+  },
+  {
+   "tag": "#BaranNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Baran",
+   "form": "<City>News",
+   "keywords_hi": [
+    "बारां",
+    "बाराँ"
+   ],
+   "keywords_en": [
+    "Baran"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Bundi",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bundi",
+   "form": "<City>",
+   "keywords_hi": [
+    "बूंदी",
+    "बून्दी",
+    "बूँदी"
+   ],
+   "keywords_en": [
+    "Bundi"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#FIRDemand",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Ritu Barala Case में FIR की मांग, Congress के धरने पर Madan Rathore का पलटवार। Rajasthan N",
+    "रितु बराला मामले में एडिशनल पुलिस कमिश्नर अजय सिंह की प्रेस कॉन्फ्रेंस",
+    "Rajasthan Police को जीरो FIR दर्ज करने में क्या दिक्कत है Govind Singh Dotasra। Ritu Baral"
+   ]
+  },
+  {
+   "tag": "#LatestNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "जयपुर में कांग्रेस का ‘निद्रा आसन’, रितु बराला मामले में FIR की मांग",
+    "राहुल गांधी का विदेश दौरा एक बार फिर चर्चाओं में",
+    "मौलाना अबुल कलाम आजाद की जयंती, लोकसभा अध्यक्ष ओम बिरला ने अर्पित की पुष्पांजलि"
+   ]
+  },
+  {
+   "tag": "#SikarNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Sikar",
+   "form": "<City>News",
+   "keywords_hi": [
+    "सीकर"
+   ],
+   "keywords_en": [
+    "Sikar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#RajasthanNewsLive",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "🛑Rajasthan News Live: राजस्थान से जुड़ी पल पल की अपडेट के लिए बने रहिए",
+    "🛑Rajasthan News Live: राजस्थान से जुड़ी पल पल की अपडेट के लिए बने रहिए",
+    "🛑Rajasthan News Live: राजस्थान से जुड़ी पल पल की अपडेट के लिए बने रहिए"
+   ]
+  },
+  {
+   "tag": "#Bharatpur",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bharatpur",
+   "form": "<City>",
+   "keywords_hi": [
+    "भरतपुर"
+   ],
+   "keywords_en": [
+    "Bharatpur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#FoodSafety",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "खाद्य",
+    "कार्रवाई"
+   ],
+   "examples": [
+    "किशनगढ़बास में खाद्य सुरक्षा विभाग की बड़ी कार्रवाई, 220 किलो दूषित सामग्री नष्ट। Khairtha",
+    "गुलाबपुरा में खाद्य सुरक्षा कार्रवाई, एक्सपायरी सामान किया नष्ट",
+    "खाद्य विभाग की बड़ी कार्रवाई, विभिन्न दुकानों से खाद्य पदार्थों के सैंपल ले रही टीम"
+   ]
+  },
+  {
+   "tag": "#RituBarala",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "डोटासरा"
+   ],
+   "examples": [
+    "Ritu Barala Case: डोटासरा समेत कांग्रेस नेताओं ने पुलिस कमिश्नर दफ्तर में गुजारी दूसरी रात",
+    "रितु बराला मारपीट मामले में Congress का प्रदर्शन, डोटासरा, गहलोत, जूली भी प्रदर्शन में हुए",
+    "Congress Protest: Ritu Barala Case में Zero FIR की मांग, पुलिस कमिश्नर दफ्तर में कांग्रेस "
+   ]
+  },
+  {
+   "tag": "#NSUI",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "डोटासरा"
+   ],
+   "examples": [
+    "Ritu Barala Case: डोटासरा समेत कांग्रेस नेताओं ने पुलिस कमिश्नर दफ्तर में गुजारी दूसरी रात",
+    "रितु बराला मारपीट मामले में Congress का प्रदर्शन, डोटासरा, गहलोत, जूली भी प्रदर्शन में हुए",
+    "Congress Protest: Ritu Barala Case में Zero FIR की मांग, पुलिस कमिश्नर दफ्तर में कांग्रेस "
+   ]
+  },
+  {
+   "tag": "#RajasthanBJP",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "अभियान"
+   ],
+   "examples": [
+    "Rajasthan BJP Meeting: BJP प्रदेश मुख्यालय में बैठकों का दौर, प्रदेश महामंत्री Sharwan Sin",
+    "लोकतंत्र बचाओ-अराजकता हटाओ' अभियान का CM Bhajanlal Sharma ने किया शुभारंभ",
+    "BJP का वोटर जनसंपर्क अभियान, बस्सी के वार्ड-6 में भाजपा का चुनाव प्रचार"
+   ]
+  },
+  {
+   "tag": "#INC",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Congress Protest: कांग्रेस के धरने में गतिरोध टूटने के संकेत, पुलिस से हुई सकारात्मक बातची",
+    "Congress का आंदोलन अब होगा खत्म, कांग्रेस नेताओं और पुलिस में बनी सहमति",
+    "शाहपुरा पंचायत समिति में कांग्रेस की संतरा गुर्जर बनी निर्विरोध प्रधान"
+   ]
+  },
+  {
+   "tag": "#Deeg",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Deeg",
+   "form": "<City>",
+   "keywords_hi": [
+    "डीग"
+   ],
+   "keywords_en": [
+    "Deeg"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#PoliceAction",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Amritsar Rural Police ने एक नेटवर्क का भंडाफोड़ किया, सात आरोपी गिरफ्तार",
+    "नागौर पुलिस ने तीन साल से फरार 20 हजार का इनामी किया गिरफ्तार",
+    "Jaipur SMS Hospital में पुलिस की बड़ी दबिश, मरीजों को झांसा देने वाले 10 लपके हिरासत में"
+   ]
+  },
+  {
+   "tag": "#ElectionCampaign",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "कंवर का बास में Hanuman Beniwal की जनसभा, RLP प्रत्याशी बाबूलाल यादव के समर्थन में जनसभा। ",
+    "उपमुख्यमंत्री दीया कुमारी का अजमेर दौरा, श्रीनगर में बीजेपी कार्यकर्ताओं को दिया जीत का मं",
+    "Rajasthan Panchayat Election 2026 First Phase: राजस्थान पंचायत चुनाव का पहला चरण कल। Big F"
+   ]
+  },
+  {
+   "tag": "#Mumbai",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "फ्लाइट"
+   ],
+   "examples": [
+    "रील के चक्कर में बच्ची की जान आफत में",
+    "Kolkata Airport Hijack Alert: मुंबई जाने वाली फ्लाइट में धमकी भरा नोट मिलने की खबर, सुरक्ष",
+    "जयपुर-मुंबई फ्लाइट तकनीकी खराबी से रद्द, पहले देरी की सूचना, फिर कैंसिल"
+   ]
+  },
+  {
+   "tag": "#ViralNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "रील के चक्कर में बच्ची की जान आफत में",
+    "गधों के मेले में बॉलीवुड का तड़का, 72 हजार में बिका 'चंकी पांडे'",
+    "हाथों में हथकड़ी, फिर भी दौड़े 101 किलोमीटर... कपल ने बनाया वर्ल्ड रिकॉर्ड"
+   ]
+  },
+  {
+   "tag": "#Baran",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Baran",
+   "form": "<City>",
+   "keywords_hi": [
+    "बारां",
+    "बाराँ"
+   ],
+   "keywords_en": [
+    "Baran"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#HaryanaNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "हरियाणा CM Nayab Singh Saini की अध्यक्षता में HPWPC की बैठक। Chandigarh। Haryana News",
+    "हरिद्वार गंगा स्नान करने जा रहे 6 दोस्तों की दर्दनाक मौत, हादसे के बाद कार में लगी आग",
+    "बड़ोपट्टी टोल के पास बदमाश ने STF पर चलाई गोली, बाल-बाल बचा जवान"
+   ]
+  },
+  {
+   "tag": "#WomenEmpowerment",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "कालबेलिया नृत्यांगना पद्मश्री Gulabo Sapera ग्रामीण बेटियों को दे रहीं निःशुल्क नृत्य प्रश",
+    "नारी के हौसले की 'उड़ान', सरकार बनी सहारा, निशुल्क यूनिफॉर्म योजना से बच्चों को राहत",
+    "राजीविका से बदली महिलाओं की जिंदगी! भारती और पूजा की आत्मनिर्भरता की कहानी"
+   ]
+  },
+  {
+   "tag": "#1stIndiaNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Rajasthan Panchayat Election 2026 First Phase: राजस्थान पंचायत चुनाव का पहला चरण कल। Big F",
+    "PM Kisan 24th Installment: किसानों के लिए खुशखबरी! खाते में आएंगे ₹2,000",
+    "Bhutan Flood 2026: भूटान में ग्लेशियर झील फटी! भारत में बाढ़ का अलर्ट, 10 हजार लोग सुरक्षि"
+   ]
+  },
+  {
+   "tag": "#BikanerNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bikaner",
+   "form": "<City>News",
+   "keywords_hi": [
+    "बीकानेर"
+   ],
+   "keywords_en": [
+    "Bikaner"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#SawaiMadhopur",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "SawaiMadhopur",
+   "form": "<City>",
+   "keywords_hi": [
+    "सवाई माधोपुर",
+    "सवाईमाधोपुर"
+   ],
+   "keywords_en": [
+    "SawaiMadhopur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#SirohiNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Sirohi",
+   "form": "<City>News",
+   "keywords_hi": [
+    "सिरोही"
+   ],
+   "keywords_en": [
+    "Sirohi"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#DrugSmuggling",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "संपत्ति",
+    "नशा"
+   ],
+   "examples": [
+    "नाकाबंदी में अफीम तस्करी का बड़ा खुलासा, जब्त अफीम की कीमत 1 करोड़ रुपए से अधिक",
+    "नशा तस्कर रसीद खान की 4 करोड़ की संपत्ति Fridge, अब तक की सबसे बड़ी कार्रवाई",
+    "बारां में नशा तस्करों पर कड़ा एक्शन, 3.76 करोड़ की संपत्ति की गई फ्रीज"
+   ]
+  },
+  {
+   "tag": "#DrugTrafficking",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "संपत्ति",
+    "नशा"
+   ],
+   "examples": [
+    "नाकाबंदी में अफीम तस्करी का बड़ा खुलासा, जब्त अफीम की कीमत 1 करोड़ रुपए से अधिक",
+    "नशा तस्कर रसीद खान की 4 करोड़ की संपत्ति Fridge, अब तक की सबसे बड़ी कार्रवाई",
+    "बारां में नशा तस्करों पर कड़ा एक्शन, 3.76 करोड़ की संपत्ति की गई फ्रीज"
+   ]
+  },
+  {
+   "tag": "#VaishaliNagar",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "लूट"
+   ],
+   "examples": [
+    "शातिर साइबर ठग विकास ढाका को किया गिरफ्तार,वैशाली नगर थाना पुलिस की बड़ी कार्रवाई",
+    "वैशाली नगर में ज्वैलरी शोरूम से 8-10 लाख के आभूषणों की लूट, CCTV में कैद नकाबपोश बदमाश",
+    "जयपुर पुलिस को बड़ी सफलता, 59 लाख के आभूषण लूट का पर्दाफाश, 48 घंटे में आरोपी गिरफ्तार"
+   ]
+  },
+  {
+   "tag": "#AjmerNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Ajmer",
+   "form": "<City>News",
+   "keywords_hi": [
+    "अजमेर"
+   ],
+   "keywords_en": [
+    "Ajmer"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#JhalawarNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jhalawar",
+   "form": "<City>News",
+   "keywords_hi": [
+    "झालावाड़",
+    "झालावाड"
+   ],
+   "keywords_en": [
+    "Jhalawar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Tonk",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Tonk",
+   "form": "<City>",
+   "keywords_hi": [
+    "टोंक"
+   ],
+   "keywords_en": [
+    "Tonk"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#FirecrackerAccident",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "बीकानेर में पटाखा चलाते समय दर्दनाक घटना, घायल बच्चे की इलाज के दौरान मौत",
+    "अलवर में 12 वर्षीय बच्चे की आंखें झुलसीं, राजीव गांधी अस्पताल से जयपुर रेफर",
+    "घास भैरू की सवारी में पटाखों का खतरनाक खेल, 150 से ज्यादा लोग झुलसे, दुकान में आग"
+   ]
+  },
+  {
+   "tag": "#RamaShyama",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "पूर्व मंत्री Lalchand Kataria के आवास पर रामा-श्यामा, आमजन को दी दीपावली और गोवर्धन पूजा क",
+    "जयपुर पहुंचे मुख्यमंत्री Bhajanlal Sharma, CMR में करेंगे दिवाली की रामा-श्यामा, आगंतुकों ",
+    "लोकसभा अध्यक्ष Om Birla ने लोगों से की दीपावली की रामा-श्याम, मीडिया से हुए रूबरू"
+   ]
+  },
+  {
+   "tag": "#RajasthanCrime",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "थानागाजी की कोलियों की ढाणी में फायरिंग, बच्ची सहित 4 लोगों के घायल होने की सूचना",
+    "मंडी मुनीम को धमकाने तलवार लेकर पहुंचे बदमाश, गुमानपुरा थाना पुलिस जांच में जुटी",
+    "पेड़ पर लटका मिला युवक का शव, परिजनों को मारकर पेड़ पर लटकाने का संदेह"
+   ]
+  },
+  {
+   "tag": "#BikeAccident",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "रंगोली बना रहे 7 साल के बच्चे को बाइक से घसीटा, मासूम की मौत, बचाने आई महिला भी घायल",
+    "रावतसर में बेआसरा पशु आने से अनियंत्रित हुई बाइक, तारबंदी से टकराकर युवक की मौत",
+    "Accident: पराली के धुएं ने ली महिला की जान, दो बाइक की आमने-सामने भिड़ंत"
+   ]
+  },
+  {
+   "tag": "#LokSabhaSpeaker",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "लोकसभा",
+    "Birla"
+   ],
+   "examples": [
+    "लोकसभा अध्यक्ष Om Birla ने लोगों से की दीपावली की रामा-श्याम, मीडिया से हुए रूबरू",
+    "मौलाना अबुल कलाम आजाद की जयंती, लोकसभा अध्यक्ष ओम बिरला ने अर्पित की पुष्पांजलि",
+    "वनस्थली विद्यापीठ में BRICS Women Leaders Summit, लोकसभा स्पीकर Om Birla का सम्बोधन"
+   ]
+  },
+  {
+   "tag": "#AssamNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "पटरी",
+    "डिगारू",
+    "ट्रेन",
+    "गुवाहाटी",
+    "असम",
+    "Breaking"
+   ],
+   "examples": [
+    "Breaking News: असम के गुवाहाटी के पास ट्रेन हादसा",
+    "Breaking News: गुवाहाटी के पास डिगारू में सैरांग-कोलकाता एक्सप्रेस पटरी से उतरी, रेस्क्यू ",
+    "Guwahati Train Accident: असम के डिगारू में ट्रेन हादसा, इंजन समेत 5 डिब्बे पटरी से उतरे"
+   ]
+  },
+  {
+   "tag": "#TrainAccident",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "पटरी",
+    "डिगारू",
+    "ट्रेन",
+    "गुवाहाटी",
+    "असम",
+    "Breaking"
+   ],
+   "examples": [
+    "Breaking News: असम के गुवाहाटी के पास ट्रेन हादसा",
+    "Breaking News: गुवाहाटी के पास डिगारू में सैरांग-कोलकाता एक्सप्रेस पटरी से उतरी, रेस्क्यू ",
+    "Guwahati Train Accident: असम के डिगारू में ट्रेन हादसा, इंजन समेत 5 डिब्बे पटरी से उतरे"
+   ]
+  },
+  {
+   "tag": "#TrainDerailment",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "पटरी",
+    "डिगारू",
+    "ट्रेन",
+    "गुवाहाटी",
+    "असम",
+    "Breaking"
+   ],
+   "examples": [
+    "Breaking News: असम के गुवाहाटी के पास ट्रेन हादसा",
+    "Breaking News: गुवाहाटी के पास डिगारू में सैरांग-कोलकाता एक्सप्रेस पटरी से उतरी, रेस्क्यू ",
+    "Guwahati Train Accident: असम के डिगारू में ट्रेन हादसा, इंजन समेत 5 डिब्बे पटरी से उतरे"
+   ]
+  },
+  {
+   "tag": "#PrimeMinisterModi",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "प्रधानमंत्री"
+   ],
+   "examples": [
+    "प्रधानमंत्री Narendra Modi की अध्यक्षता में अहम बैठक, कई बड़े फैसलों पर लग सकती है मुहर",
+    "प्रधानमंत्री नरेंद्र मोदी ने दी भाई-दूज की शुभकामनाएं",
+    "पटना पहुंचे पीएम Modi, एयरपोर्ट पर Nitish Kumar ने किया स्वागत"
+   ]
+  },
+  {
+   "tag": "#BiharNews",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "बिहार"
+   ],
+   "examples": [
+    "बिहार प्रवास पर BJP राष्ट्रीय अध्यक्ष Nitin Nabin ने की चित्रगुप्त पूजा",
+    "पटना पहुंचे पीएम Modi, एयरपोर्ट पर Nitish Kumar ने किया स्वागत",
+    "बिहार के वैशाली पहुंचे PM Narendra Modi, गंगा नदी पर बने 'नीतीश सेतु' का किया लोकार्पण"
+   ]
+  },
+  {
+   "tag": "#JaisalmerVisit",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "जैसलमेर पहुंचे CM Bhajanlal Sharma, एयरपोर्ट पर हुआ स्वागत",
+    "जैसलमेर पहुंचे मुख्यमंत्री, एयरपोर्ट पर स्वागत, तनोट माता के करेंगे दर्शन",
+    "CM Bhajanlal Sharma जैसलमेर से पहुंचे जयपुर"
+   ]
+  },
+  {
+   "tag": "#BhaiDoojCelebration",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [
+    "मनाई"
+   ],
+   "examples": [
+    "आज देशभर में भाई दूज की धूम, First India News ने लिया जायजा",
+    "झालावाड़ जिला जेल में मनाई गई भाईदूज, जेल प्रशासन ने किये ख़ास इंतजाम",
+    "CM Bhajanlal Sharma ने BSF की बहनों संग मनाई भाई दूज, तनोट माता के किए दर्शन"
+   ]
+  },
+  {
+   "tag": "#Pratapgarh",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Pratapgarh",
+   "form": "<City>",
+   "keywords_hi": [
+    "प्रतापगढ़"
+   ],
+   "keywords_en": [
+    "Pratapgarh"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#RajasthanHighCourt",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Assistant Professor Recruitment 2025 पर हाईकोर्ट का बड़ा आदेश, नियुक्ति पत्र जारी करने पर ",
+    "ऑनर किलिंग केस में बड़ा फैसला, फांसी की सजा पाए पिता समेत 9 बरी"
+   ]
+  },
+  {
+   "tag": "#CongressRajasthan",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "मतदान में सब जगह से अच्छी ख़बर आ रही है: Govind Singh Dotasra। Rajasthan Nikay Chunav 2026",
+    "Rajasthan Panchayat Election 2026 First Phase: राजस्थान पंचायत चुनाव का पहला चरण कल। Big F"
+   ]
+  },
+  {
+   "tag": "#RajasthanNikayChunav2026",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-09-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "मतदान में सब जगह से अच्छी ख़बर आ रही है: Govind Singh Dotasra। Rajasthan Nikay Chunav 2026",
+    "Municipal Corporation Bhindar Election-2026: पार्षद प्रत्याशियों की शुरु हुई बाड़ाबंदी"
+   ]
+  },
+  {
+   "tag": "#Punjab",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Punjab को लेकर अति उत्साह में Sachin Pilot ! पंजाब कांग्रेस के सभी प्रतिद्वंद्वी गुटों से ",
+    "Amritsar Rural Police ने एक नेटवर्क का भंडाफोड़ किया, सात आरोपी गिरफ्तार"
+   ]
+  },
+  {
+   "tag": "#BikanerNikayChunav2026",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-09-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Nikay Chunav 2026 Phase 1: मतदान के बीच MLA Jethanand Vyas से बदसलूकी का आरोप, बूथ पर गरमा",
+    "Bikaner Nikay Chunav 2026: वार्ड 73 में भिड़े समर्थक, अनिल कल्ला और दीपक पारीक के समर्थक आ"
+   ]
+  },
+  {
+   "tag": "#JethanandVyas",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Nikay Chunav 2026 Phase 1: मतदान के बीच MLA Jethanand Vyas से बदसलूकी का आरोप, बूथ पर गरमा",
+    "दीपावली की सजावट और सफाई व्यवस्था पर विधायक जेठानंद व्यास का बड़ा बयान"
+   ]
+  },
+  {
+   "tag": "#Jalore",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jalore",
+   "form": "<City>",
+   "keywords_hi": [
+    "जालोर",
+    "जालौर"
+   ],
+   "keywords_en": [
+    "Jalore"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#AtarSinghBhadana",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "पूर्व विधायक अतर सिंह भड़ाना हत्याकांड, पूर्व मुख्यमंत्री Ashok Gehlot का बड़ा बयान",
+    "Atar Singh Bhadana Murder Case: अतर सिंह भड़ाना हत्याकांड का एक और वीडियो आया सामने। Bhara"
+   ]
+  },
+  {
+   "tag": "#TikaRamJully",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-20",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@TikaRamJullyINC",
+   "keywords_hi": [
+    "टीकाराम जूली",
+    "टीका राम जूली",
+    "नेता प्रतिपक्ष टीकाराम जूली",
+    "नेता प्रतिपक्ष जूली"
+   ],
+   "keywords_en": [
+    "Tika Ram Jully",
+    "Tikaram Jully"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#SupremeCourt",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-21",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Ss][Uu][Pp][Rr][Ee][Mm][Ee]\\s?[Cc][Oo][Uu][Rr][Tt]|सुप्रीम)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#DharmendraRathore",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Dd][Hh][Aa][Rr][Mm][Ee][Nn][Dd][Rr][Aa]\\s?[Rr][Aa][Tt][Hh][Oo][Rr][Ee]|धर्मेंद्र राठौड़)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#ShastraPujan",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "श्री प्रताप युवा शक्ति का शस्त्र पूजन समारोह, शस्त्र पूजन के बाद दुर्गा माता मंदिर तक निकल",
+    "विजयादशमी पर CM Dr Mohan Yadav का इंदौर दौरा, पुलिस लाइन में शस्त्र पूजा कार्यक्रम आयोजित।"
+   ]
+  },
+  {
+   "tag": "#PathSanchalan",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "श्री प्रताप युवा शक्ति का शस्त्र पूजन समारोह, शस्त्र पूजन के बाद दुर्गा माता मंदिर तक निकल",
+    "विजयादशमी पर RSS का भव्य त्रिवेणी संगम पथ संचलन"
+   ]
+  },
+  {
+   "tag": "#RSS",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "विजयादशमी पर RSS का भव्य त्रिवेणी संगम पथ संचलन",
+    "जोधपुर में 12 से 15 नवंबर तक घोष शिविर, 5 हजार स्वयंसेवकों के बीच शामिल होंगे मोहन भागवत"
+   ]
+  },
+  {
+   "tag": "#RashtriyaSwayamsevakSangh",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Rr][Aa][Ss][Hh][Tt][Rr][Ii][Yy][Aa]\\s?[Ss][Ww][Aa][Yy][Aa][Mm][Ss][Ee][Vv][Aa][Kk]\\s?[Ss][Aa][Nn][Gg][Hh]|स्वयंसेवकों)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#BhilwaraNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bhilwara",
+   "form": "<City>News",
+   "keywords_hi": [
+    "भीलवाड़ा",
+    "भीलवाडा"
+   ],
+   "keywords_en": [
+    "Bhilwara"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#MohanYadav",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "विजयादशमी पर CM Dr Mohan Yadav का इंदौर दौरा, पुलिस लाइन में शस्त्र पूजा कार्यक्रम आयोजित।",
+    "भोपाल में गोपूजन और पशुपालक सम्मान समारोह, मुख्यमंत्री Dr. Mohan Yadav ने की पूजा-अर्चना"
+   ]
+  },
+  {
+   "tag": "#Didwana",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "डीडवाना में कबाड़ से कमाल, नगर परिषद ने बनाया ‘वेस्ट टू वंडर’ पार्क",
+    "प्रेसवार्ता में बोले राज्य मंत्री विजय सिंह चौधरी, 'चुनाव प्रक्रिया को लेकर भ्रम फैला रही "
+   ]
+  },
+  {
+   "tag": "#SwachhBharat",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "डीडवाना में कबाड़ से कमाल, नगर परिषद ने बनाया ‘वेस्ट टू वंडर’ पार्क",
+    "Swachh Survekshan Awards 2025-26: राष्ट्रपति Droupadi Murmu दे रहीं पुरस्कार, दिल्ली के वि"
+   ]
+  },
+  {
+   "tag": "#DrinkingWater",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "जोधपुर में पेयजल संकट से लोग परेशान, मावड़िया घाटी में सड़क पर उतरे लोग",
+    "राजीव गांधी लिफ्ट कैनाल का तीसरा चरण अंतिम दौर में, 2100 गांवों को राहत, दिसंबर तक पानी का"
+   ]
+  },
+  {
+   "tag": "#RavanDahan",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-20",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "चित्तौड़गढ़ के कपासन में बारिश की मार, दहन से पहले जमीन पर गिरा रावण",
+    "Dussehra 2026: आदर्श नगर में दशहरा आयोजन 2026, CM Bhajanlal Sharma का संबोधन। Vijayadasham"
+   ]
+  },
+  {
+   "tag": "#Pushkar",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "पुष्कर के सरकारी अस्पताल में तोड़फोड़, पुलिस ने दो लोगों को हिरासत में लिया",
+    "माता सायर कंवर के निधन के बाद धार्मिक परंपरा का किया निर्वहन, हरिद्वार से अस्थि विसर्जन कर"
+   ]
+  },
+  {
+   "tag": "#SMSMedicalCollege",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "आखिर कब तक \"रक्त\" के लिए भटकेंगे गंभीर श्रेणी के मरीज ?",
+    "नेफ्रोलॉजी विभाग के HOD बने डॉ.संजीव कुमार शर्मा, SMS Medical College  से बड़ी खबर"
+   ]
+  },
+  {
+   "tag": "#SriGanganagar",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "place",
+   "rule": "emit",
+   "district": "SriGanganagar",
+   "form": "<City>",
+   "keywords_hi": [
+    "श्रीगंगानगर",
+    "श्री गंगानगर",
+    "गंगानगर"
+   ],
+   "keywords_en": [
+    "SriGanganagar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Bassi",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Dussehra 2026: BJP प्रदेशाध्यक्ष Madan Rathore ने किया दशहरा महोत्सव का शुभारंभ",
+    "BJP का वोटर जनसंपर्क अभियान, बस्सी के वार्ड-6 में भाजपा का चुनाव प्रचार"
+   ]
+  },
+  {
+   "tag": "#IAS",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "मुख्य सचिव V Srinivas की नव प्रमोटी IAS अधिकारियों के साथ बैठक",
+    "नए साल में 65 से ज्यादा IAS अफसरों को प्रमोशन! ब्यूरोक्रेसी में बड़ा फेरबदल संभव"
+   ]
+  },
+  {
+   "tag": "#JawaharSinghBedham",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@jawaharbedam",
+   "keywords_hi": [
+    "जवाहर सिंह बेढम",
+    "जवाहर सिंह बेढ़म",
+    "गृह राज्य मंत्री जवाहर सिंह बेढम",
+    "गृह राज्य मंत्री बेढम"
+   ],
+   "keywords_en": [
+    "Jawahar Singh Bedham",
+    "Jawahar Singh Bedam"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#FoodInspection",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "गुलाबपुरा में खाद्य सुरक्षा कार्रवाई, एक्सपायरी सामान किया नष्ट",
+    "खाद्य विभाग की बड़ी कार्रवाई, विभिन्न दुकानों से खाद्य पदार्थों के सैंपल ले रही टीम"
+   ]
+  },
+  {
+   "tag": "#GovernmentMeeting",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "हरियाणा CM Nayab Singh Saini की अध्यक्षता में HPWPC की बैठक। Chandigarh। Haryana News",
+    "प्रधानमंत्री Narendra Modi की अध्यक्षता में अहम बैठक, कई बड़े फैसलों पर लग सकती है मुहर"
+   ]
+  },
+  {
+   "tag": "#BollywoodNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "मुंबई से जयपुर पहुंचीं नोरा फतेही, वेब सीरीज 'द रॉयल्स' में आएंगी नजर",
+    "गधों के मेले में बॉलीवुड का तड़का, 72 हजार में बिका 'चंकी पांडे'"
+   ]
+  },
+  {
+   "tag": "#PMKisanYojana",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "PM Kisan 24th Installment: किसानों के लिए खुशखबरी! खाते में आएंगे ₹2,000",
+    "किसानों को सम्मान निधि की किश्त की सौगात पर CM Bhajanlal Sharma ने किया पोस्ट"
+   ]
+  },
+  {
+   "tag": "#PMKisanSammanNidhi",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "PM Kisan 24th Installment: किसानों के लिए खुशखबरी! खाते में आएंगे ₹2,000",
+    "किसानों को सम्मान निधि की किश्त की सौगात पर CM Bhajanlal Sharma ने किया पोस्ट"
+   ]
+  },
+  {
+   "tag": "#TonkNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-09",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Tonk",
+   "form": "<City>News",
+   "keywords_hi": [
+    "टोंक"
+   ],
+   "keywords_en": [
+    "Tonk"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#JDA",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "इकोलॉजिकल जोन में 41 दुकानों और विला-डुप्लेक्स निर्माण का आरोप, JDA जोन-10 पर सवाल",
+    "JDA Action गुर्जर की थड़ी से सोडाला तक JDC सिद्धार्थ महाजन ने किया निरीक्षण"
+   ]
+  },
+  {
+   "tag": "#JaswantYadav",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Jj][Aa][Ss][Ww][Aa][Nn][Tt]\\s?[Yy][Aa][Dd][Aa][Vv]|जसवंत यादव)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#Dausa",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Dausa",
+   "form": "<City>",
+   "keywords_hi": [
+    "दौसा"
+   ],
+   "keywords_en": [
+    "Dausa"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#BusAccident",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "जोधपुर के बालेसर में दर्दनाक सड़क हादसा, युवक की मौत के बाद ग्रामीणों ने लगाया जाम",
+    "बंध बारैठा के पास पलटी निजी बस, बस में सवार एक बालिका की मौत"
+   ]
+  },
+  {
+   "tag": "#HindaunCity",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "हिण्डौन सिटी में सड़क पर शव रखकर प्रदर्शन, हिण्डौन-महवा मार्ग पर यातायात बाधित",
+    "हिण्डौन सिटी में दो पक्षों में खूनी संघर्ष, बालिका सहित 12 लोग घायल, मजदूरी के बकाया रुपयो"
+   ]
+  },
+  {
+   "tag": "#Karauli",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Karauli",
+   "form": "<City>",
+   "keywords_hi": [
+    "करौली"
+   ],
+   "keywords_en": [
+    "Karauli"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Pali",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Pali",
+   "form": "<City>",
+   "keywords_hi": [
+    "पाली"
+   ],
+   "keywords_en": [
+    "Pali"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#PaliNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Pali",
+   "form": "<City>News",
+   "keywords_hi": [
+    "पाली"
+   ],
+   "keywords_en": [
+    "Pali"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#RailwayStation",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "राईका बाग रेलवे स्टेशन के पास झाड़ियों में लगी आग, दमकल और पुलिस को दी सूचना",
+    "किशनगढ़ रेलवे स्टेशन पर बड़ा हादसा टला, RPF जवान निरंजन लाल की तत्परता से बची महिला"
+   ]
+  },
+  {
+   "tag": "#FireNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-09",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "राईका बाग रेलवे स्टेशन के पास झाड़ियों में लगी आग, दमकल और पुलिस को दी सूचना",
+    "टोंक में पटाखे की चिंगारी से पुराने तहसील भवन के रिकॉर्ड रूम में आग, पुलिस मौके पर पहुंची"
+   ]
+  },
+  {
+   "tag": "#GovindDevJi",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Jaipur के गोविंददेवजी मंदिर से गोवर्धन पूजा के दिव्य दर्शन",
+    "भाई दूज के साथ आज दीपोत्सव का समापन, गोविंद देवजी मंदिर में उमड़ा श्रद्धालुओं का सैलाब"
+   ]
+  },
+  {
+   "tag": "#GovindDevJiTemple",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Jaipur के गोविंददेवजी मंदिर से गोवर्धन पूजा के दिव्य दर्शन",
+    "भाई दूज के साथ आज दीपोत्सव का समापन, गोविंद देवजी मंदिर में उमड़ा श्रद्धालुओं का सैलाब"
+   ]
+  },
+  {
+   "tag": "#DelhiPollution",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "दिल्ली की हवा लगातार हो रही जहरीली, चांदनी चौक में AQI 400 के करीब, सेहत पर बढ़ा खतरा",
+    "दिवाली के बाद मौसम का बदला मिजाज, कहीं जहरीली हवा तो कहीं बारिश का कहर!"
+   ]
+  },
+  {
+   "tag": "#DelhiAQI",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "दिल्ली की हवा लगातार हो रही जहरीली, चांदनी चौक में AQI 400 के करीब, सेहत पर बढ़ा खतरा",
+    "दिवाली के बाद मौसम का बदला मिजाज, कहीं जहरीली हवा तो कहीं बारिश का कहर!"
+   ]
+  },
+  {
+   "tag": "#AirPollution",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "दिल्ली की हवा लगातार हो रही जहरीली, चांदनी चौक में AQI 400 के करीब, सेहत पर बढ़ा खतरा",
+    "दिवाली के बाद मौसम का बदला मिजाज, कहीं जहरीली हवा तो कहीं बारिश का कहर!"
+   ]
+  },
+  {
+   "tag": "#AQI400",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "दिल्ली की हवा लगातार हो रही जहरीली, चांदनी चौक में AQI 400 के करीब, सेहत पर बढ़ा खतरा",
+    "दिवाली के बाद मौसम का बदला मिजाज, कहीं जहरीली हवा तो कहीं बारिश का कहर!"
+   ]
+  },
+  {
+   "tag": "#StateHangar",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "स्टेट हैंगर पहुंचे मुख्यमंत्री Bhajanlal Sharma, पूंछरी का लौठा में श्रीनाथजी के करेंगे दर",
+    "जैसलमेर दौरे के लिए स्टेट हैंगर पहुंचे CM Bhajanlal Sharma"
+   ]
+  },
+  {
+   "tag": "#CarAccident",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "अलवर में अनियंत्रित कार डिवाइडर से टकराई, भीषण हादसे में दो युवक घायल",
+    "कवाई में छबड़ा मार्ग पर पलटने के बाद कार में लगी आग, सूझबूझ से चारों लोगों की जान बची"
+   ]
+  },
+  {
+   "tag": "#Kishangarh",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "किशनगढ़ रेलवे स्टेशन पर बड़ा हादसा टला, RPF जवान निरंजन लाल की तत्परता से बची महिला",
+    "किशनगढ़ के जैन मंदिर में चोरी की बड़ी वारदात, चांदी का छत्र और सिंहासन चोरी"
+   ]
+  },
+  {
+   "tag": "#KishangarhNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "किशनगढ़ रेलवे स्टेशन पर बड़ा हादसा टला, RPF जवान निरंजन लाल की तत्परता से बची महिला",
+    "किशनगढ़ के जैन मंदिर में चोरी की बड़ी वारदात, चांदी का छत्र और सिंहासन चोरी"
+   ]
+  },
+  {
+   "tag": "#IndianRailways",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "किशनगढ़ रेलवे स्टेशन पर बड़ा हादसा टला, RPF जवान निरंजन लाल की तत्परता से बची महिला",
+    "Guwahati Train Accident: असम के डिगारू में ट्रेन हादसा, इंजन समेत 5 डिब्बे पटरी से उतरे"
+   ]
+  },
+  {
+   "tag": "#AnnakutMahotsav",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Govardhan Puja 2026: जयपुर के अक्षरधाम मंदिर में भव्य अन्नकूट, 1100 से अधिक व्यंजनों का भो",
+    "नाथद्वारा में 353 साल पुरानी 'अन्नकूट लूट' परंपरा, 50 क्विंटल चावल का महाभोग"
+   ]
+  },
+  {
+   "tag": "#JewelleryRobbery",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "वैशाली नगर में ज्वैलरी शोरूम से 8-10 लाख के आभूषणों की लूट, CCTV में कैद नकाबपोश बदमाश",
+    "जयपुर पुलिस को बड़ी सफलता, 59 लाख के आभूषण लूट का पर्दाफाश, 48 घंटे में आरोपी गिरफ्तार"
+   ]
+  },
+  {
+   "tag": "#CCTVFootage",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "वैशाली नगर में ज्वैलरी शोरूम से 8-10 लाख के आभूषणों की लूट, CCTV में कैद नकाबपोश बदमाश",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#PremBhandari",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Pp][Rr][Ee][Mm]\\s?[Bb][Hh][Aa][Nn][Dd][Aa][Rr][Ii]|भंडारी)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#RANANewYork",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "बेंगलुरु में 13 नवंबर को स्वर्ण जयंती, PM Narendra Modi से उद्घाटन प्रस्तावित, प्रेम भंडार",
+    "जयपुर फुट USA के चेयरमैन हैं Prem Bhandari, हर्षवर्धन श्रृंगला से मुलाकात"
+   ]
+  },
+  {
+   "tag": "#Deepawali2026",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Diwali 2026: डिप्टी CM Diya Kumari ने बालिका गृह की बेटियों के साथ मनाई दीपावली, बांटी खुश",
+    "लोकसभा अध्यक्ष Om Birla ने लोगों से की दीपावली की रामा-श्याम, मीडिया से हुए रूबरू"
+   ]
+  },
+  {
+   "tag": "#DeputyCMDiyaKumari",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "person",
+   "rule": "suggest",
+   "linked_handle": "@KumariDiya",
+   "keywords_hi": [
+    "दिया कुमारी",
+    "दीया कुमारी",
+    "उपमुख्यमंत्री दिया कुमारी",
+    "डिप्टी सीएम दिया कुमारी",
+    "उप मुख्यमंत्री दिया कुमारी",
+    "वित्त मंत्री दिया कुमारी"
+   ],
+   "keywords_en": [
+    "Diya Kumari",
+    "Deputy CM Diya Kumari"
+   ],
+   "keyword_source": "subject-handles.json"
+  },
+  {
+   "tag": "#DeegNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Deeg",
+   "form": "<City>News",
+   "keywords_hi": [
+    "डीग"
+   ],
+   "keywords_en": [
+    "Deeg"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#WantedAccused",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "नागौर पुलिस ने तीन साल से फरार 20 हजार का इनामी किया गिरफ्तार",
+    "मानसरोवर पुलिस ने 2 साल से फरार ₹5 हजार के इनामी अंबेडकर उर्फ मोड़ा को पकड़ा, 20 केस दर्ज"
+   ]
+  },
+  {
+   "tag": "#SpeakerOmBirla",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "लोकसभा अध्यक्ष Om Birla ने लोगों से की दीपावली की रामा-श्याम, मीडिया से हुए रूबरू",
+    "मौलाना अबुल कलाम आजाद की जयंती, लोकसभा अध्यक्ष ओम बिरला ने अर्पित की पुष्पांजलि"
+   ]
+  },
+  {
+   "tag": "#SoniaGandhiBook",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Belonging A Journey of Love Sonia Gandhi की बिक्री हुई शुरू, जिंदगी के अहम किस्सों का जिक्",
+    "सोनिया गांधी की पुस्तक पर Ashok Parnami का निशाना"
+   ]
+  },
+  {
+   "tag": "#Assam",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Breaking News: असम के गुवाहाटी के पास ट्रेन हादसा",
+    "Guwahati Train Accident: असम के डिगारू में ट्रेन हादसा, इंजन समेत 5 डिब्बे पटरी से उतरे"
+   ]
+  },
+  {
+   "tag": "#Guwahati",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Breaking News: असम के गुवाहाटी के पास ट्रेन हादसा",
+    "Breaking News: गुवाहाटी के पास डिगारू में सैरांग-कोलकाता एक्सप्रेस पटरी से उतरी, रेस्क्यू "
+   ]
+  },
+  {
+   "tag": "#GuwahatiNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Breaking News: असम के गुवाहाटी के पास ट्रेन हादसा",
+    "Guwahati Train Accident: असम के डिगारू में ट्रेन हादसा, इंजन समेत 5 डिब्बे पटरी से उतरे"
+   ]
+  },
+  {
+   "tag": "#Uttarakhand",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "केदारनाथ धाम के कपाट शीतकाल के लिए बंद, बाबा केदार की पंचमुखी डोली रवाना",
+    "माता सायर कंवर के निधन के बाद धार्मिक परंपरा का किया निर्वहन, हरिद्वार से अस्थि विसर्जन कर"
+   ]
+  },
+  {
+   "tag": "#Deepotsav2026",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "भाई दूज के साथ आज दीपोत्सव का समापन, गोविंद देवजी मंदिर में उमड़ा श्रद्धालुओं का सैलाब",
+    "भाई दूज पर मोती डूंगरी गणेश मंदिर में उमड़े श्रद्धालु, दीपोत्सव का अंतिम दिन, बप्पा के दरब"
+   ]
+  },
+  {
+   "tag": "#MotiDungriGaneshTemple",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "भाई दूज पर मोती डूंगरी गणेश मंदिर में उमड़े श्रद्धालु, दीपोत्सव का अंतिम दिन, बप्पा के दरब",
+    "मोती डूंगरी गणेश मंदिर पहुंचे शंकराचार्य, Vasudevanand Saraswati ने भगवान गणपति की पूजा-अर"
+   ]
+  },
+  {
+   "tag": "#NewDelhi",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "प्रधानमंत्री Narendra Modi की अध्यक्षता में अहम बैठक, कई बड़े फैसलों पर लग सकती है मुहर",
+    "प्रधानमंत्री नरेंद्र मोदी ने दी भाई-दूज की शुभकामनाएं"
+   ]
+  },
+  {
+   "tag": "#CabinetMeeting",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "प्रधानमंत्री Narendra Modi की अध्यक्षता में अहम बैठक, कई बड़े फैसलों पर लग सकती है मुहर",
+    "सेवा तीर्थ में कैबिनेट की बैठक, केंद्रीय संसदीय कार्य मंत्री Kiren Rijiju मीडिया से हुए रू"
+   ]
+  },
+  {
+   "tag": "#FreeUniformScheme",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "नारी के हौसले की 'उड़ान', सरकार बनी सहारा, निशुल्क यूनिफॉर्म योजना से बच्चों को राहत",
+    "'उड़ान' योजना से संवर रही बेटियों की सेहत, निःशुल्क यूनिफॉर्म योजना से परिवारों को राहत"
+   ]
+  },
+  {
+   "tag": "#NishulkUniformYojana",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "नारी के हौसले की 'उड़ान', सरकार बनी सहारा, निशुल्क यूनिफॉर्म योजना से बच्चों को राहत",
+    "'उड़ान' योजना से संवर रही बेटियों की सेहत, निःशुल्क यूनिफॉर्म योजना से परिवारों को राहत"
+   ]
+  },
+  {
+   "tag": "#Bihar",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "बिहार प्रवास पर BJP राष्ट्रीय अध्यक्ष Nitin Nabin ने की चित्रगुप्त पूजा",
+    "'पहले घोटालों की बात होती थी, आज निवेश की' बिहार के वैशाली में PM Narendra Modi का संबोधन"
+   ]
+  },
+  {
+   "tag": "#PatnaNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "बिहार प्रवास पर BJP राष्ट्रीय अध्यक्ष Nitin Nabin ने की चित्रगुप्त पूजा",
+    "पटना पहुंचे पीएम Modi, एयरपोर्ट पर Nitish Kumar ने किया स्वागत"
+   ]
+  },
+  {
+   "tag": "#Kulgam",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#JammuKashmir",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#Kashmir",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#KulgamTerrorAttack",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#TerrorAttack",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#CRPF",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#CRPFJawans",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#CRPFAttack",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Kulgam Terror Attack: जम्मू-कश्मीर के कुलगाम में CRPF जवानों पर आतंकी हमला, 3 जवान घायल, 2",
+    "Kulgam Terror Attack: कुलगाम में CRPF जवानों पर आतंकी हमला, CCTV फुटेज आया सामने"
+   ]
+  },
+  {
+   "tag": "#BhaiDoojSpecial",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "आज देशभर में भाई दूज की धूम, First India News ने लिया जायजा",
+    "झालावाड़ जिला जेल में मनाई गई भाईदूज, जेल प्रशासन ने किये ख़ास इंतजाम"
+   ]
+  },
+  {
+   "tag": "#SwachhSurvekshan2025_26",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Swachh Survekshan Awards 2025-26: राष्ट्रपति Droupadi Murmu दे रहीं पुरस्कार, दिल्ली के वि",
+    "स्वच्छता सर्वेक्षण का परिणाम जारी, राजस्थान से  Jaipur को मिला सबसे साफ शहर का पुरस्कार"
+   ]
+  },
+  {
+   "tag": "#SwachhSurvekshanAwards",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Swachh Survekshan Awards 2025-26: राष्ट्रपति Droupadi Murmu दे रहीं पुरस्कार, दिल्ली के वि",
+    "स्वच्छता सर्वेक्षण का परिणाम जारी, राजस्थान से  Jaipur को मिला सबसे साफ शहर का पुरस्कार"
+   ]
+  },
+  {
+   "tag": "#SwachhSurvekshan",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Swachh Survekshan Awards 2025-26: राष्ट्रपति Droupadi Murmu दे रहीं पुरस्कार, दिल्ली के वि",
+    "स्वच्छता सर्वेक्षण का परिणाम जारी, राजस्थान से  Jaipur को मिला सबसे साफ शहर का पुरस्कार"
+   ]
+  },
+  {
+   "tag": "#PropertyFreezing",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "नशा तस्कर रसीद खान की 4 करोड़ की संपत्ति Fridge, अब तक की सबसे बड़ी कार्रवाई",
+    "बारां में नशा तस्करों पर कड़ा एक्शन, 3.76 करोड़ की संपत्ति की गई फ्रीज"
+   ]
+  },
+  {
+   "tag": "#UdaanYojana",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "उड़ान योजना से छात्राओं को मिली बड़ी राहत, First India ने बच्चों से की बातचीत",
+    "'उड़ान' योजना से संवर रही बेटियों की सेहत, निःशुल्क यूनिफॉर्म योजना से परिवारों को राहत"
+   ]
+  },
+  {
+   "tag": "#JaipurInternationalAirport",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "CM Bhajanlal Sharma करेंगे जयपुर एयरपोर्ट पर नए स्टेट टर्मिनल का भूमि पूजन",
+    "Jaipur Airport को बड़ी सौगात, CM Bhajanlal Sharma ने किया नए स्टेट टर्मिनल का भूमि पूजन"
+   ]
+  },
+  {
+   "tag": "#ChiefSecretary",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "CS V Srinivas का कोरिया दौरा, 31 देशों के 373 प्रतिनिधियों से करेंगे संवाद",
+    "IIAS 2026: CS V Srinivas का कोरिया दौरा, वैश्विक मंच पर पेश करेंगे राजस्थान का सुशासन मॉडल"
+   ]
+  },
+  {
+   "tag": "#IIAS2026",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "CS V Srinivas का कोरिया दौरा, 31 देशों के 373 प्रतिनिधियों से करेंगे संवाद",
+    "IIAS 2026: CS V Srinivas का कोरिया दौरा, वैश्विक मंच पर पेश करेंगे राजस्थान का सुशासन मॉडल"
+   ]
+  },
+  {
+   "tag": "#IIAS",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "CS V Srinivas का कोरिया दौरा, 31 देशों के 373 प्रतिनिधियों से करेंगे संवाद",
+    "IIAS 2026: CS V Srinivas का कोरिया दौरा, वैश्विक मंच पर पेश करेंगे राजस्थान का सुशासन मॉडल"
+   ]
+  },
+  {
+   "tag": "#SouthKorea",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "CS V Srinivas का कोरिया दौरा, 31 देशों के 373 प्रतिनिधियों से करेंगे संवाद",
+    "IIAS 2026: CS V Srinivas का कोरिया दौरा, वैश्विक मंच पर पेश करेंगे राजस्थान का सुशासन मॉडल"
+   ]
+  },
+  {
+   "tag": "#Seoul",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "CS V Srinivas का कोरिया दौरा, 31 देशों के 373 प्रतिनिधियों से करेंगे संवाद",
+    "IIAS 2026: CS V Srinivas का कोरिया दौरा, वैश्विक मंच पर पेश करेंगे राजस्थान का सुशासन मॉडल"
+   ]
+  },
+  {
+   "tag": "#NitishKumar",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "पटना पहुंचे पीएम Modi, एयरपोर्ट पर Nitish Kumar ने किया स्वागत",
+    "बिहार के वैशाली पहुंचे PM Narendra Modi, गंगा नदी पर बने 'नीतीश सेतु' का किया लोकार्पण"
+   ]
+  },
+  {
+   "tag": "#BansurNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Bansur Cylinder Blast: SMS Hospital पहुंचे 10 झुलसे मरीज, 2 महिलाओं की हालत गंभीर",
+    "Bansur Cylinder Blast: 50 फीसदी से ज्यादा झुलसे मरीज! SMS अस्पताल में इमरजेंसी अलर्ट"
+   ]
+  },
+  {
+   "tag": "#BansurAccident",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Bansur Cylinder Blast: SMS Hospital पहुंचे 10 झुलसे मरीज, 2 महिलाओं की हालत गंभीर",
+    "Bansur Cylinder Blast: 50 फीसदी से ज्यादा झुलसे मरीज! SMS अस्पताल में इमरजेंसी अलर्ट"
+   ]
+  },
+  {
+   "tag": "#CylinderBlast",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Bansur Cylinder Blast: SMS Hospital पहुंचे 10 झुलसे मरीज, 2 महिलाओं की हालत गंभीर",
+    "Bansur Cylinder Blast: 50 फीसदी से ज्यादा झुलसे मरीज! SMS अस्पताल में इमरजेंसी अलर्ट"
+   ]
+  },
+  {
+   "tag": "#GasCylinderFire",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Bansur Cylinder Blast: SMS Hospital पहुंचे 10 झुलसे मरीज, 2 महिलाओं की हालत गंभीर",
+    "Bansur Cylinder Blast: 50 फीसदी से ज्यादा झुलसे मरीज! SMS अस्पताल में इमरजेंसी अलर्ट"
+   ]
+  },
+  {
+   "tag": "#BadhMilakpur",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Bansur Cylinder Blast: SMS Hospital पहुंचे 10 झुलसे मरीज, 2 महिलाओं की हालत गंभीर",
+    "Bansur Cylinder Blast: 50 फीसदी से ज्यादा झुलसे मरीज! SMS अस्पताल में इमरजेंसी अलर्ट"
+   ]
+  },
+  {
+   "tag": "#BurnInjuries",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "Bansur Cylinder Blast: SMS Hospital पहुंचे 10 झुलसे मरीज, 2 महिलाओं की हालत गंभीर",
+    "Bansur Cylinder Blast: 50 फीसदी से ज्यादा झुलसे मरीज! SMS अस्पताल में इमरजेंसी अलर्ट"
+   ]
+  },
+  {
+   "tag": "#PMModiBiharVisit",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "बिहार के वैशाली पहुंचे PM Narendra Modi, गंगा नदी पर बने 'नीतीश सेतु' का किया लोकार्पण",
+    "'पहले घोटालों की बात होती थी, आज निवेश की' बिहार के वैशाली में PM Narendra Modi का संबोधन"
+   ]
+  },
+  {
+   "tag": "#VaishaliNews",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "बिहार के वैशाली पहुंचे PM Narendra Modi, गंगा नदी पर बने 'नीतीश सेतु' का किया लोकार्पण",
+    "'पहले घोटालों की बात होती थी, आज निवेश की' बिहार के वैशाली में PM Narendra Modi का संबोधन"
+   ]
+  },
+  {
+   "tag": "#AshokChandna",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "हिंडौली विधायक Ashok Chandna पर पुलिस अधिकारियों से बदसलूकी के आरोप",
+    "हिंडोली विधायक Ashok Chandna सहित आधा दर्जन लोगों के खिलाफ मामला दर्ज"
+   ]
+  },
+  {
+   "tag": "#NABARD",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "topic",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "keywords_hi": [],
+   "keywords_en": [],
+   "keywords_proposed": [],
+   "examples": [
+    "कॉन्स्टीट्यूशन क्लब में नाबार्ड की ग्रामीण विकास कॉन्क्लेव, मुख्य सचिव V Srinivas का संबोध",
+    "कॉन्स्टीट्यूशन क्लब में नाबार्ड की ग्रामीण विकास कॉन्क्लेव, मुख्य सचिव V Srinivas मीडिया स"
+   ]
+  },
+  {
+   "tag": "#DholpurNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Dholpur",
+   "form": "<City>News",
+   "keywords_hi": [
+    "धौलपुर",
+    "धोलपुर"
+   ],
+   "keywords_en": [
+    "Dholpur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#BharatpurNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bharatpur",
+   "form": "<City>News",
+   "keywords_hi": [
+    "भरतपुर"
+   ],
+   "keywords_en": [
+    "Bharatpur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#DidwanaKuchaman",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "place",
+   "rule": "emit",
+   "district": "DidwanaKuchaman",
+   "form": "<City>",
+   "keywords_hi": [
+    "डीडवाना-कुचामन",
+    "डीडवाना कुचामन",
+    "डीडवाना-कुचामन सिटी",
+    "डीडवाना कुचामन सिटी"
+   ],
+   "keywords_en": [
+    "DidwanaKuchaman"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#KhairthalTijara",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "place",
+   "rule": "emit",
+   "district": "KhairthalTijara",
+   "form": "<City>",
+   "keywords_hi": [
+    "खैरथल-तिजारा",
+    "खैरथल तिजारा"
+   ],
+   "keywords_en": [
+    "KhairthalTijara"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Chittorgarh",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Chittorgarh",
+   "form": "<City>",
+   "keywords_hi": [
+    "चित्तौड़गढ़",
+    "चित्तोड़गढ़",
+    "चित्तौड़",
+    "चित्तौडगढ़",
+    "चित्तौडग़ढ़"
+   ],
+   "keywords_en": [
+    "Chittorgarh"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#BundiNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Bundi",
+   "form": "<City>News",
+   "keywords_hi": [
+    "बूंदी",
+    "बून्दी",
+    "बूँदी"
+   ],
+   "keywords_en": [
+    "Bundi"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Dholpur",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Dholpur",
+   "form": "<City>",
+   "keywords_hi": [
+    "धौलपुर",
+    "धोलपुर"
+   ],
+   "keywords_en": [
+    "Dholpur"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Barmer",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Barmer",
+   "form": "<City>",
+   "keywords_hi": [
+    "बाड़मेर",
+    "बाडमेर"
+   ],
+   "keywords_en": [
+    "Barmer"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#BarmerNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Barmer",
+   "form": "<City>News",
+   "keywords_hi": [
+    "बाड़मेर",
+    "बाडमेर"
+   ],
+   "keywords_en": [
+    "Barmer"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Rajsamand",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Rajsamand",
+   "form": "<City>",
+   "keywords_hi": [
+    "राजसमंद",
+    "राजसमन्द"
+   ],
+   "keywords_en": [
+    "Rajsamand"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#SriGanganagarNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-30",
+   "kind": "place",
+   "rule": "emit",
+   "district": "SriGanganagar",
+   "form": "<City>News",
+   "keywords_hi": [
+    "श्रीगंगानगर",
+    "श्री गंगानगर",
+    "गंगानगर"
+   ],
+   "keywords_en": [
+    "SriGanganagar"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#DausaNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-09",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Dausa",
+   "form": "<City>News",
+   "keywords_hi": [
+    "दौसा"
+   ],
+   "keywords_en": [
+    "Dausa"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#KarauliNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-09",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Karauli",
+   "form": "<City>News",
+   "keywords_hi": [
+    "करौली"
+   ],
+   "keywords_en": [
+    "Karauli"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#ChuruNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-10",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Churu",
+   "form": "<City>News",
+   "keywords_hi": [
+    "चूरू",
+    "चुरू"
+   ],
+   "keywords_en": [
+    "Churu"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#WeatherUpdate",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-10",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Ww][Ee][Aa][Tt][Hh][Ee][Rr]\\s?[Uu][Pp][Dd][Aa][Tt][Ee]|बारिश|मौसम)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#IASShikharAgrawal",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "keyword",
+   "rule": "suggest",
+   "patterns": [
+    {
+     "pattern": "(?<![\\p{L}\\p{M}\\p{N}])(?:[Ii][Aa][Ss]\\s?[Ss][Hh][Ii][Kk][Hh][Aa][Rr]\\s?[Aa][Gg][Rr][Aa][Ww][Aa][Ll]|शिखर)(?![\\p{L}\\p{M}\\p{N}])",
+     "start": null,
+     "end": null
+    }
+   ],
+   "keyword_source": "campaigns.json"
+  },
+  {
+   "tag": "#Hanumangarh",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Hanumangarh",
+   "form": "<City>",
+   "keywords_hi": [
+    "हनुमानगढ़",
+    "हनुमानगढ"
+   ],
+   "keywords_en": [
+    "Hanumangarh"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#PratapgarhNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Pratapgarh",
+   "form": "<City>News",
+   "keywords_hi": [
+    "प्रतापगढ़"
+   ],
+   "keywords_en": [
+    "Pratapgarh"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#JaloreNews",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-12",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jalore",
+   "form": "<City>News",
+   "keywords_hi": [
+    "जालोर",
+    "जालौर"
+   ],
+   "keywords_en": [
+    "Jalore"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Jhunjhunu",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-21",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Jhunjhunu",
+   "form": "<City>",
+   "keywords_hi": [
+    "झुंझुनूं",
+    "झुन्झुनूं",
+    "झुंझुनू",
+    "झुन्झुनू",
+    "झुंझनूं",
+    "झुन्झनूं",
+    "झुंझुनुं",
+    "झुन्झुनुं"
+   ],
+   "keywords_en": [
+    "Jhunjhunu"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  },
+  {
+   "tag": "#Balotra",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "place",
+   "rule": "emit",
+   "district": "Balotra",
+   "form": "<City>",
+   "keywords_hi": [
+    "बालोतरा"
+   ],
+   "keywords_en": [
+    "Balotra"
+   ],
+   "keyword_source": "rajasthan-places.json"
+  }
+ ]
+}

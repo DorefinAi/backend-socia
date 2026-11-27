@@ -1,10 +1,11 @@
 // A clip row (+ what the media service read) → the shape the X Videos desk uses (frontend src/data/xVideosData.ts,
 // XvClip). Field names match the frontend's so its demo data swaps for these answers with no screen changes.
 // The suggested headline is the file's name when the name is a heading, else the model's headline from the screen
-// read (step 4).
-// Place, tags and mentions are the directory's work (step 5): empty until then.
+// read (step 4). Place, channel label, tags and mentions are composed around it from the directory (step 5,
+// src/compose): on = in the post as drafted, off = offered.
 
-import type { XvClipRow, XvEvidence } from "../db/schema";
+import type { XvComposeInput, XvComposed } from "../compose/compose";
+import type { XvClipRow, XvEvidence, XvHeadlineResult } from "../db/schema";
 
 export type XvWireStatus = "new" | "posted" | "rejected";
 
@@ -41,7 +42,10 @@ export interface XvWireClip {
   width?: number;
   height?: number;
   kind: "clip";
+  /** The Rajasthan district the post is about ("Jaipur"), "" when none */
   district: string;
+  /** Rajasthan or outside it: sets the brand tag on the desk */
+  region?: "rajasthan" | "india";
   suggestedHeadline: string | null;
   /** 0–100 while being read; absent once read */
   readingProgress?: number;
@@ -51,9 +55,11 @@ export interface XvWireClip {
   contactSheet?: string;
   cutTimes?: number[];
   heard: string[];
+  /** The title's ending ("Jaipur News", "Rajasthan News", the file name's own), null with no headline yet */
   channelLabel: string | null;
-  hashtags: { value: string; on: boolean }[];
-  mentions: { value: string; on: boolean }[];
+  /** Without the brand tag and #FINVideo (the desk adds both); `why` says where each came from */
+  hashtags: { value: string; on: boolean; why?: string }[];
+  mentions: { value: string; on: boolean; why?: string }[];
   /** done on the share = the desk already posted it on X by hand */
   status: XvWireStatus;
   /** Why the clip could not be read (probe or speech failed after its retries) */
@@ -71,7 +77,30 @@ function frameGrabs(id: string, frames: XvEvidence["frames"]): XvWireClip["frame
 
 const baseName = (key: string) => key.split(/[\\/]/).pop() ?? key;
 
-export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTranscript: boolean, screenHeadline: string | null = null): XvWireClip {
+/** What the composer gets for a clip: its suggested headline and, when the model wrote it, the model's place and topics */
+export function xvComposeInput(clip: XvClipRow, screenHeadline: string | null, screenResult: XvHeadlineResult | null): XvComposeInput | null {
+  const headline = clip.heading ?? screenHeadline;
+  if (!headline) return null;
+  // The stored result is checked field by field: an old or partial row must not break the day's list
+  const text = (v: unknown) => (typeof v === "string" ? v : "");
+  const model =
+    !clip.heading && screenResult
+      ? {
+          district: text(screenResult.district),
+          state: text(screenResult.state),
+          topicHashtags: Array.isArray(screenResult.topicHashtags) ? screenResult.topicHashtags.filter((t): t is string => typeof t === "string") : [],
+        }
+      : null;
+  return { headline, fileTitle: clip.title, day: clip.day, model };
+}
+
+export function xvWireClip(
+  clip: XvClipRow,
+  evidence: XvEvidence | null,
+  withTranscript: boolean,
+  screenHeadline: string | null = null,
+  composed: XvComposed | null = null,
+): XvWireClip {
   const reading = clip.status === "reading" || clip.status === "seen";
   // The file's own heading wins: the desk wrote it
   const suggested = clip.heading ?? screenHeadline;
@@ -95,7 +124,8 @@ export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTra
     width: clip.width ?? undefined,
     height: clip.height ?? undefined,
     kind: "clip",
-    district: "",
+    district: composed?.district ?? "",
+    region: composed?.region,
     suggestedHeadline: suggested,
     readingProgress: reading ? (clip.progress ?? 0) : undefined,
     transcript: withTranscript && evidence ? evidence.transcript.map((l) => ({ at: l.at, text: l.text })) : [],
@@ -104,9 +134,9 @@ export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTra
     contactSheet: evidence?.contactSheetKey ? api(clip.id, `frames/${encodeURIComponent(baseName(evidence.contactSheetKey))}`) : undefined,
     cutTimes: evidence?.cutTimes,
     heard: [],
-    channelLabel: null,
-    hashtags: [],
-    mentions: [],
+    channelLabel: composed?.channelLabel ?? null,
+    hashtags: composed?.hashtags ?? [],
+    mentions: composed?.mentions ?? [],
     status: clip.done ? "posted" : "new",
     error: clip.status === "failed" ? (clip.error ?? "could not be read") : undefined,
   };

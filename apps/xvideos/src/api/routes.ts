@@ -13,7 +13,8 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { xvGetClip, xvListClips, xvListDays, xvRequestScan, type XvDayCount } from "../db/clips";
 import { XV_CLIP_STATUSES, type XvClipStatus } from "../db/schema";
 import { xvDayDate, xvToday } from "../share/rules";
-import { xvWireClip } from "./view";
+import { XvComposer } from "../compose/compose";
+import { xvComposeInput, xvWireClip } from "./view";
 
 const DAY_PATTERN = "^\\d{4}-\\d{2}-\\d{2}$";
 
@@ -43,6 +44,8 @@ export interface XvRouteOptions {
   /** The video share (read only) and the local cache; default XVIDEOS_SHARE / XVIDEOS_CACHE */
   shareRoot?: string;
   cacheDir?: string;
+  /** The composer of step 5; default: the directory in apps/xvideos/directory and apps/worker/config */
+  composer?: XvComposer;
 }
 
 const VIDEO_TYPES: Record<string, string> = { ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".mpg": "video/mpeg" };
@@ -87,6 +90,11 @@ async function sendFile(reply: FastifyReply, httpError: HttpErrorOf, path: strin
 
 export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (app, opts) => {
   const { db, viewer, httpError } = opts;
+  // Step 5: the post around each headline, from the directory (reloaded when its files change, cached per clip state).
+  // Loaded now, so a broken directory file shows in the log at start-up, not on the desk's first list.
+  const composer = opts.composer ?? new XvComposer(undefined, undefined, undefined, undefined, (message) => app.log.warn(message));
+  composer.directory();
+  const compose = (input: ReturnType<typeof xvComposeInput>) => (input ? composer.compose(input) : null);
   const shareRoot = opts.shareRoot ?? process.env.XVIDEOS_SHARE ?? "";
   const cacheDir = opts.cacheDir ?? process.env.XVIDEOS_CACHE ?? "";
   if (!shareRoot || !cacheDir) throw new Error("X Videos routes need XVIDEOS_SHARE and XVIDEOS_CACHE");
@@ -115,7 +123,7 @@ export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (a
         statuses: statuses.length ? (statuses as XvClipStatus[]) : ["seen", "reading", "new", "failed"],
         limit: req.query.limit,
       });
-      return { day, clips: rows.map((r) => xvWireClip(r.clip, null, false, r.screenHeadline)) };
+      return { day, clips: rows.map((r) => xvWireClip(r.clip, null, false, r.screenHeadline, compose(xvComposeInput(r.clip, r.screenHeadline, r.screenResult)))) };
     },
   );
 
@@ -145,7 +153,7 @@ export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (a
     const user = viewer(req);
     const found = await xvGetClip(db, user.orgId, req.params.id);
     if (!found) throw httpError(404, "not_found", "No such clip.");
-    return { clip: xvWireClip(found.clip, found.evidence, true, found.screenHeadline) };
+    return { clip: xvWireClip(found.clip, found.evidence, true, found.screenHeadline, compose(xvComposeInput(found.clip, found.screenHeadline, found.screenResult))) };
   });
 
   app.get("/xvideos/clips/:id/video", { schema: { params: Id } }, async (req, reply) => {

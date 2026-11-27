@@ -34,6 +34,7 @@ digital\
     src\share\rules.ts               the share layout, x / done marks, the title left in a file name (pure)
     src\worker\                      its own process: watch, probe, headline (screen read), compose, learn
     src\headline\                    step 4's rules: the day's programme filler (lines.ts), the model's prompt and answer (model.ts)
+    src\compose\compose.ts           step 5: place, channel label, hashtags and @handles around the headline (the api runs it)
     src\db\  migrations\             schema "xvideos", own migrations
     src\api\                         the desk's routes (mounted by apps/api when XVIDEOS=true)
     test\                            vitest
@@ -45,7 +46,7 @@ digital\
       test_headline.py               headline.py's text rules (unittest)
     directory\                       the X video tag and handle directory (§5)
       format.json tags.json handles.json     built files, read by the composer
-      build.py eval.py collect.py            build it, test it, collect new #FINVideo posts
+      build.py eval.py                       build it, test it (collect.py, gathering new #FINVideo posts: step 2, later)
       data\finvideo-posts.jsonl              the desk's published #FINVideo posts
 
   x-requirements\                    NOT in git (it sits beside the backend and frontend repos, in neither): the heavy, machine-specific files
@@ -81,7 +82,7 @@ qwen3:14b stays in Ollama's own store (other tools on this PC use the same Ollam
 | 2 | Probe | ffprobe (length, size, codec, sound) and a poster still. | `src/worker/probe.ts` | Built |
 | 3 | Title from the file name | The name without the `x` / `done` marks and the extension. It is a heading when it has 5+ words and 8+ Devanagari letters. Windows does not allow `\|` in a name, so two or more spaces stand for ` \| `: the posted title comes back with its suffix. | `src/share/rules.ts` (`xvHeading`), stored as `clip.heading` | Built |
 | 4 | Screen read | Only when step 3 finds no heading: `POST /screen` on the media service, the day's programme filler dropped, `POST /speech` when under 2 bar lines are left, qwen3:14b writes the headline (§4.2). | `src/worker/headline.ts`, `src/headline/`, `media/headline.py` | Built (`XVIDEOS_HEADLINE`) |
-| 5 | Compose | Brand tag first, `#FINVideo` second, place tag, then tags and handles from the directory (§5). Emit or suggest per part. | `src/worker/compose.ts` | **To build** |
+| 5 | Compose | Place, channel label (`\| Jaipur News`), then tags and handles from the directory (§5), each on (emit) or offered (suggest). The desk adds the brand tag and `#FINVideo`. Composed when the desk reads a clip, so it always uses the current directory. | `src/compose/compose.ts` | Built |
 | 6 | Desk | Shows **every video in the chosen day folder**, with its inner folder and its `x` / done mark shown on the row. Opens on **today's day folder only** (IST), not yesterday's. A month / day selector outside the clip list picks another day. Edit, hold, Copy & Mark Posted, undo, reject (§8). | `src/api/` + frontend | List built (last 48 h); today-only + selector **next**; actions **to build** |
 | 7 | Learn | A posted clip's final title, tags and handles go into the directory counts and become examples. | `src/worker/learn.ts` + `directory/build.py` | **To build** |
 
@@ -176,9 +177,26 @@ Rules: police handle is emitted when the district is known and the title is abou
 Reporter handles are never added from the title or the district (they are not in a video's title).
 
 **Test** (`eval.py`, built from posts up to 13 Nov, tested on the 55 posts of 21 and 27 Nov, title only):
-`#FINVideo` 100 %, brand 96 %, place tag found 83 %, collector 92 %, police 62 %, people / parties / offices 37 %, topic
-tags 4 % (797 of 1,039 tags were used once: the model suggests those). To be re-run once `collect.py` has gathered a few
-more days of live posts.
+`#FINVideo` 100 %, brand 96 %, place tag found 83 % (right 68 %), collector 92 %, police 62 %, people / parties / offices
+37 %, topic tags found 5 % and right 48 % (797 of 1,039 tags were used once: the model suggests those). To be re-run once
+`collect.py` has gathered a few more days of live posts.
+
+**The composer** (`src/compose/compose.ts`, built 27 Nov 2026) is `eval.py`'s predictor with the mix that measured best:
+tags from the video directory (`tags.json`, campaign patterns inside their own dates), handles from the breaking desk's
+whole directory. It gives the same numbers as `eval.py` on the same posts. On the desk:
+
+| Part | On or offered | From |
+|---|---|---|
+| Place tag (`#Jaipur`, the form the desk uses now) | on | the title's ` \| …` ending, then the headline, then the model's place for a screen read |
+| District police handle | on when the title is about a crime | `district-handles.json` |
+| `#RajasthanNews` | offered (right 59 % when added on its own) | `format.json` |
+| Topic, person, party, campaign tags | offered | `tags.json` keywords and patterns; the model's topic tags for a screen read |
+| People, parties, offices, collectors | offered | the breaking desk's handles, by name and keyword |
+| Reporter handles | offered | only the file's own name, never the title |
+| Channel label | the title's ending | the file name's own ending, else `<District> News`, `Rajasthan News`, or `<State> News` / `India News` outside Rajasthan (region `india`) |
+
+The directory files are reloaded when they change and composes are cached per clip, so the desk's list costs nothing
+after the first read (178 clips of 27 Nov: 45 ms).
 
 ---
 
@@ -211,7 +229,7 @@ Settings that matter:
 | `clip_job` | Work queue (probe, read, headline), lease, attempts | Built |
 | `clip_evidence` | What `/read` found: transcript, cuts, stills | Built |
 | `clip_screen` | Step 4: the screen read (bar lines, other text, the anchor's words when read) and the model's headline with how it was made (lines used, filler dropped, place, topics) | Built |
-| `clip_draft` | Headline, its source (file name / screen read), suffix, tags and handles (value, emit or suggest, source) | To build |
+| `clip_draft` | The editor's saved draft: title, tags and handles as the editor left them (the suggestion itself is composed on read, §5) | Step 6 |
 | `clip_post` | Posted text, by whom, when, X link, undone | To build |
 | `scan_request` | The desk's Refresh requests (one per day), taken by the watcher | Built |
 
@@ -221,7 +239,7 @@ Settings that matter:
 
 | Route | Does | State |
 |---|---|---|
-| `GET /xvideos/clips?day=&status=` | Every video of one day folder; without `day`, **today's (IST) only**. `suggestedHeadline` is the file name's heading, else the model's (`headlineSource` `file_name` / `screen`) | Built |
+| `GET /xvideos/clips?day=&status=` | Every video of one day folder; without `day`, **today's (IST) only**. `suggestedHeadline` is the file name's heading, else the model's (`headlineSource` `file_name` / `screen`); `district`, `region`, `channelLabel`, `hashtags` and `mentions` (`{value, on, why}`) are composed around it (§5) | Built |
 | `GET /xvideos/folders` | Today and every day whose folder holds videos, grouped by month, with counts (videos, x-marked, done), for the desk's month / day selector | Built |
 | `POST /xvideos/rescan?day=` | The desk's Refresh: the watcher walks that day (default today) within seconds, and again 10 s later so new files settle | Built |
 | `GET /xvideos/clips/:id` · `/video` · `/poster` · `/frames/:name` | One clip, the video with byte ranges, stills | Built |
@@ -263,8 +281,8 @@ database.
 | 2 | Collector | `directory/collect.py`: every hour, reads @1stIndiaNews' new posts, keeps the `#FINVideo` ones in `data/finvideo-posts.jsonl`. | Later, when the directory needs fresh posts | Left for later (27 Nov 2026) |
 | 3 | Day folder + file-name title | Month + day scan at any depth, all videos, IST date; `GET /xvideos/folders`; `GET /xvideos/clips?day=` (today by default); title from the file name; desk: month / day selector, `x` mark and inner folder on each row | After 1 | Built (27 Nov 2026) |
 | 4 | Screen read | `x-requirements` + `setup.ps1`; `headline.py` (trial flow); `/screen` + `/speech`; programme-bar fix A, C in the worker; headline job only for clips whose name has no heading | After 3 | Built (27 Nov 2026) |
-| 5 | Tags and handles | Build the directory from the 427 saved `#FINVideo` posts (9 Sep-27 Nov 2026), finish tuning with `eval.py`; `compose.ts` builds `clip_draft`: brand, `#FINVideo`, place, tags, handles (emit / suggest) | After 4 | |
-| 6 | Desk actions + learn | Edit, hold, Copy & Mark Posted, undo, reject; `clip_post`; posted text feeds the directory counts | After 5 | |
+| 5 | Tags and handles | Directory built from the 427 saved `#FINVideo` posts (9 Sep-27 Nov 2026); `compose.ts` (place, label, tags, handles, emit / suggest) on the desk's reads; campaign patterns kept with their own dates | After 4 | Built (27 Nov 2026) |
+| 6 | Desk actions + learn | Edit (`clip_draft`), hold, Copy & Mark Posted, undo, reject; `clip_post`; posted text feeds the directory counts | After 5 | |
 | 7 | Main | Whole flow on the test database, reviews, move to the live database, merge to `main` | Last | |
 
 ## 11. Decided

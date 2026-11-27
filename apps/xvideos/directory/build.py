@@ -181,7 +181,10 @@ def main():
 
     # ---------- tags.json ----------
     place_by_tag = {d["tag"].lower(): d for d in places}
-    camp_by_tag = {c["tag"].lower(): c for c in campaigns}
+    # A campaign tag can have several patterns, each with its own dates (campaigns.json): all are kept
+    camp_by_tag = defaultdict(list)
+    for c in campaigns:
+        camp_by_tag[c["tag"].lower()].append(c)
     person_by_tag = {}
     for e in shared.values():
         for nm in e["names_en"]:
@@ -208,8 +211,9 @@ def main():
             continue
         camp = camp_by_tag.get(tl)
         if camp:
-            tags.append({**base, "kind": camp.get("kind", "keyword"), "rule": "suggest", "pattern": camp.get("pattern"),
-                         "start": camp.get("start"), "end": camp.get("end"), "keyword_source": "campaigns.json"}); continue
+            tags.append({**base, "kind": camp[0].get("kind", "keyword"), "rule": "suggest",
+                         "patterns": [{"pattern": c.get("pattern"), "start": c.get("start"), "end": c.get("end")} for c in camp],
+                         "keyword_source": "campaigns.json"}); continue
         person = person_by_tag.get(squash(t)) or person_by_tag.get(squash(re.sub(r"^(CM|PM)", "", t)))
         if person:
             tags.append({**base, "kind": "person", "rule": "suggest", "linked_handle": person["handle"],

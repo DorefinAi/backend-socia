@@ -1,0 +1,27 @@
+{
+ "office_exclusion_lists": {
+  "other_states": [
+   "बिहार",
+   "Bihar"
+  ]
+ },
+ "entries": [
+  {
+   "handle": "@PersonA",
+   "kind": "person",
+   "names_hi": [
+    "राम कुमार"
+   ],
+   "names_en": [
+    "Ram Kumar"
+   ]
+  },
+  {
+   "handle": "@ReporterAlso",
+   "kind": "person",
+   "names_hi": [
+    "अलग नाम"
+   ]
+  }
+ ]
+}

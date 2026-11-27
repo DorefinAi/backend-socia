@@ -1,0 +1,2441 @@
+{
+ "version": 1,
+ "built_from": {
+  "posts": 427,
+  "days": [
+   "2026-09-09",
+   "2026-10-20",
+   "2026-10-21",
+   "2026-10-30",
+   "2026-11-09",
+   "2026-11-10",
+   "2026-11-11",
+   "2026-11-12",
+   "2026-11-13",
+   "2026-11-21",
+   "2026-11-27"
+  ],
+  "until": null,
+  "shared_directory": "C:\\vartmaan\\code\\digital\\backend-xvideos\\apps\\worker\\config"
+ },
+ "min_uses": 2,
+ "_note": "@handles the desk used on #FINVideo posts, with the breaking desk's names and keywords for each. Handles not in that directory are listed with status needs_keywords and are never added on their own.",
+ "entries": [
+  {
+   "handle": "@BJP4Rajasthan",
+   "uses": 51,
+   "share": 0.119,
+   "last_seen": "2026-11-27",
+   "kind": "party",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "भाजपा राजस्थान",
+    "प्रदेश भाजपा",
+    "बीजेपी राजस्थान",
+    "भाजपा प्रदेश"
+   ],
+   "keywords_en": [
+    "BJP Rajasthan"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@BhajanlalBjp",
+   "uses": 42,
+   "share": 0.098,
+   "last_seen": "2026-11-12",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "भजनलाल शर्मा",
+    "भजन लाल शर्मा",
+    "सीएम भजनलाल",
+    "सीएम भजनलाल शर्मा",
+    "मुख्यमंत्री भजनलाल शर्मा",
+    "मुख्यमंत्री भजनलाल",
+    "सीएम शर्मा",
+    "मुख्यमंत्री शर्मा"
+   ],
+   "names_en": [
+    "Bhajanlal Sharma",
+    "Bhajan Lal Sharma",
+    "CM Bhajanlal Sharma",
+    "CM Bhajan Lal Sharma"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@INCRajasthan",
+   "uses": 36,
+   "share": 0.084,
+   "last_seen": "2026-11-27",
+   "kind": "party",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "राजस्थान कांग्रेस",
+    "प्रदेश कांग्रेस",
+    "पीसीसी",
+    "राजस्थान प्रदेश कांग्रेस कमेटी"
+   ],
+   "keywords_en": [
+    "Rajasthan Congress",
+    "Rajasthan PCC"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@RajGovOfficial",
+   "uses": 36,
+   "share": 0.084,
+   "last_seen": "2026-11-27",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "राजस्थान सरकार"
+   ],
+   "keywords_en": [
+    "Rajasthan Government",
+    "Government of Rajasthan"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@jaipur_police",
+   "uses": 25,
+   "share": 0.059,
+   "last_seen": "2026-11-27",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "जयपुर पुलिस",
+    "जयपुर पुलिस कमिश्नरेट",
+    "पुलिस कमिश्नरेट जयपुर",
+    "पुलिस आयुक्तालय जयपुर"
+   ],
+   "keywords_en": [
+    "Jaipur Police",
+    "Jaipur Police Commissionerate"
+   ],
+   "rule": "emit"
+  },
+  {
+   "handle": "@Anandsharma4bjp",
+   "uses": 15,
+   "share": 0.035,
+   "last_seen": "2026-11-11",
+   "kind": "unknown",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "in_shared_directory": false,
+   "keywords_hi": [],
+   "keywords_en": [],
+   "examples": [
+    "रघुवंशपुरम आश्रम में दिव्य श्रीराम कथा एवं नवकुण्डीय महायज्ञ, संत मुरलीधर महाराज के पावन स",
+    "Dussehra 2026: आदर्श नगर में दशहरा आयोजन 2026, CM Bhajanlal Sharma का संबोधन। Vijayadasham",
+    "Panchayat Election 2026: BJP प्रदेश कार्यालय में 17 जिलों की बैठकें, CM Bhajanlal Sharma भ"
+   ]
+  },
+  {
+   "handle": "@svoruganti1466",
+   "uses": 13,
+   "share": 0.03,
+   "last_seen": "2026-11-27",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "मुख्य सचिव वी. श्रीनिवास",
+    "मुख्य सचिव वी श्रीनिवास",
+    "वी. श्रीनिवास"
+   ],
+   "names_en": [
+    "V. Srinivas",
+    "Chief Secretary V Srinivas"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@KotaPolice",
+   "uses": 13,
+   "share": 0.03,
+   "last_seen": "2026-11-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Kota",
+   "towns": [
+    "कुन्हाड़ी",
+    "नयापुरा",
+    "गुमानपुरा",
+    "विज्ञान नगर",
+    "महावीर नगर",
+    "दादाबाड़ी",
+    "जवाहर नगर",
+    "तलवंडी",
+    "बोरखेड़ा",
+    "उद्योग नगर",
+    "भीमगंजमंडी",
+    "आरकेपुरम",
+    "किशोरपुरा",
+    "कैथूनीपोल",
+    "मकबरा",
+    "अनंतपुरा"
+   ],
+   "words": [
+    "कोटा शहर",
+    "कोटा सिटी",
+    "सिटी एसपी",
+    "शहर एसपी",
+    "सिटी SP"
+   ],
+   "rule": "emit"
+  },
+  {
+   "handle": "@dineshdangi84",
+   "uses": 12,
+   "share": 0.028,
+   "last_seen": "2026-11-27",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "dinesh_dangi"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur",
+    "Delhi"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@CP_Jodhpur",
+   "uses": 12,
+   "share": 0.028,
+   "last_seen": "2026-11-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "जोधपुर पुलिस",
+    "जोधपुर पुलिस कमिश्नरेट",
+    "पुलिस कमिश्नरेट जोधपुर",
+    "पुलिस आयुक्तालय जोधपुर"
+   ],
+   "keywords_en": [
+    "Jodhpur Police",
+    "Jodhpur Police Commissionerate"
+   ],
+   "rule": "emit"
+  },
+  {
+   "handle": "@naresh_jsharma",
+   "uses": 11,
+   "share": 0.026,
+   "last_seen": "2026-11-21",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "naresh",
+    "naresh_sharma"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@kunwarraghav",
+   "uses": 10,
+   "share": 0.023,
+   "last_seen": "2026-11-27",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "raghav",
+    "kunwar_raghav"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Bikaner"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@rituraj9999",
+   "uses": 10,
+   "share": 0.023,
+   "last_seen": "2026-11-27",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "rituraj",
+    "rituaj"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@GovindDotasra",
+   "uses": 9,
+   "share": 0.021,
+   "last_seen": "2026-11-11",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "गोविंद सिंह डोटासरा",
+    "गोविन्द सिंह डोटासरा",
+    "पीसीसी चीफ डोटासरा"
+   ],
+   "names_en": [
+    "Govind Singh Dotasra"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@narendramodi",
+   "uses": 9,
+   "share": 0.021,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "नरेंद्र मोदी",
+    "नरेन्द्र मोदी",
+    "पीएम मोदी",
+    "प्रधानमंत्री मोदी",
+    "प्रधानमंत्री नरेंद्र मोदी"
+   ],
+   "names_en": [
+    "Narendra Modi",
+    "PM Modi"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@ashokgehlot51",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "अशोक गहलोत",
+    "पूर्व मुख्यमंत्री अशोक गहलोत",
+    "पूर्व सीएम गहलोत",
+    "पूर्व सीएम अशोक गहलोत"
+   ],
+   "names_en": [
+    "Ashok Gehlot"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@aishwaryam99",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-12",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "aishwarya",
+    "ashwarya",
+    "aishwariya",
+    "aishwaray",
+    "aiswarya"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur",
+    "Delhi"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@bhanwar_83",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-27",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "bhanwar"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Kota"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@satyatv99_news",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-27",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "satya"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@Jaipur_Airport",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-27",
+   "kind": "institution",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "जयपुर एयरपोर्ट",
+    "जयपुर अंतरराष्ट्रीय हवाई अड्डा",
+    "सांगानेर एयरपोर्ट"
+   ],
+   "keywords_en": [
+    "Jaipur Airport",
+    "Jaipur International Airport"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@JprRuralPolice",
+   "uses": 8,
+   "share": 0.019,
+   "last_seen": "2026-11-27",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Jaipur",
+   "towns": [
+    "चौमूं",
+    "चौमू",
+    "सामोद",
+    "कालाडेरा",
+    "गोविंदगढ़",
+    "रेनवाल",
+    "किशनगढ़ रेनवाल",
+    "जोबनेर",
+    "फुलेरा",
+    "सांभर",
+    "साम्भर",
+    "सांभर लेक",
+    "साम्भर लेक",
+    "जमवारामगढ़",
+    "जमवा रामगढ़",
+    "मनोहरपुर",
+    "शाहपुरा",
+    "अमरसर"
+   ],
+   "words": [
+    "जयपुर ग्रामीण",
+    "जयपुर देहात",
+    "ग्रामीण पुलिस",
+    "ग्रामीण एसपी",
+    "ग्रामीण SP"
+   ],
+   "rule": "emit"
+  },
+  {
+   "handle": "@KumariDiya",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-12",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "दिया कुमारी",
+    "दीया कुमारी",
+    "उपमुख्यमंत्री दिया कुमारी",
+    "डिप्टी सीएम दिया कुमारी",
+    "उप मुख्यमंत्री दिया कुमारी",
+    "वित्त मंत्री दिया कुमारी"
+   ],
+   "names_en": [
+    "Diya Kumari",
+    "Deputy CM Diya Kumari"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@yogesh2727sh1",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-27",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "yogesh",
+    "yogesh_sharma"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@ml_vikas",
+   "uses": 7,
+   "share": 0.016,
+   "last_seen": "2026-11-21",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "vikas",
+    "ml_vikas",
+    "vikash"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@CeoRajasthan",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-10-21",
+   "kind": "institution",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "मुख्य निर्वाचन अधिकारी",
+    "निर्वाचन विभाग",
+    "निर्वाचक नामावली",
+    "मतदाता सूची",
+    "मतदाता सूचियों",
+    "संक्षिप्त पुनरीक्षण",
+    "गहन पुनरीक्षण",
+    "बीएलओ",
+    "एसआईआर",
+    "वोटर लिस्ट",
+    "वोटर लिस्टों",
+    "निर्वाचन"
+   ],
+   "keywords_en": [
+    "CEO Rajasthan",
+    "BLO",
+    "SIR",
+    "voter list"
+   ],
+   "suggest_only": true,
+   "rule": "suggest"
+  },
+  {
+   "handle": "@AjmerpoliceR",
+   "uses": 6,
+   "share": 0.014,
+   "last_seen": "2026-11-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Ajmer",
+   "rule": "emit"
+  },
+  {
+   "handle": "@BikanerDm",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Bikaner",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@TikaRamJullyINC",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-10-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "टीकाराम जूली",
+    "टीका राम जूली",
+    "नेता प्रतिपक्ष टीकाराम जूली",
+    "नेता प्रतिपक्ष जूली"
+   ],
+   "names_en": [
+    "Tika Ram Jully",
+    "Tikaram Jully"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@BJP4India",
+   "uses": 5,
+   "share": 0.012,
+   "last_seen": "2026-11-11",
+   "kind": "party",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "party-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "भाजपा",
+    "बीजेपी"
+   ],
+   "keywords_en": [
+    "BJP"
+   ],
+   "party": "bjp",
+   "scope": "national",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@gssjodhpur",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-12",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "गजेंद्र सिंह शेखावत",
+    "गजेन्द्र सिंह शेखावत",
+    "केंद्रीय मंत्री गजेंद्र सिंह शेखावत"
+   ],
+   "names_en": [
+    "Gajendra Singh Shekhawat"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@JodhpurDm",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-21",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Jodhpur",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@ombirlakota",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "ओम बिरला",
+    "ओम बिड़ला",
+    "लोकसभा अध्यक्ष ओम बिरला",
+    "स्पीकर ओम बिरला"
+   ],
+   "names_en": [
+    "Om Birla",
+    "Lok Sabha Speaker Om Birla"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@GajendraKhimsar",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "गजेंद्र सिंह खींवसर",
+    "गजेन्द्र सिंह खींवसर",
+    "चिकित्सा मंत्री खींवसर",
+    "चिकित्सा मंत्री गजेंद्र सिंह खींवसर"
+   ],
+   "names_en": [
+    "Gajendra Singh Khimsar",
+    "Gajendra Singh Khinvsar"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@jawaharbedam",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-10",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "जवाहर सिंह बेढम",
+    "जवाहर सिंह बेढ़म",
+    "गृह राज्य मंत्री जवाहर सिंह बेढम",
+    "गृह राज्य मंत्री बेढम"
+   ],
+   "names_en": [
+    "Jawahar Singh Bedham",
+    "Jawahar Singh Bedam"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@AAI_Official",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "company",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "भारतीय विमानपत्तन प्राधिकरण",
+    "एयरपोर्ट अथॉरिटी",
+    "एयरपोर्ट्स अथॉरिटी",
+    "एएआई"
+   ],
+   "keywords_en": [
+    "Airports Authority of India",
+    "AAI"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@UdaipurPolice",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Udaipur",
+   "rule": "emit"
+  },
+  {
+   "handle": "@arjunrammeghwal",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-10",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "अर्जुन राम मेघवाल",
+    "अर्जुनराम मेघवाल",
+    "कानून मंत्री अर्जुन राम मेघवाल"
+   ],
+   "names_en": [
+    "Arjun Ram Meghwal"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@JhalawarPolice",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Jhalawar",
+   "rule": "emit"
+  },
+  {
+   "handle": "@JaisalmerPolice",
+   "uses": 4,
+   "share": 0.009,
+   "last_seen": "2026-11-12",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Jaisalmer",
+   "rule": "emit"
+  },
+  {
+   "handle": "@Bikaner_Police",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Bikaner",
+   "rule": "emit"
+  },
+  {
+   "handle": "@NagaurPolice",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Nagaur",
+   "rule": "emit"
+  },
+  {
+   "handle": "@DcDmJaipur",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Jaipur",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@RahulGandhi",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "राहुल गांधी"
+   ],
+   "names_en": [
+    "Rahul Gandhi"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@PoliceRajasthan",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "police",
+   "handle_type": "police",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "पीएचक्यू"
+   ],
+   "keywords_en": [
+    "Police Headquarters"
+   ],
+   "rule": "emit"
+  },
+  {
+   "handle": "@SirohiPolice",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-30",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Sirohi",
+   "rule": "emit"
+  },
+  {
+   "handle": "@OfficialDPRPP",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "unknown",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "in_shared_directory": false,
+   "keywords_hi": [],
+   "keywords_en": [],
+   "examples": [
+    "पुलिसकर्मी ने परिवार पर की फायरिंग, सरकारी बंदूक से पत्नी और दो बेटों को मारी गोली। Punjab",
+    "Amritsar Rural Police ने एक नेटवर्क का भंडाफोड़ किया, सात आरोपी गिरफ्तार",
+    "Accident: पराली के धुएं ने ली महिला की जान, दो बाइक की आमने-सामने भिड़ंत"
+   ]
+  },
+  {
+   "handle": "@madanrrathore",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-10-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "भाजपा प्रदेशाध्यक्ष मदन राठौड़",
+    "प्रदेशाध्यक्ष मदन राठौड़",
+    "मदन राठौड़"
+   ],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@NWRailways",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-10",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "उत्तर पश्चिम रेलवे",
+    "एनडब्ल्यूआर",
+    "उ.प.रे."
+   ],
+   "keywords_en": [
+    "North Western Railway",
+    "NWR"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@BundiPolice",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Bundi",
+   "rule": "emit"
+  },
+  {
+   "handle": "@BMacharyaBJP",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "party",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "party-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "बालमुकुंद आचार्य",
+    "बाल मुकुंद आचार्य",
+    "बालमुकुन्द आचार्य",
+    "बालमुकुंदाचार्य",
+    "बालमुकुन्दाचार्य"
+   ],
+   "keywords_en": [
+    "Balmukund Acharya",
+    "Bal Mukund Acharya",
+    "Balmukundacharya",
+    "Balmukundachary"
+   ],
+   "party": "bjp",
+   "scope": "mla",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@ForestRajasthan",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "वन विभाग"
+   ],
+   "names_en": [
+    "Forest Department"
+   ],
+   "keywords_hi": [
+    "पैंथर",
+    "बाघ",
+    "टाइगर",
+    "वन्यजीव",
+    "लेपर्ड",
+    "तेंदुआ",
+    "सरिस्का",
+    "बाघ परियोजना"
+   ],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@PMOIndia",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "पीएमओ",
+    "प्रधानमंत्री कार्यालय"
+   ],
+   "keywords_en": [
+    "PMO"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@SPsawaimadhopur",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-12",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "SawaiMadhopur",
+   "rule": "emit"
+  },
+  {
+   "handle": "@TonkPolice_",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-27",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Tonk",
+   "rule": "emit"
+  },
+  {
+   "handle": "@AlwarPolice",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Alwar",
+   "rule": "emit"
+  },
+  {
+   "handle": "@VasudevDevnani",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "वासुदेव देवनानी",
+    "विधानसभा अध्यक्ष वासुदेव देवनानी",
+    "विधानसभा अध्यक्ष देवनानी",
+    "स्पीकर देवनानी"
+   ],
+   "names_en": [
+    "Vasudev Devnani",
+    "Speaker Vasudev Devnani"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@DrSatishPoonia",
+   "uses": 3,
+   "share": 0.007,
+   "last_seen": "2026-11-11",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "सतीश पूनिया",
+    "डॉ. सतीश पूनिया",
+    "सतीश पूनियां"
+   ],
+   "names_en": [
+    "Satish Poonia"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@vyaskamalkant",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-30",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "kamalkant",
+    "kamal kant",
+    "kamalkant_vyas",
+    "kk_vyas"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@DineshKasana15",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "dinesh_kasana",
+    "kasana",
+    "dineshkasana"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@INCIndia",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-20",
+   "kind": "party",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "party-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "कांग्रेस"
+   ],
+   "keywords_en": [
+    "Congress",
+    "INC"
+   ],
+   "party": "congress",
+   "scope": "national",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@VasundharaBJP",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-10-20",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "वसुंधरा राजे",
+    "वसुन्धरा राजे",
+    "पूर्व मुख्यमंत्री वसुंधरा राजे"
+   ],
+   "names_en": [
+    "Vasundhara Raje"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@ChuruPolice",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Churu",
+   "rule": "emit"
+  },
+  {
+   "handle": "@DmDausa",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Dausa",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@RSSorg",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "institution",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "आरएसएस",
+    "राष्ट्रीय स्वयंसेवक संघ"
+   ],
+   "keywords_en": [
+    "RSS"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@RailMinIndia",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "रेल मंत्रालय",
+    "भारतीय रेल"
+   ],
+   "keywords_en": [
+    "Ministry of Railways",
+    "Indian Railways"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@BaranPolice",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Baran",
+   "rule": "emit"
+  },
+  {
+   "handle": "@DmBundii",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Bundi",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@MPPoliceDeptt",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "unknown",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "in_shared_directory": false,
+   "keywords_hi": [],
+   "keywords_en": [],
+   "examples": [
+    "ट्रॉली बैग में सलवार सूट की पैकिंग के बीच 7 करोड़ की ड्रग्स, Delhi का रहने वाला आरोपी युवक",
+    "शराब पीने से रोकने पर युवक ने उठाया आत्मघाती कदम, पानी की टंकी से छलांग लगाने पर 20 वर्षीय"
+   ]
+  },
+  {
+   "handle": "@JhabarKharraBJP",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "unknown",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "in_shared_directory": false,
+   "keywords_hi": [],
+   "keywords_en": [],
+   "examples": [
+    "Rajasthan Panchayat Election Phase 2: UDH मंत्री Jhabar Singh Kharra ने किया मतदान",
+    "Sikar में पंचायत चुनाव का अंतिम चरण 14 नवंबर से, चुनाव प्रचार में उतरे मंत्री  Jhabar Sing"
+   ]
+  },
+  {
+   "handle": "@patrakarsandeep",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "sandeep"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "SawaiMadhopur",
+    "Sawaimadhopur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@SikarPolice",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Sikar",
+   "rule": "emit"
+  },
+  {
+   "handle": "@jdajaipur",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "जेडीए",
+    "जयपुर विकास प्राधिकरण"
+   ],
+   "keywords_en": [
+    "JDA",
+    "Jaipur Development Authority"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@KarauliPolice",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Karauli",
+   "rule": "emit"
+  },
+  {
+   "handle": "@PremBhandariNYC",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-10",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "प्रेम भंडारी"
+   ],
+   "names_en": [
+    "Prem Bhandari"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@police_haryana",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-21",
+   "kind": "unknown",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "in_shared_directory": false,
+   "keywords_hi": [],
+   "keywords_en": [],
+   "examples": [
+    "हरिद्वार गंगा स्नान करने जा रहे 6 दोस्तों की दर्दनाक मौत, हादसे के बाद कार में लगी आग",
+    "बड़ोपट्टी टोल के पास बदमाश ने STF पर चलाई गोली, बाल-बाल बचा जवान"
+   ]
+  },
+  {
+   "handle": "@crpfindia",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "police",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "सीआरपीएफ",
+    "केंद्रीय रिजर्व पुलिस बल"
+   ],
+   "keywords_en": [
+    "CRPF"
+   ],
+   "rule": "emit"
+  },
+  {
+   "handle": "@Bhilwara_Police",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-12",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Bhilwara",
+   "rule": "emit"
+  },
+  {
+   "handle": "@pratapgarhpol",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Pratapgarh",
+   "rule": "emit"
+  },
+  {
+   "handle": "@AshokChandnaINC",
+   "uses": 2,
+   "share": 0.005,
+   "last_seen": "2026-11-27",
+   "kind": "unknown",
+   "rule": "suggest",
+   "status": "needs_keywords",
+   "in_shared_directory": false,
+   "keywords_hi": [],
+   "keywords_en": [],
+   "examples": [
+    "हिंडौली विधायक Ashok Chandna पर पुलिस अधिकारियों से बदसलूकी के आरोप",
+    "हिंडोली विधायक Ashok Chandna सहित आधा दर्जन लोगों के खिलाफ मामला दर्ज"
+   ]
+  },
+  {
+   "handle": "@SachinPilot",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-09-09",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "सचिन पायलट"
+   ],
+   "names_en": [
+    "Sachin Pilot"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@IndiGo6E",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-09-09",
+   "kind": "company",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "इंडिगो"
+   ],
+   "keywords_en": [
+    "IndiGo"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@UdaipurDm",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-09-09",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Udaipur",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@viren_choudhary",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-09-09",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "viren",
+    "viren_choudhary"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@DrMohanBhagwat",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "मोहन भागवत",
+    "डॉ. मोहन भागवत"
+   ],
+   "names_en": [
+    "Mohan Bhagwat"
+   ],
+   "keywords_hi": [
+    "संघ प्रमुख"
+   ],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@byadavbjp",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "केंद्रीय मंत्री भूपेंद्र यादव",
+    "भूपेंद्र यादव"
+   ],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@DelhiPolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "police",
+   "handle_type": "police",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "दिल्ली पुलिस"
+   ],
+   "keywords_en": [
+    "Delhi Police"
+   ],
+   "rule": "emit"
+  },
+  {
+   "handle": "@BharatpurPolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Bharatpur",
+   "rule": "emit"
+  },
+  {
+   "handle": "@DMDeedwanaKucha",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "DidwanaKuchaman",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@AmitShahOffice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-20",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "अमित शाह कार्यालय",
+    "गृह मंत्री कार्यालय",
+    "गृहमंत्री कार्यालय"
+   ],
+   "keywords_en": [
+    "Office of Amit Shah"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@flyspicejet",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "company",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "स्पाइसजेट",
+    "स्पाइस जेट"
+   ],
+   "keywords_en": [
+    "SpiceJet",
+    "Spice Jet"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@Swachh_Jaipur",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "department",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "नगर निगम जयपुर"
+   ],
+   "names_en": [
+    "Swachh Jaipur"
+   ],
+   "keywords_hi": [
+    "सफाई",
+    "कचरा"
+   ],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@DholpurPolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Dholpur",
+   "rule": "emit"
+  },
+  {
+   "handle": "@BSF_India",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "institution",
+   "handle_type": "police",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "सीमा सुरक्षा बल",
+    "बीएसएफ",
+    "तनोट"
+   ],
+   "names_en": [
+    "BSF"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@sgnrpolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "SriGanganagar",
+   "rule": "emit"
+  },
+  {
+   "handle": "@Barmer_Police",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Barmer",
+   "rule": "emit"
+  },
+  {
+   "handle": "@hanumanbeniwal",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "हनुमान बेनीवाल",
+    "सांसद हनुमान बेनीवाल"
+   ],
+   "names_en": [
+    "Hanuman Beniwal"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@ramlalsharmabjp",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-30",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "रामलाल शर्मा"
+   ],
+   "names_en": [
+    "Ramlal Sharma"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@RajCMO",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-30",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "मुख्यमंत्री कार्यालय",
+    "सीएमओ",
+    "मुख्यमंत्री कार्यालय राजस्थान",
+    "संपर्क हेल्पलाइन",
+    "राजस्थान संपर्क"
+   ],
+   "keywords_en": [
+    "CMO Rajasthan",
+    "Chief Minister's Office"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@parmarshivendra",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-10-30",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "shivendra",
+    "shivendra_parmar"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@DausaPolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-09",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Dausa",
+   "rule": "emit"
+  },
+  {
+   "handle": "@KatariaLalchand",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-10",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "लालचंद कटारिया",
+    "कटारिया"
+   ],
+   "names_en": [
+    "Lalchand Kataria"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@OmMathur_Raj",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-10",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "ओम माथुर",
+    "राज्यपाल ओम"
+   ],
+   "names_en": [
+    "Om Mathur"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@RajAssembly",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-10",
+   "kind": "institution",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "राजस्थान विधानसभा",
+    "विधानसभा सचिवालय"
+   ],
+   "keywords_en": [
+    "Rajasthan Vidhan Sabha",
+    "Rajasthan Legislative Assembly"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@my_rajasthan",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "department",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "पर्यटन विभाग",
+    "राजस्थान पर्यटन"
+   ],
+   "keywords_en": [
+    "Rajasthan Tourism"
+   ],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@HmghPolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Hanumangarh",
+   "rule": "emit"
+  },
+  {
+   "handle": "@Sanjay4India1",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "वन मंत्री संजय शर्मा",
+    "वन राज्य मंत्री संजय शर्मा"
+   ],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@Dcdmkota",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Kota",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@PratapgrhPolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Pratapgarh",
+   "rule": "emit"
+  },
+  {
+   "handle": "@BharatD1988",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-11",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "bharat",
+    "bharat_d"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Jaipur"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@madandilawar",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-12",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "मदन दिलावर",
+    "शिक्षा मंत्री मदन दिलावर",
+    "शिक्षा मंत्री दिलावर"
+   ],
+   "names_en": [
+    "Madan Dilawar"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@JhunjhunuPolice",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-21",
+   "kind": "police",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Jhunjhunu",
+   "rule": "emit"
+  },
+  {
+   "handle": "@kharge",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-21",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "मल्लिकार्जुन खड़गे",
+    "खड़गे"
+   ],
+   "names_en": [
+    "Mallikarjun Kharge"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@Ra_THORe",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "राज्यवर्धन सिंह राठौड़",
+    "राज्यवर्धन राठौड़",
+    "कर्नल राज्यवर्धन राठौड़",
+    "उद्योग मंत्री राज्यवर्धन राठौड़"
+   ],
+   "names_en": [
+    "Rajyavardhan Rathore",
+    "Rajyavardhan Singh Rathore",
+    "Col Rajyavardhan Rathore"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@DmBharatpur",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Bharatpur",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@DCDMBALOTRA",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Balotra",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@DMJhunjhunu",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Jhunjhunu",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@hlnagar",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "person",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "subject-handles.json",
+   "names_hi": [
+    "हीरालाल नागर",
+    "हीरा लाल नागर",
+    "ऊर्जा मंत्री हीरालाल नागर"
+   ],
+   "names_en": [
+    "Heeralal Nagar",
+    "Hiralal Nagar"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "rule": "suggest"
+  },
+  {
+   "handle": "@ashvinigokul",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "reporter",
+   "handle_type": "person",
+   "in_shared_directory": true,
+   "keyword_source": "reporter-handles.json",
+   "names_hi": [],
+   "names_en": [
+    "ashvini",
+    "ashwini"
+   ],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "districts": [
+    "Delhi"
+   ],
+   "match_on": "share file name token (names_en), never the title",
+   "rule": "by_file_name"
+  },
+  {
+   "handle": "@AICCMedia",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "party",
+   "handle_type": "institution",
+   "in_shared_directory": true,
+   "keyword_source": "party-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [
+    "एआईसीसी"
+   ],
+   "keywords_en": [
+    "AICC"
+   ],
+   "party": "congress",
+   "scope": "media",
+   "rule": "suggest"
+  },
+  {
+   "handle": "@DmChuru",
+   "uses": 1,
+   "share": 0.002,
+   "last_seen": "2026-11-27",
+   "kind": "collector",
+   "handle_type": "district",
+   "in_shared_directory": true,
+   "keyword_source": "district-handles.json",
+   "names_hi": [],
+   "names_en": [],
+   "keywords_hi": [],
+   "keywords_en": [],
+   "district": "Churu",
+   "rule": "suggest"
+  }
+ ]
+}

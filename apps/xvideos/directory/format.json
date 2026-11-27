@@ -1,0 +1,177 @@
+{
+ "version": 1,
+ "_note": "How a published X video post is laid out, measured on the desk's own #FINVideo posts. Built by build.py; do not edit by hand.",
+ "identifier": {
+  "tag": "FINVideo",
+  "rule": "A post is an X video post exactly when it carries #FINVideo. Every other count in this directory is over such posts only."
+ },
+ "measured_on": {
+  "posts": 427,
+  "days": [
+   "2026-09-09",
+   "2026-10-20",
+   "2026-10-21",
+   "2026-10-30",
+   "2026-11-09",
+   "2026-11-10",
+   "2026-11-11",
+   "2026-11-12",
+   "2026-11-13",
+   "2026-11-21",
+   "2026-11-27"
+  ],
+  "recent_days_from": "2026-11-13",
+  "recent_posts": 58
+ },
+ "layout": {
+  "line_1": "the title (headline, then an optional suffix)",
+  "last_line": "all hashtags, then all @handles, space separated",
+  "posts_matching": 423
+ },
+ "tag_order_now": {
+  "first_tag": [
+   [
+    "RajasthanWithFirstIndia",
+    43
+   ],
+   [
+    "FirstIndiaNews",
+    8
+   ],
+   [
+    "FINVideo",
+    7
+   ]
+  ],
+  "FINVideo_position": [
+   [
+    1,
+    7
+   ],
+   [
+    2,
+    51
+   ]
+  ],
+  "rule": "brand tag first, #FINVideo second (since 21 Nov 2026; before that #FINVideo came first)"
+ },
+ "brand": {
+  "#RajasthanWithFirstIndia": "the story is in Rajasthan",
+  "#FirstIndiaNews": "outside Rajasthan",
+  "uses": {
+   "RajasthanWithFirstIndia": 347,
+   "FirstIndiaNews": 83
+  }
+ },
+ "state_tag": {
+  "tag": "RajasthanNews",
+  "share_all": 0.45,
+  "share_recent": 0.53
+ },
+ "place_tag_form_recent": {
+  "#<City>": 32,
+  "#<City>News": 7
+ },
+ "title_suffix_forms": {
+  "all": [
+   [
+    "| <Place> News",
+    200
+   ],
+   [
+    "none",
+    73
+   ],
+   [
+    "| <Topic or place>",
+    47
+   ],
+   [
+    "| <Topic or place> | <Place> News",
+    41
+   ],
+   [
+    "। <Place> News",
+    24
+   ],
+   [
+    "| <Topic or place> | <Topic or place>",
+    19
+   ],
+   [
+    "। <Topic or place>",
+    7
+   ],
+   [
+    "। <Place> News | <Place> News",
+    5
+   ],
+   [
+    "। <Topic or place> । <Topic or place>",
+    3
+   ],
+   [
+    "। <Topic or place> । <Place> News",
+    3
+   ],
+   [
+    "। <Place> News | <Topic or place>",
+    2
+   ],
+   [
+    "। <Topic or place> । <Topic or place> । <Place> News",
+    1
+   ],
+   [
+    "| <Topic or place> । <Place> News",
+    1
+   ],
+   [
+    "| <Topic or place> | <Topic or place> | <Place> News",
+    1
+   ]
+  ],
+  "recent": [
+   [
+    "| <Place> News",
+    28
+   ],
+   [
+    "| <Topic or place> | <Topic or place>",
+    9
+   ],
+   [
+    "| <Topic or place> | <Place> News",
+    6
+   ],
+   [
+    "| <Topic or place>",
+    5
+   ],
+   [
+    "। <Topic or place>",
+    4
+   ],
+   [
+    "। <Place> News",
+    3
+   ],
+   [
+    "। <Place> News | <Place> News",
+    1
+   ],
+   [
+    "none",
+    1
+   ],
+   [
+    "। <Topic or place> । <Place> News",
+    1
+   ]
+  ]
+ },
+ "file_name_title": {
+  "rule": "The share file's name, without the x / done marks and the extension, is often the posted title. Windows does not allow '|' in a name, so the desk types two or more spaces where the title has ' | '.",
+  "measured": "27 Nov 2026: the heading of all 29 posted videos is a file name on the share (26 within 0.75 letter similarity, 3 the same heading with a longer suffix); 22 of those 29 files carried no x mark. X-marked files 22-27 Nov: 130 of 230 names hold a full heading, the rest a word ('KOTAA', 'JDR Hadsa')."
+ }
+}

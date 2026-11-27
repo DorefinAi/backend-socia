@@ -1,0 +1,15 @@
+{
+ "state": [],
+ "districts": {
+  "Tonk": [
+   {
+    "handle": "@TonkPolice",
+    "role": "police"
+   },
+   {
+    "handle": "@DMTonk",
+    "role": "collector"
+   }
+  ]
+ }
+}

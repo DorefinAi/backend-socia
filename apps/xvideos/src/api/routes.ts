@@ -115,7 +115,7 @@ export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (a
         statuses: statuses.length ? (statuses as XvClipStatus[]) : ["seen", "reading", "new", "failed"],
         limit: req.query.limit,
       });
-      return { day, clips: rows.map((c) => xvWireClip(c, null, false)) };
+      return { day, clips: rows.map((r) => xvWireClip(r.clip, null, false, r.screenHeadline)) };
     },
   );
 
@@ -145,7 +145,7 @@ export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (a
     const user = viewer(req);
     const found = await xvGetClip(db, user.orgId, req.params.id);
     if (!found) throw httpError(404, "not_found", "No such clip.");
-    return { clip: xvWireClip(found.clip, found.evidence, true) };
+    return { clip: xvWireClip(found.clip, found.evidence, true, found.screenHeadline) };
   });
 
   app.get("/xvideos/clips/:id/video", { schema: { params: Id } }, async (req, reply) => {

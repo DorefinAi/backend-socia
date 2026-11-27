@@ -30,27 +30,29 @@ desk.
 digital\
   backend\apps\xvideos\              in git (this folder)
     README.md                        this file
-    .env.example                     every setting, with defaults
+    .env.example                     every setting, with defaults (copy to .env: the worker, the api and media.py read it)
     src\share\rules.ts               the share layout, x / done marks, the title left in a file name (pure)
-    src\worker\                      its own process: watch, probe, title, screen read, compose, learn
+    src\worker\                      its own process: watch, probe, headline (screen read), compose, learn
+    src\headline\                    step 4's rules: the day's programme filler (lines.ts), the model's prompt and answer (model.ts)
     src\db\  migrations\             schema "xvideos", own migrations
     src\api\                         the desk's routes (mounted by apps/api when XVIDEOS=true)
     test\                            vitest
     media\                           the Python GPU service
-      media.py                       HTTP service on 127.0.0.1:8300: /health, /read, /headline
-      headline.py                    screen reading: frames, OCR, bar lines, the model's headline
-      requirements.txt               pinned versions of everything the service needs
-      setup.ps1                      builds digital\x-requirements on a new machine (§9)
+      media.py                       HTTP service on 127.0.0.1:8300: /health, /screen, /speech, /read
+      headline.py                    screen reading: frames, OCR, bar lines (moved in from the trial x_headline.py)
+      requirements.txt               what the service needs; requirements.lock.txt pins every package as trials 4-5 ran
+      setup.ps1  setup_models.py     build digital\x-requirements on a new machine (§9)
+      test_headline.py               headline.py's text rules (unittest)
     directory\                       the X video tag and handle directory (§5)
       format.json tags.json handles.json     built files, read by the composer
       build.py eval.py collect.py            build it, test it, collect new #FINVideo posts
       data\finvideo-posts.jsonl              the desk's published #FINVideo posts
 
   x-requirements\                    NOT in git (it sits beside the backend and frontend repos, in neither): the heavy, machine-specific files
-    env\                             Python 3.12 venv for media\ (GPU Paddle, faster-whisper)
-    models\paddle\                   PaddleOCR detection + Devanagari recognition (about 0.1 GB)
-    models\whisper\                  faster-whisper medium and large-v3 (about 4.3 GB)
-    cache\                           posters, stills, frames, evidence per clip
+    env\                             Python 3.12 venv for media\ (GPU Paddle, faster-whisper), about 4 GB
+    models\paddle\official_models\   PaddleOCR detection + Devanagari recognition (about 0.1 GB)
+    models\whisper\large-v3\         faster-whisper large-v3 (about 2.9 GB; the speech fallback uses it too, so no medium)
+    cache\                           spare (posters, stills and the screen read's temp frames go to XVIDEOS_CACHE)
 
 dev-docs\xvideos-trials\             trial scripts and results (trials 1-5, day-2 check), for the record
 ```
@@ -78,7 +80,7 @@ qwen3:14b stays in Ollama's own store (other tools on this PC use the same Ollam
 | 1 | Watch | Walks **today's day folder every 30 s** and **every day folder of the month every 10 min**, and the day the desk asks for with **Refresh** at once. It takes **every video at any depth inside a day folder** (the inner folders follow no fixed pattern: shift folders, desk folders, loose files); the `x` mark is kept as a flag, not a filter. Each day shows what its folder holds: the same video copied into two days is a clip in each. A file is recorded once two scans see the same size and time. A known size + time under a new name is the same clip renamed (`x` → `x…done`). The month and day follow the IST date: a new day folder is picked up when it appears, a new month folder on the 1st. | `src/worker/watch.ts` | Built (`XVIDEOS_SCAN_SECONDS`, `XVIDEOS_MONTH_SCAN_SECONDS`) |
 | 2 | Probe | ffprobe (length, size, codec, sound) and a poster still. | `src/worker/probe.ts` | Built |
 | 3 | Title from the file name | The name without the `x` / `done` marks and the extension. It is a heading when it has 5+ words and 8+ Devanagari letters. Windows does not allow `\|` in a name, so two or more spaces stand for ` \| `: the posted title comes back with its suffix. | `src/share/rules.ts` (`xvHeading`), stored as `clip.heading` | Built |
-| 4 | Screen read | Only when step 3 finds no heading. `POST /headline` on the media service (§6). | `media/headline.py` | Tested (trials 4-5), **to move in** |
+| 4 | Screen read | Only when step 3 finds no heading: `POST /screen` on the media service, the day's programme filler dropped, `POST /speech` when under 2 bar lines are left, qwen3:14b writes the headline (§4.2). | `src/worker/headline.ts`, `src/headline/`, `media/headline.py` | Built (`XVIDEOS_HEADLINE`) |
 | 5 | Compose | Brand tag first, `#FINVideo` second, place tag, then tags and handles from the directory (§5). Emit or suggest per part. | `src/worker/compose.ts` | **To build** |
 | 6 | Desk | Shows **every video in the chosen day folder**, with its inner folder and its `x` / done mark shown on the row. Opens on **today's day folder only** (IST), not yesterday's. A month / day selector outside the clip list picks another day. Edit, hold, Copy & Mark Posted, undo, reject (§8). | `src/api/` + frontend | List built (last 48 h); today-only + selector **next**; actions **to build** |
 | 7 | Learn | A posted clip's final title, tags and handles go into the directory counts and become examples. | `src/worker/learn.ts` + `directory/build.py` | **To build** |
@@ -102,23 +104,49 @@ the same clip. Last month's folders are checked until all their clips are gone.
 
 Chosen after trials 4-5 (27 Nov 2026, scripts and numbers in `dev-docs\xvideos-trials`):
 
+Media service (`POST /screen`, `media/headline.py`):
+
 1. ffmpeg: one frame every 3 s over the first 75 s, scaled to 1280 wide.
 2. Frames grouped by the picture of the red headline bar (one group per bar line).
 3. PaddleOCR 3.x on the GPU (`PP-OCRv5_mobile_det` + `devanagari_PP-OCRv5_mobile_rec`), fixed screen regions only: the bar
    in every frame, the place tag and the right panel once per group.
 4. Bar lines: the words of the bar joined left to right, logo bits dropped, the most typical reading of each line kept (vote),
    half-drawn and repeated lines removed.
-5. Speech only as a fallback: when fewer than 2 bar lines were read (vertical shorts).
-6. qwen3:14b (Ollama, `think: false`, JSON) writes the headline, the place and topic hashtags.
+
+Worker (`src/worker/headline.ts`):
+
+5. The day's programme filler is dropped (fixes A and C below, `src/headline/lines.ts`).
+6. Speech only as a fallback: when fewer than 2 bar lines are left (vertical shorts, programme clips), `POST /speech` reads
+   the first 45 s with the Whisper large-v3 the service already holds.
+7. qwen3:14b (Ollama, `think: false`, JSON) writes the headline, the place and topic hashtags (`src/headline/model.ts`).
+   The headline is the desk's suggestion ("Read from the screen: check it"); place and topics wait for step 5.
+
+The screen read is kept (`clip_screen`), so asking the model again never re-reads the video. A clip whose name gets a
+heading first is skipped; when the service or Ollama is down clips wait without using a try; after 3 failed tries the
+clip is still ready on the desk, only without a suggestion. Clips read before step 4 existed are queued once (days still
+on the share, newest first).
 
 | Measured on | Clips | Median time | Word match with the desk | Place suffix right |
 |---|---|---|---|---|
 | 21 Nov (tuned on) | 26 | 2.8 s | 0.46 (was 0.39 at 68 s) | 15/26 |
 | 27 Nov (held out) | 29 | 3.6 s (1080p) | 0.37: normal news 0.45, election clips 0.23 | 8/29 exact, 15/29 place named |
+| 27 Nov (held out), step 4 as built: fixes A + C, speech for programme clips | 29 | | **0.55**: normal 0.50, election **0.65** (the trial scored the same way: 0.39, 0.49, 0.24) | step 5 |
 
-**Known fix before it goes in (day-2 check):** on election days a programme bar ("गांव की पंचायत") repeats the same 4 general
-lines on every clip, and the clip's own result is only in the right panel. `headline.py` will (A) treat a bar line seen on 3+
-of the day's clips as programme filler and (C) drop the programme name stuck to the front of each bar line.
+**Programme bar (day-2 check, built):** on election days a programme bar ("गांव की पंचायत") repeats the same 4 general lines
+on every clip with the programme's name glued to the front ("गांव की 37 जिलों की 419 ..."), and the clip's own result is
+only in the right panel.
+
+- (A) A bar line seen on 3+ of the day's screen-read clips is programme filler and dropped, **when it starts with the
+  programme's name**.
+- (C) The programme's name is cut from the front of the clip's other bar lines. It is found, not listed: the 2 leading
+  words that 3+ different repeated lines start with ("गांव की" on 27 Nov). One word is not a name: three repeated stories
+  that all start "राजस्थान ..." keep it.
+- Apart from the programme: the BREAKING NEWS logo read as text ("RPEAKINC NEAS") is dropped from any clip (a Latin-only
+  line 0.55+ like "breaking news"; real English bar lines stay).
+- Why the guard in A: the same story copied onto 3 clips (27 Nov: the NABARD conclave, posted 3 times) repeats its own
+  lines on 3 clips too, but they start with different words, so they stay.
+- The first two clips of a programme are read before it can be seen. When a later clip shows it, the day's clips whose
+  lines change are written again (the model only).
 
 ---
 
@@ -156,13 +184,15 @@ more days of live posts.
 
 ## 6. Media service (`media/`, Python, the GPU)
 
-One process holds the GPU. It reads only under the share and writes only under `x-requirements\cache`.
+One process holds the GPU (OCR and Whisper large-v3 loaded once, one request on the GPU at a time). It reads only under
+the share and writes only under `XVIDEOS_CACHE`.
 
 | Route | Does |
 |---|---|
-| `GET /health` | Models loaded or not |
-| `POST /read` | Speech (Whisper large-v3, batched 16, 8 s chunks), scene cuts, stills (built; off unless `XVIDEOS_SPEECH=on`) |
-| `POST /headline` | Step 4 (§4.2): bar lines, other screen text, speech fallback, the model's headline, place and topic tags, timings |
+| `GET /health` | OCR and Whisper loaded or not, load errors, the screen read's version |
+| `POST /screen` | Step 4 (§4.2, 1-4): bar lines with their time on screen, other screen text, timings (2-4 s) |
+| `POST /speech` | Step 4's fallback: the anchor's words over the first 45 s (Whisper large-v3, batched) |
+| `POST /read` | Speech of the whole clip, scene cuts, stills (built; off unless `XVIDEOS_SPEECH=on`) |
 
 Settings that matter:
 - Whisper's CUDA libraries (ctranslate2) load **before** Paddle's, or Whisper fails with `WinError 127`. Whisper only finds
@@ -178,8 +208,9 @@ Settings that matter:
 | Table | Holds | State |
 |---|---|---|
 | `clip` | One row per video file: folder parts and name as found, day folder's date (`day`), size, modified time, fingerprint (size:mtime), marks, title from the name, the heading when the name is one (`heading`), status (`seen`, `reading`, `new`, `failed`, `gone`), probe fields | Built |
-| `clip_job` | Work queue (probe, read, headline), lease, attempts | Built (headline job to add) |
-| `clip_evidence` | What the media service read: transcript, cuts, stills, bar lines, screen text | Built (bar lines to add) |
+| `clip_job` | Work queue (probe, read, headline), lease, attempts | Built |
+| `clip_evidence` | What `/read` found: transcript, cuts, stills | Built |
+| `clip_screen` | Step 4: the screen read (bar lines, other text, the anchor's words when read) and the model's headline with how it was made (lines used, filler dropped, place, topics) | Built |
 | `clip_draft` | Headline, its source (file name / screen read), suffix, tags and handles (value, emit or suggest, source) | To build |
 | `clip_post` | Posted text, by whom, when, X link, undone | To build |
 | `scan_request` | The desk's Refresh requests (one per day), taken by the watcher | Built |
@@ -190,7 +221,7 @@ Settings that matter:
 
 | Route | Does | State |
 |---|---|---|
-| `GET /xvideos/clips?day=&status=` | Every video of one day folder; without `day`, **today's (IST) only** | Built |
+| `GET /xvideos/clips?day=&status=` | Every video of one day folder; without `day`, **today's (IST) only**. `suggestedHeadline` is the file name's heading, else the model's (`headlineSource` `file_name` / `screen`) | Built |
 | `GET /xvideos/folders` | Today and every day whose folder holds videos, grouped by month, with counts (videos, x-marked, done), for the desk's month / day selector | Built |
 | `POST /xvideos/rescan?day=` | The desk's Refresh: the watcher walks that day (default today) within seconds, and again 10 s later so new files settle | Built |
 | `GET /xvideos/clips/:id` · `/video` · `/poster` · `/frames/:name` | One clip, the video with byte ranges, stills | Built |
@@ -203,16 +234,18 @@ Settings that matter:
 
 ```
 git clone … ; cd digital\backend ; corepack pnpm install
-powershell -File apps\xvideos\media\setup.ps1      builds digital\x-requirements: venv, pinned models, ollama pull qwen3:14b,
-                                                   then reads one clip to check the GPU, OCR and model work
-copy apps\xvideos\.env.example to .env.xvideos     fill DATABASE_URL, ORG_ID, keys
+powershell -File apps\xvideos\media\setup.ps1 [-Clip <video>]
+                                                   builds digital\x-requirements: venv, pinned models (copied from this
+                                                   PC's caches when there), ollama pull qwen3:14b, then checks OCR and
+                                                   Whisper load on the GPU and reads the screen of -Clip
+copy apps\xvideos\.env.example to apps\xvideos\.env     fill DATABASE_URL, ORG_ID, XVIDEOS_MEDIA_KEY
 pnpm --filter @socia/xvideos migrate
 ```
 
 Running (PowerShell; Git Bash cannot see the share):
 
 ```
-pnpm --filter @socia/xvideos worker                watch, probe, title, compose
+pnpm --filter @socia/xvideos worker                watch, probe, headline (needs the media service and Ollama)
 ..\x-requirements\env\Scripts\python.exe -I apps\xvideos\media\media.py
 node --env-file=… --import tsx apps/api/src/index.ts    the api with XVIDEOS=true
 ```
@@ -228,8 +261,8 @@ database.
 |---|---|---|---|---|
 | 1 | Base | Schema, share rules, watcher (today + yesterday), probe, list API, desk list | | Built |
 | 2 | Collector | `directory/collect.py`: every hour, reads @1stIndiaNews' new posts, keeps the `#FINVideo` ones in `data/finvideo-posts.jsonl`. | Later, when the directory needs fresh posts | Left for later (27 Nov 2026) |
-| 3 | Day folder + file-name title | Month + day scan at any depth, all videos, IST date; `GET /xvideos/folders`; `GET /xvideos/clips?day=` (today by default); title from the file name; desk: month / day selector, `x` mark and inner folder on each row | Next | |
-| 4 | Screen read | `x-requirements` + `setup.ps1`; `headline.py` (trial flow + programme-bar fix A, C); `/headline`; headline job only for clips whose name has no heading | After 3 | |
+| 3 | Day folder + file-name title | Month + day scan at any depth, all videos, IST date; `GET /xvideos/folders`; `GET /xvideos/clips?day=` (today by default); title from the file name; desk: month / day selector, `x` mark and inner folder on each row | After 1 | Built (27 Nov 2026) |
+| 4 | Screen read | `x-requirements` + `setup.ps1`; `headline.py` (trial flow); `/screen` + `/speech`; programme-bar fix A, C in the worker; headline job only for clips whose name has no heading | After 3 | Built (27 Nov 2026) |
 | 5 | Tags and handles | Build the directory from the 427 saved `#FINVideo` posts (9 Sep-27 Nov 2026), finish tuning with `eval.py`; `compose.ts` builds `clip_draft`: brand, `#FINVideo`, place, tags, handles (emit / suggest) | After 4 | |
 | 6 | Desk actions + learn | Edit, hold, Copy & Mark Posted, undo, reject; `clip_post`; posted text feeds the directory counts | After 5 | |
 | 7 | Main | Whole flow on the test database, reviews, move to the live database, merge to `main` | Last | |

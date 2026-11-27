@@ -1,6 +1,6 @@
 // X Videos worker settings (apps/xvideos/.env). Its own process: nothing here is read by the X post desk's worker.
 
-export const XV_ROLES = ["watch", "probe", "read"] as const;
+export const XV_ROLES = ["watch", "probe", "read", "headline"] as const;
 export type XvRole = (typeof XV_ROLES)[number];
 
 export interface XvWorkerConfig {
@@ -9,6 +9,11 @@ export interface XvWorkerConfig {
    * role). Off by default: a clip is ready on the desk once probed (length, size, poster).
    */
   speech: boolean;
+  /**
+   * XVIDEOS_HEADLINE (on by default; off to stop): a clip whose file name holds no heading gets one from its screen
+   * read (the headline role: the media service and Ollama)
+   */
+  headline: boolean;
   databaseUrl: string;
   /** XVIDEOS_LIVE_DB=yes: may run on the live database "socia" (only once X Videos is moved over) */
   allowLiveDb: boolean;
@@ -18,9 +23,12 @@ export interface XvWorkerConfig {
   shareRoot: string;
   /** Local folder for posters, frames and evidence files (never the share) */
   cacheDir: string;
-  /** The media service (services/xvideos-media) and the key it requires; only used with speech on */
+  /** The media service (apps/xvideos/media) and the key it requires; used by the read and headline roles */
   mediaUrl: string;
   mediaKey: string;
+  /** Ollama and the model that writes the headline */
+  ollamaUrl: string;
+  headlineModel: string;
   /** Today's day folder is walked this often */
   scanSeconds: number;
   /** Every day folder of the month is walked this often */
@@ -45,22 +53,28 @@ function num(name: string, fallback: number, min: number): number {
 
 export function loadXvConfig(): XvWorkerConfig {
   const speech = process.env.XVIDEOS_SPEECH === "on";
-  const roles = (process.env.XVIDEOS_ROLES ?? (speech ? "watch,probe,read" : "watch,probe")).split(",").map((r) => r.trim()).filter(Boolean);
+  const headline = (process.env.XVIDEOS_HEADLINE ?? "on") !== "off";
+  const fallback = ["watch", "probe", ...(speech ? ["read"] : []), ...(headline ? ["headline"] : [])].join(",");
+  const roles = (process.env.XVIDEOS_ROLES ?? fallback).split(",").map((r) => r.trim()).filter(Boolean);
   const bad = roles.filter((r) => !XV_ROLES.includes(r as XvRole));
   if (bad.length || !roles.length) throw new Error(`XVIDEOS_ROLES must list some of: ${XV_ROLES.join(", ")} (got "${roles.join(",")}")`);
   if (roles.includes("read") && !speech) throw new Error("The read role (speech) needs XVIDEOS_SPEECH=on");
+  if (roles.includes("headline") && !headline) throw new Error("The headline role needs XVIDEOS_HEADLINE on (it is off)");
   const databaseUrl = need("DATABASE_URL");
   return {
     // The database's real name is checked on the server at start (main.ts), not read from the URL
     allowLiveDb: process.env.XVIDEOS_LIVE_DB === "yes",
     speech,
+    headline,
     databaseUrl,
     orgId: need("ORG_ID"),
     roles: roles as XvRole[],
     shareRoot: need("XVIDEOS_SHARE"),
     cacheDir: need("XVIDEOS_CACHE"),
     mediaUrl: (process.env.XVIDEOS_MEDIA_URL ?? "http://127.0.0.1:8300").replace(/\/+$/, ""),
-    mediaKey: speech ? need("XVIDEOS_MEDIA_KEY") : "",
+    mediaKey: roles.includes("read") || roles.includes("headline") ? need("XVIDEOS_MEDIA_KEY") : "",
+    ollamaUrl: (process.env.XVIDEOS_OLLAMA_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, ""),
+    headlineModel: process.env.XVIDEOS_HEADLINE_MODEL?.trim() || "qwen3:14b",
     scanSeconds: num("XVIDEOS_SCAN_SECONDS", 30, 5),
     monthScanSeconds: num("XVIDEOS_MONTH_SCAN_SECONDS", 600, 30),
     ffprobe: process.env.XVIDEOS_FFPROBE ?? "ffprobe",

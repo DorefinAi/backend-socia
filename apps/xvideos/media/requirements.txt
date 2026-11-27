@@ -1,6 +1,14 @@
-# X Videos media service (Python 3.12). ffmpeg and ffprobe must be on PATH.
+# X Videos media service: Python 3.12 on Windows with an NVIDIA GPU (CUDA 12). ffmpeg and ffprobe must be on PATH.
+# setup.ps1 installs this with requirements.lock.txt as constraints: the exact versions trials 4-5 ran on (27 Nov 2026).
+
+# GPU Paddle for PaddleOCR (Paddle's own wheel; not on PyPI for CUDA 12.6)
+paddlepaddle-gpu @ https://paddle-whl.bj.bcebos.com/stable/cu126/paddlepaddle-gpu/paddlepaddle_gpu-3.2.2-cp312-cp312-win_amd64.whl#sha256=586534a57dccd8ff28d31ba22f80ac5cc0e081cc58fea622f3ce97fe7543c7a3
+paddleocr==3.7.0
 faster-whisper==1.2.1
+# PyAV 19 breaks faster-whisper 1.2.1
+av==15.1.0
 numpy>=1.26,<3
-# CUDA 12 libraries for ctranslate2 on Windows (media.py adds their bin folders to the DLL search path)
+pillow
+# CUDA 12 libraries for ctranslate2 (media.py adds their bin folders to the DLL search path)
 nvidia-cublas-cu12
 nvidia-cudnn-cu12==9.*

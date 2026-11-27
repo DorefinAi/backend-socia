@@ -1,7 +1,7 @@
 // X Videos tables, in their own Postgres schema "xvideos" with their own migrations (apps/xvideos/migrations, journal
 // xvideos.__migrations). Nothing here alters a table of the X post desk (schema public); the only link is org_id.
-// Steps 1–3 of apps/xvideos/README.md: the clips found on the share, their work queue, and what the media
-// service read from them. Drafts, holds and posts come with the headline steps.
+// Steps 1–4 of apps/xvideos/README.md: the clips found on the share, their work queue, what the media service read
+// from them, and the screen read with the model's headline. Drafts, holds and posts come with steps 5-6.
 
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, date, index, integer, jsonb, pgSchema, primaryKey, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
@@ -13,8 +13,11 @@ export const xvideos = pgSchema("xvideos");
 export const XV_CLIP_STATUSES = ["seen", "reading", "new", "failed", "gone"] as const;
 export type XvClipStatus = (typeof XV_CLIP_STATUSES)[number];
 
-/** The steps every clip goes through, in order */
-export const XV_STEPS = ["probe", "read"] as const;
+/**
+ * The steps of a clip, in order: probe always; read (speech, cuts, stills) only with XVIDEOS_SPEECH=on; headline (the
+ * screen read and the model's headline, README §4.2) only when the file's name holds no heading
+ */
+export const XV_STEPS = ["probe", "read", "headline"] as const;
 export type XvStep = (typeof XV_STEPS)[number];
 
 export const XV_JOB_STATUSES = ["pending", "running", "done", "failed"] as const;
@@ -113,6 +116,50 @@ export const xvEvidence = xvideos.table("clip_evidence", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** What the media service read off one clip's screen (POST /screen), and the anchor's opening words when asked (POST /speech) */
+export interface XvScreenRead {
+  tookS: number;
+  durationS: number;
+  /** The headline bar's lines in the order they showed, as read (the day's programme filler is dropped later) */
+  barLines: { text: string; secs: number; firstS: number }[];
+  /** Place tag, right panel, name strips */
+  otherText: string[];
+  timings: { framesS: number; ocrS: number };
+  /** The anchor's opening words, read when the bar showed too few lines; null: not read */
+  speech: { text: string; seconds: number; tookS: number; hasAudio?: boolean } | null;
+}
+
+/** How the model's headline was made: what it was given and what else it said (place and topics go to step 5) */
+export interface XvHeadlineResult {
+  model: string;
+  tookS: number;
+  tokensOut: number | null;
+  placeHindi: string;
+  district: string;
+  state: string;
+  topicHashtags: string[];
+  /** The bar lines the model was given: programme filler dropped, the programme's name cut off (lines.ts) */
+  linesUsed: string[];
+  /** Bar lines left out as the day's programme filler */
+  dropped: string[];
+  usedSpeech: boolean;
+  /** Why the model's headline was not offered (it was about the clip, not the news); the desk then shows none */
+  rejected?: string;
+}
+
+/** Step 4 for a clip whose name holds no heading: the screen read and the model's headline */
+export const xvScreens = xvideos.table("clip_screen", {
+  clipId: uuid("clip_id").primaryKey().references(() => xvClips.id, { onDelete: "cascade" }),
+  /** The media service's SCREEN_VERSION when it read the clip */
+  screenVersion: text("screen_version").notNull(),
+  read: jsonb("read").$type<XvScreenRead>().notNull(),
+  /** The model's headline (no suffix), the desk's suggestion; null until the model has answered */
+  headline: text("headline"),
+  result: jsonb("result").$type<XvHeadlineResult>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /**
  * The desk's Refresh button: a day folder to walk now (API → watcher). The watcher takes the row, walks the day, and
  * walks it once more a few seconds later so new files settle.
@@ -129,3 +176,4 @@ export const xvScanRequests = xvideos.table(
 
 export type XvClipRow = typeof xvClips.$inferSelect;
 export type XvJobRow = typeof xvJobs.$inferSelect;
+export type XvScreenRow = typeof xvScreens.$inferSelect;

@@ -142,7 +142,7 @@ export function xvHeading(fileName: string): string | null {
   const parts = unmarked(fileName)
     // Only two or more plain spaces typed by the desk stand for " | ". A name pasted from the web or a chat app can hold
     // no-break or zero-width spaces: a run with one of them in it is a single space.
-    .rest.replace(/[​-‍﻿]/g, "")
+    .rest.replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/\s+/g, (run) => (/^ {2,}$/.test(run) ? SEPARATOR : " "))
     .split(SEPARATOR)
     .map((p) => p.replace(/\s+/g, " ").trim())

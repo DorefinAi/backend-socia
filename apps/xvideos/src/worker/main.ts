@@ -1,6 +1,7 @@
 // X Videos worker: its own process, apart from the X post desk's worker (which it never touches).
 //   pnpm --filter @socia/xvideos worker      (reads apps/xvideos/.env; run from PowerShell: Git Bash cannot see the share)
-// XVIDEOS_ROLES picks the loops: watch (the share) and probe (ffprobe + poster) by default; read (the media service:
+// XVIDEOS_ROLES picks the loops: watch (the share), probe (ffprobe + poster) and headline (the screen read and the
+// model's headline for clips whose name holds none; XVIDEOS_HEADLINE=off stops it) by default; read (the media service:
 // speech, cuts, stills) only with XVIDEOS_SPEECH=on.
 // Set UV_THREADPOOL_SIZE=16 in the environment: a hung share call holds one of Node's pool threads until it returns.
 
@@ -10,6 +11,9 @@ import { sql } from "drizzle-orm";
 import pino from "pino";
 import { Loops } from "./loop";
 import { loadXvConfig } from "./config";
+import { XvModelClient } from "../headline/model";
+import { XvHeadlineStep } from "./headline";
+import { xvNextSteps } from "./steps";
 import { XvProbeStep } from "./probe";
 import { XvMediaClient, XvReadStep } from "./read";
 import { XvShareReader } from "./share";
@@ -34,6 +38,8 @@ if (dbName === XV_LIVE_DB && !config.allowLiveDb) {
 
 const share = new XvShareReader(config.shareRoot);
 const loops = new Loops();
+const next = xvNextSteps({ speech: config.speech, headline: config.headline });
+const media = new XvMediaClient(config.mediaUrl, config.mediaKey);
 
 if (config.roles.includes("watch")) {
   const watcher = new XvWatcher(db, config.orgId, share, log.child({ role: "watch" }), undefined, {
@@ -45,14 +51,18 @@ if (config.roles.includes("watch")) {
   loops.start({ name: "xv-watch", tick: () => watcher.tick(), idleMs: 3000, log });
 }
 if (config.roles.includes("probe")) {
-  const probe = new XvProbeStep(db, share, config.cacheDir, { ffprobe: config.ffprobe, ffmpeg: config.ffmpeg }, log.child({ role: "probe" }), config.speech ? "read" : null);
+  const probe = new XvProbeStep(db, share, config.cacheDir, { ffprobe: config.ffprobe, ffmpeg: config.ffmpeg }, log.child({ role: "probe" }), next.afterProbe);
   loops.start({ name: "xv-probe", tick: () => probe.tick(), idleMs: 2000, log });
 }
 if (config.roles.includes("read")) {
-  const read = new XvReadStep(db, share, new XvMediaClient(config.mediaUrl, config.mediaKey), log.child({ role: "read" }));
+  const read = new XvReadStep(db, share, media, log.child({ role: "read" }), next.afterRead);
   loops.start({ name: "xv-read", tick: () => read.tick(), idleMs: 3000, log });
 }
-log.info({ roles: config.roles, speech: config.speech, db: dbName }, "x videos worker started");
+if (config.roles.includes("headline")) {
+  const headline = new XvHeadlineStep(db, config.orgId, share, media, new XvModelClient(config.ollamaUrl, config.headlineModel), log.child({ role: "headline" }));
+  loops.start({ name: "xv-headline", tick: () => headline.tick(), idleMs: 3000, log });
+}
+log.info({ roles: config.roles, speech: config.speech, headline: config.headline, db: dbName }, "x videos worker started");
 
 let stopping = false;
 const stop = async (signal: string) => {

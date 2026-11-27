@@ -1,6 +1,7 @@
 // A clip row (+ what the media service read) → the shape the X Videos desk uses (frontend src/data/xVideosData.ts,
 // XvClip). Field names match the frontend's so its demo data swaps for these answers with no screen changes.
-// The suggested headline is the file's name when the name is a heading; the screen read (step 4) fills the rest.
+// The suggested headline is the file's name when the name is a heading, else the model's headline from the screen
+// read (step 4).
 // Place, tags and mentions are the directory's work (step 5): empty until then.
 
 import type { XvClipRow, XvEvidence } from "../db/schema";
@@ -27,8 +28,11 @@ export interface XvWireClip {
   picked: boolean;
   /** The desk marked it done (posted) */
   done: boolean;
-  /** Where suggestedHeadline came from: the file's name, or nothing yet (the screen read will find it) */
-  headlineSource: "file_name" | null;
+  /**
+   * Where suggestedHeadline came from: the file's name; the screen read (the model's headline from the clip's bar lines
+   * and screen text); null: nothing yet (the screen read is still to come, or found nothing)
+   */
+  headlineSource: "file_name" | "screen" | null;
   /** The file has left the share: its row is kept, its video cannot play */
   gone: boolean;
   receivedAt: string;
@@ -67,8 +71,10 @@ function frameGrabs(id: string, frames: XvEvidence["frames"]): XvWireClip["frame
 
 const baseName = (key: string) => key.split(/[\\/]/).pop() ?? key;
 
-export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTranscript: boolean): XvWireClip {
+export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTranscript: boolean, screenHeadline: string | null = null): XvWireClip {
   const reading = clip.status === "reading" || clip.status === "seen";
+  // The file's own heading wins: the desk wrote it
+  const suggested = clip.heading ?? screenHeadline;
   return {
     id: clip.id,
     fileName: clip.fileName,
@@ -81,7 +87,7 @@ export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTra
     day: clip.day,
     picked: clip.picked,
     done: clip.done,
-    headlineSource: clip.heading ? "file_name" : null,
+    headlineSource: clip.heading ? "file_name" : screenHeadline ? "screen" : null,
     gone: clip.status === "gone",
     receivedAt: clip.mtime.toISOString(),
     duration: clip.durationS ?? 0,
@@ -90,7 +96,7 @@ export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTra
     height: clip.height ?? undefined,
     kind: "clip",
     district: "",
-    suggestedHeadline: clip.heading,
+    suggestedHeadline: suggested,
     readingProgress: reading ? (clip.progress ?? 0) : undefined,
     transcript: withTranscript && evidence ? evidence.transcript.map((l) => ({ at: l.at, text: l.text })) : [],
     screenText: [],

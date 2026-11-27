@@ -1,5 +1,5 @@
-// The probe role: length, shape and codec with ffprobe, and a poster still with ffmpeg, for every clip. With
-// speech off (the default) this is the last step: the clip is ready on the desk.
+// The probe role: length, shape and codec with ffprobe, and a poster still with ffmpeg, for every clip. Then the
+// clip goes on (steps.ts): to the headline's screen read when its name holds no heading, else it is ready on the desk.
 // The video is only read from the share; the poster goes to the local cache (XVIDEOS_CACHE/posters/<clip id>.jpg).
 
 import { execFile } from "node:child_process";
@@ -8,9 +8,9 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Db } from "@socia/db";
 import { xvClaimJob, xvDeferJob, xvFailJob, xvFinishJob, xvSaveProbe, type XvProbe } from "../db/clips";
-import type { XvStep } from "../db/schema";
 import type { Logger } from "pino";
 import { XV_SHARE_TIMEOUT_MS, type XvShareReader } from "./share";
+import type { XvNextStep } from "./steps";
 
 const run = promisify(execFile);
 /** A probe over the share takes a second or two; this long means the share or the file is stuck */
@@ -59,8 +59,8 @@ export class XvProbeStep {
     private readonly cacheDir: string,
     private readonly tools: { ffprobe: string; ffmpeg: string },
     private readonly log: Logger,
-    /** "read" with speech on; null: the clip is ready once probed */
-    private readonly next: XvStep | null = null,
+    /** "read" with speech on, "headline" when the file's name holds none, null: the clip is ready once probed */
+    private readonly next: XvNextStep = () => null,
   ) {}
 
   async tick(): Promise<boolean> {
@@ -74,9 +74,10 @@ export class XvProbeStep {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === "ENOENT" || code === "ENOTDIR") {
-        // A defer gives back the attempt; after the third miss in a row the clip fails instead of waiting forever
+        // After the third miss in a row the clip fails instead of waiting forever
         if (job.attempts >= 3) await xvFailJob(this.db, { ...job, attempts: 99 }, "probe: the file is not on the share any more");
-        else await xvDeferJob(this.db, job, MISSING_RETRY_S, "file not found on the share; waiting for the next scan");
+        // Counted as a try: a wait that gave the try back would never reach the third
+        else await xvDeferJob(this.db, job, MISSING_RETRY_S, "file not found on the share; waiting for the next scan", { countTry: true });
       } else {
         await xvDeferJob(this.db, job, MISSING_RETRY_S, `the share cannot be read (${code ?? "error"})`);
       }
@@ -97,7 +98,7 @@ export class XvProbeStep {
       // Written to a temp name and moved into place, so a killed run never leaves half a poster
       await rename(tmp, join(this.cacheDir, posterKey));
       await xvSaveProbe(this.db, job.clipId, { ...probe, posterKey });
-      if (!(await xvFinishJob(this.db, job, this.next))) this.log.warn({ clip: job.clipId }, "x videos probe finished after its lease ran out; left to the newer run");
+      if (!(await xvFinishJob(this.db, job, this.next(job.clip)))) this.log.warn({ clip: job.clipId }, "x videos probe finished after its lease ran out; left to the newer run");
       else this.log.info({ clip: job.clipId, file: job.clip.fileName, durationS: probe.durationS }, "x videos probed");
     } catch (err) {
       await rm(tmp, { force: true }).catch(() => undefined);

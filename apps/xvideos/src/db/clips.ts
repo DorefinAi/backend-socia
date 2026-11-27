@@ -6,9 +6,32 @@
 
 import { and, desc, eq, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import type { Db, Executor } from "@socia/db";
-import { xvClips, xvEvidence, xvJobs, xvScanRequests, type XvClipRow, type XvClipStatus, type XvEvidence, type XvJobRow, type XvStep } from "./schema";
+import {
+  xvClips,
+  xvEvidence,
+  xvJobs,
+  xvScanRequests,
+  xvScreens,
+  type XvClipRow,
+  type XvClipStatus,
+  type XvEvidence,
+  type XvHeadlineResult,
+  type XvJobRow,
+  type XvScreenRead,
+  type XvScreenRow,
+  type XvStep,
+} from "./schema";
 
 export const XV_MAX_ATTEMPTS = 3;
+/**
+ * Steps a clip can do without: when one fails for good the clip is still ready on the desk (`new`), only without what
+ * that step adds (the headline: the editor writes one). Any other step failing fails the clip. An optional step must be
+ * a clip's last (nothing is queued after it when it fails).
+ */
+export const XV_OPTIONAL_STEPS: readonly XvStep[] = ["headline"];
+const optional = (step: XvStep) => XV_OPTIONAL_STEPS.includes(step);
+/** The optional steps as an SQL list of bound values; ('') when there are none, so `in` stays valid */
+const OPTIONAL_SQL = sql`(${sql.join((XV_OPTIONAL_STEPS.length ? XV_OPTIONAL_STEPS : [""]).map((x) => sql`${x}`), sql`, `)})`;
 /** Rows per INSERT / IN list: well under Postgres's 65,535 parameters */
 const CHUNK = 500;
 /** A clip seen again with nothing changed is only touched this often (last_seen_at), not on every scan */
@@ -113,14 +136,17 @@ async function queueStep(tx: Executor, clipIds: readonly string[], step: XvStep)
 
 /**
  * A clip still `seen` that already has jobs (it came back from `gone`) takes the state its jobs say: failed,
- * ready (`new`, every step done) or `reading`
+ * ready (`new`, every step done; an optional step may have failed) or `reading`
  */
 async function restoreStatus(tx: Executor, clipIds: readonly string[]): Promise<void> {
   for (const part of chunks(clipIds)) {
     await tx.execute(sql`
       update xvideos.clip c set status = j.state, updated_at = now()
       from (
-        select clip_id, case when bool_or(status = 'failed') then 'failed' when bool_and(status = 'done') then 'new' else 'reading' end as state
+        select clip_id,
+          case when bool_or(status = 'failed' and step not in ${OPTIONAL_SQL}) then 'failed'
+               when bool_and(status = 'done' or (status = 'failed' and step in ${OPTIONAL_SQL})) then 'new'
+               else 'reading' end as state
         from xvideos.clip_job where clip_id in ${part} group by clip_id
       ) j
       where c.id = j.clip_id and c.status = 'seen'`);
@@ -221,7 +247,10 @@ export async function xvClaimJob(db: Db, step: XvStep, leaseSeconds: number): Pr
       if (dead && dead.attempts >= XV_MAX_ATTEMPTS) {
         const reason = `${step}: stopped ${dead.attempts} times without finishing (the worker crashed or was stopped on this clip)`;
         await tx.update(xvJobs).set({ status: "failed", leaseUntil: null, error: reason, updatedAt: sql`now()` }).where(eq(xvJobs.id, dead.id));
-        await tx.update(xvClips).set({ status: "failed", progress: null, error: reason, updatedAt: sql`now()` }).where(eq(xvClips.id, dead.clipId));
+        await tx
+          .update(xvClips)
+          .set({ status: optional(step) ? "new" : "failed", progress: null, error: reason, updatedAt: sql`now()` })
+          .where(and(eq(xvClips.id, dead.clipId), sql`${xvClips.status} <> 'gone'`));
         return null;
       }
     }
@@ -237,11 +266,21 @@ export async function xvClaimJob(db: Db, step: XvStep, leaseSeconds: number): Pr
   });
 }
 
-/** Done with this step; queues `next` when given, else the clip is ready (`new`). False when the lease was lost. */
-export async function xvFinishJob(db: Db, job: Pick<XvClaimedJob, "id" | "clipId" | "leaseUntil">, next: XvStep | null): Promise<boolean> {
+/**
+ * Done with this step; queues `next` when given, else the clip is ready (`new`). `save` writes the step's result in the
+ * same transaction, only while the lease is still held, so a run that outlived its lease never overwrites a newer one.
+ * False when the lease was lost (nothing saved).
+ */
+export async function xvFinishJob(
+  db: Db,
+  job: Pick<XvClaimedJob, "id" | "clipId" | "leaseUntil">,
+  next: XvStep | null,
+  save?: (tx: Executor) => Promise<void>,
+): Promise<boolean> {
   return db.transaction(async (tx) => {
     const done = await tx.update(xvJobs).set({ status: "done", leaseUntil: null, error: null, updatedAt: sql`now()` }).where(holds(job)).returning({ id: xvJobs.id });
     if (!done.length) return false;
+    if (save) await save(tx);
     if (next) await queueStep(tx, [job.clipId], next);
     else {
       await tx
@@ -253,8 +292,11 @@ export async function xvFinishJob(db: Db, job: Pick<XvClaimedJob, "id" | "clipId
   });
 }
 
-/** The step failed: retried later, or after XV_MAX_ATTEMPTS the clip is `failed` with the reason. "lost": the lease was gone. */
-export async function xvFailJob(db: Db, job: Pick<XvClaimedJob, "id" | "clipId" | "attempts" | "leaseUntil">, error: string): Promise<"retry" | "failed" | "lost"> {
+/**
+ * The step failed: retried later, or after XV_MAX_ATTEMPTS the clip is `failed` with the reason (an optional step: the
+ * clip is ready without it, the reason kept). "lost": the lease was gone.
+ */
+export async function xvFailJob(db: Db, job: Pick<XvClaimedJob, "id" | "clipId" | "attempts" | "leaseUntil" | "step">, error: string): Promise<"retry" | "failed" | "lost"> {
   const message = error.slice(0, 500);
   const final = job.attempts >= XV_MAX_ATTEMPTS;
   return db.transaction(async (tx) => {
@@ -273,18 +315,28 @@ export async function xvFailJob(db: Db, job: Pick<XvClaimedJob, "id" | "clipId" 
     if (final) {
       await tx
         .update(xvClips)
-        .set({ status: "failed", progress: null, error: message, updatedAt: sql`now()` })
+        .set({ status: optional(job.step) ? "new" : "failed", progress: null, error: message, updatedAt: sql`now()` })
         .where(and(eq(xvClips.id, job.clipId), sql`${xvClips.status} <> 'gone'`));
     }
     return final ? "failed" : "retry";
   });
 }
 
-/** Gives the job back without counting an attempt (the media service is down or busy, the file is being renamed) */
-export async function xvDeferJob(db: Db, job: Pick<XvClaimedJob, "id" | "leaseUntil">, seconds: number, reason: string): Promise<void> {
+/**
+ * Gives the job back for a later try: without counting it (the media service is down or busy), or, with `countTry`,
+ * counting it so a wait that never ends runs out of tries (a file missing from the share)
+ */
+export async function xvDeferJob(db: Db, job: Pick<XvClaimedJob, "id" | "leaseUntil">, seconds: number, reason: string, opts: { countTry?: boolean } = {}): Promise<void> {
   await db
     .update(xvJobs)
-    .set({ status: "pending", attempts: sql`greatest(${xvJobs.attempts} - 1, 0)`, leaseUntil: null, error: reason.slice(0, 500), nextAttemptAt: sql`now() + make_interval(secs => ${seconds})`, updatedAt: sql`now()` })
+    .set({
+      status: "pending",
+      attempts: opts.countTry ? sql`${xvJobs.attempts}` : sql`greatest(${xvJobs.attempts} - 1, 0)`,
+      leaseUntil: null,
+      error: reason.slice(0, 500),
+      nextAttemptAt: sql`now() + make_interval(secs => ${seconds})`,
+      updatedAt: sql`now()`,
+    })
     .where(holds(job));
 }
 
@@ -312,6 +364,96 @@ export async function xvSaveEvidence(db: Db, clipId: string, evidence: XvEvidenc
     .onConflictDoUpdate({ target: xvEvidence.clipId, set: { mediaVersion: evidence.mediaVersion, evidence, createdAt: sql`now()` } });
 }
 
+// ─── step 4: the screen read and the model's headline ───────────────────────
+
+export async function xvGetScreen(db: Db, clipId: string): Promise<XvScreenRow | null> {
+  const [row] = await db.select().from(xvScreens).where(eq(xvScreens.clipId, clipId));
+  return row ?? null;
+}
+
+/** Keeps what the media service read (a headline already written stays until the model writes the next one) */
+export async function xvSaveScreenRead(db: Db, clipId: string, screenVersion: string, read: XvScreenRead): Promise<void> {
+  await db
+    .insert(xvScreens)
+    .values({ clipId, screenVersion, read })
+    .onConflictDoUpdate({ target: xvScreens.clipId, set: { screenVersion, read, updatedAt: sql`now()` } });
+}
+
+/**
+ * The model's headline and how it was made; a null headline: nothing was read to write one from (an older one goes).
+ * Run it as xvFinishJob's `save`, so it lands only while the job's lease holds. Throws when the clip has no screen read.
+ */
+export async function xvSaveHeadline(ex: Executor, clipId: string, headline: string | null, result: XvHeadlineResult): Promise<void> {
+  const rows = await ex.update(xvScreens).set({ headline, result, updatedAt: sql`now()` }).where(eq(xvScreens.clipId, clipId)).returning({ id: xvScreens.clipId });
+  if (!rows.length) throw new Error(`no screen read stored for clip ${clipId}`);
+}
+
+/** One clip of a day with a screen read, and where its headline job stands */
+export interface XvDayScreen {
+  clipId: string;
+  read: XvScreenRead;
+  result: XvHeadlineResult | null;
+  jobStatus: string | null;
+}
+
+/** The screen reads of one day folder's clips that are still on the share and still have no heading in their name */
+export async function xvDayScreens(db: Db, orgId: string, day: string): Promise<XvDayScreen[]> {
+  return db
+    .select({ clipId: xvScreens.clipId, read: xvScreens.read, result: xvScreens.result, jobStatus: xvJobs.status })
+    .from(xvScreens)
+    .innerJoin(xvClips, eq(xvClips.id, xvScreens.clipId))
+    .leftJoin(xvJobs, and(eq(xvJobs.clipId, xvScreens.clipId), eq(xvJobs.step, "headline")))
+    .where(and(eq(xvClips.orgId, orgId), eq(xvClips.day, day), ne(xvClips.status, "gone"), sql`${xvClips.heading} is null`))
+    .orderBy(xvClips.mtime);
+}
+
+/**
+ * Runs a finished step again for these clips (the day's programme filler changed what their headline is made from):
+ * the job goes back to pending with its tries reset. The clip stays as it is (ready, its old headline shown until the
+ * new one lands): only job rows are written, so this never waits on clip locks the watcher's scan holds. Returns how many.
+ */
+export async function xvRedoStep(db: Db, clipIds: readonly string[], step: XvStep): Promise<number> {
+  if (!clipIds.length) return 0;
+  const rows = await db
+    .update(xvJobs)
+    .set({ status: "pending", attempts: 0, error: null, leaseUntil: null, nextAttemptAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(inArray(xvJobs.clipId, [...clipIds]), eq(xvJobs.step, step), eq(xvJobs.status, "done")))
+    .returning({ clipId: xvJobs.clipId });
+  return rows.length;
+}
+
+/**
+ * Queues the headline for ready clips from `sinceDay` on whose name holds no heading and that never had one: clips
+ * read before step 4 existed, a file renamed so its heading went, the headline turned on later. Newer days first, at
+ * most CHUNK per call. The clips stay `new` (on the desk without a suggestion until theirs lands): only job rows are
+ * written, so this never waits on clip locks the watcher's scan holds.
+ */
+export async function xvQueueMissingHeadlines(db: Db, orgId: string, sinceDay: string, opts: { untilDay?: string } = {}): Promise<number> {
+  const rows = await db
+    .select({ id: xvClips.id })
+    .from(xvClips)
+    .where(
+      and(
+        eq(xvClips.orgId, orgId),
+        eq(xvClips.status, "new"),
+        sql`${xvClips.heading} is null`,
+        sql`${xvClips.day} >= ${sinceDay}`,
+        opts.untilDay ? sql`${xvClips.day} <= ${opts.untilDay}` : undefined,
+        sql`not exists (select 1 from xvideos.clip_job j where j.clip_id = ${xvClips.id} and j.step = 'headline')`,
+      ),
+    )
+    .orderBy(desc(xvClips.day), desc(xvClips.mtime))
+    .limit(CHUNK);
+  if (!rows.length) return 0;
+  // A millisecond apart in this order, so the claim (oldest next_attempt_at first) takes newer days first
+  const added = await db
+    .insert(xvJobs)
+    .values(rows.map((r, i) => ({ clipId: r.id, step: "headline" as const, nextAttemptAt: sql`now() + make_interval(secs => ${i / 1000})` })))
+    .onConflictDoNothing({ target: [xvJobs.clipId, xvJobs.step] })
+    .returning({ clipId: xvJobs.clipId });
+  return added.length;
+}
+
 // ─── reads for the API ───────────────────────────────────────────────────────
 
 export interface XvListOptions {
@@ -321,16 +463,24 @@ export interface XvListOptions {
   limit?: number;
 }
 
+/** A clip and the model's headline from its screen read (step 4), when it has one */
+export interface XvListedClip {
+  clip: XvClipRow;
+  screenHeadline: string | null;
+}
+
 /** One day folder's clips, every video (x-marked or not), newest file first */
-export async function xvListClips(db: Db, orgId: string, opts: XvListOptions): Promise<XvClipRow[]> {
+export async function xvListClips(db: Db, orgId: string, opts: XvListOptions): Promise<XvListedClip[]> {
   const where = [eq(xvClips.orgId, orgId), eq(xvClips.day, opts.day)];
   if (opts.statuses?.length) where.push(inArray(xvClips.status, [...opts.statuses]));
-  return db
-    .select()
+  const rows = await db
+    .select({ clip: xvClips, screenHeadline: xvScreens.headline })
     .from(xvClips)
+    .leftJoin(xvScreens, eq(xvScreens.clipId, xvClips.id))
     .where(and(...where))
     .orderBy(desc(xvClips.mtime))
     .limit(Math.min(opts.limit ?? 500, 1000));
+  return rows.map((r) => ({ clip: r.clip, screenHeadline: r.screenHeadline ?? null }));
 }
 
 export interface XvDayCount {
@@ -363,12 +513,17 @@ export async function xvListDays(db: Db, orgId: string): Promise<XvDayCount[]> {
   return rows.filter((r): r is XvDayCount => r.day !== null);
 }
 
-export async function xvGetClip(db: Db, orgId: string, id: string): Promise<{ clip: XvClipRow; evidence: XvEvidence | null } | null> {
+export async function xvGetClip(
+  db: Db,
+  orgId: string,
+  id: string,
+): Promise<{ clip: XvClipRow; evidence: XvEvidence | null; screenHeadline: string | null } | null> {
   const rows = await db
-    .select({ clip: xvClips, evidence: xvEvidence.evidence })
+    .select({ clip: xvClips, evidence: xvEvidence.evidence, screenHeadline: xvScreens.headline })
     .from(xvClips)
     .leftJoin(xvEvidence, eq(xvEvidence.clipId, xvClips.id))
+    .leftJoin(xvScreens, eq(xvScreens.clipId, xvClips.id))
     .where(and(eq(xvClips.orgId, orgId), eq(xvClips.id, id)));
   const row = rows[0];
-  return row ? { clip: row.clip, evidence: row.evidence ?? null } : null;
+  return row ? { clip: row.clip, evidence: row.evidence ?? null, screenHeadline: row.screenHeadline ?? null } : null;
 }

@@ -1,4 +1,4 @@
-// The probe role: length, shape and codec with ffprobe, and a poster still with ffmpeg, for each picked clip. With
+// The probe role: length, shape and codec with ffprobe, and a poster still with ffmpeg, for every clip. With
 // speech off (the default) this is the last step: the clip is ready on the desk.
 // The video is only read from the share; the poster goes to the local cache (XVIDEOS_CACHE/posters/<clip id>.jpg).
 

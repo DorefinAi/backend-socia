@@ -1,5 +1,6 @@
 import type { XvClipRow, XvEvidence } from "../src/db/schema";
 import { describe, expect, it } from "vitest";
+import { xvGroupDays } from "../src/api/routes";
 import { xvWireClip } from "../src/api/view";
 
 const clip = (over: Partial<XvClipRow> = {}): XvClipRow => ({
@@ -13,6 +14,8 @@ const clip = (over: Partial<XvClipRow> = {}): XvClipRow => ({
   picked: true,
   done: true,
   title: "Kota News",
+  day: "2026-11-24",
+  heading: null,
   status: "new",
   progress: null,
   settledAt: new Date(),
@@ -41,6 +44,18 @@ const evidence: XvEvidence = {
   contactSheetKey: "frames/c/sheet.jpg",
 };
 
+describe("xvGroupDays", () => {
+  it("groups days by month, newest first, with today in its place even with no videos yet", () => {
+    const d = (day: string, clips = 1) => ({ day, clips, picked: 0, done: 0 });
+    expect(xvGroupDays("2026-12-01", [d("2026-11-30"), d("2026-11-29")])).toEqual([
+      { month: "2026-12", days: [d("2026-12-01", 0)] },
+      { month: "2026-11", days: [d("2026-11-30"), d("2026-11-29")] },
+    ]);
+    // A mistyped future day folder does not split today's month in two
+    expect(xvGroupDays("2026-11-27", [d("2026-12-28"), d("2026-11-26")]).map((m) => m.month)).toEqual(["2026-12", "2026-11"]);
+  });
+});
+
 describe("xvWireClip", () => {
   it("gives the desk's fields: folder under the month, API media paths, done = posted", () => {
     const w = xvWireClip(clip(), null, false);
@@ -51,6 +66,19 @@ describe("xvWireClip", () => {
     expect(w.duration).toBe(93.5);
     expect(w.readingProgress).toBeUndefined();
     expect(w.suggestedHeadline).toBeNull();
+    expect(w.headlineSource).toBeNull();
+  });
+
+  it("gives the day, the inner folders, the x / done marks, and the heading from the file name", () => {
+    const w = xvWireClip(
+      clip({ folder: ["2026", "NOVEMBER 2026", "24-11-2026", "Convert 3 pm to", "New folder"], picked: false, done: false, heading: "हत्या का खुलासा, दो गिरफ्तार | Kota News" }),
+      null,
+      false,
+    );
+    expect(w).toMatchObject({ day: "2026-11-24", innerFolder: "Convert 3 pm to / New folder", picked: false, done: false, gone: false });
+    expect(w.suggestedHeadline).toBe("हत्या का खुलासा, दो गिरफ्तार | Kota News");
+    expect(w.headlineSource).toBe("file_name");
+    expect(xvWireClip(clip({ folder: ["2026", "NOVEMBER 2026", "24-11-2026"], status: "gone" }), null, false)).toMatchObject({ innerFolder: "", gone: true });
   });
 
   it("shows progress while reading and the reason when failed", () => {

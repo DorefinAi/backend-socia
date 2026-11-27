@@ -1,2 +1,4 @@
 .env
-media/__pycache__/
+# Python caches anywhere in X Videos (media/, directory/)
+__pycache__/
+*.pyc

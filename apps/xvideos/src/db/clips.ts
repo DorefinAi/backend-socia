@@ -1,11 +1,12 @@
-// X Videos queries: the clips the watcher finds, the work queue of each picked clip, and the reads the API needs.
+// X Videos queries: the clips the watcher finds, the work queue of each clip, the desk's Refresh requests, and the
+// reads the API needs.
 // The queue works like the publish outbox (queue.ts): claims use FOR UPDATE SKIP LOCKED, a lease that runs out puts
 // the job back, and a step fails the clip after XV_MAX_ATTEMPTS tries (handled errors and crashes alike). Every
 // finish / fail / defer names the lease it holds, so a worker that outlived its lease cannot undo a newer claim.
 
-import { and, desc, eq, inArray, lt, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import type { Db, Executor } from "@socia/db";
-import { xvClips, xvEvidence, xvJobs, type XvClipRow, type XvClipStatus, type XvEvidence, type XvJobRow, type XvStep } from "./schema";
+import { xvClips, xvEvidence, xvJobs, xvScanRequests, type XvClipRow, type XvClipStatus, type XvEvidence, type XvJobRow, type XvStep } from "./schema";
 
 export const XV_MAX_ATTEMPTS = 3;
 /** Rows per INSERT / IN list: well under Postgres's 65,535 parameters */
@@ -31,19 +32,24 @@ export interface XvSeenFile {
   picked: boolean;
   done: boolean;
   title: string;
+  /** The day folder's date, "2026-11-27" */
+  day: string;
+  /** The title the name holds, or null (rules xvHeading) */
+  heading: string | null;
 }
 
 /**
- * Records the settled files of one scan. A known fingerprint is updated in place (the desk renamed it: x → x…done,
- * or moved it to another shift folder) and comes back from `gone`; a new one is inserted. A picked clip with no
- * probe job gets one and turns `reading`. Two files with one fingerprint (a copy in a second shift folder) are one
- * clip: the picked one wins, else the last listed. Returns how many clips were new and how many were queued.
+ * Records the settled files of one scan. A fingerprint the day already has is updated in place (the desk renamed it:
+ * x → x…done, or moved it to another folder of the day) and comes back from `gone`; a new one is inserted. Every clip
+ * with no probe job gets one and turns `reading`. Two files of one day with one fingerprint (a copy in a second folder)
+ * are one clip: the picked one wins, else the last listed. Returns how many clips were new and how many were queued.
  */
 export async function xvRecordScan(db: Db, orgId: string, files: readonly XvSeenFile[]): Promise<{ inserted: number; queued: number }> {
   const byFp = new Map<string, XvSeenFile>();
   for (const f of files) {
-    const had = byFp.get(f.fingerprint);
-    if (!had || f.picked || !had.picked) byFp.set(f.fingerprint, f);
+    const key = `${f.day}/${f.fingerprint}`;
+    const had = byFp.get(key);
+    if (!had || f.picked || !had.picked) byFp.set(key, f);
   }
   const unique = [...byFp.values()];
   if (!unique.length) return { inserted: 0, queued: 0 };
@@ -55,13 +61,14 @@ export async function xvRecordScan(db: Db, orgId: string, files: readonly XvSeen
         .insert(xvClips)
         .values(part.map((f) => ({ orgId, ...f, folder: [...f.folder], settledAt: sql`now()` })))
         .onConflictDoUpdate({
-          target: [xvClips.orgId, xvClips.fingerprint],
+          target: [xvClips.orgId, xvClips.day, xvClips.fingerprint],
           set: {
             folder: sql`excluded.folder`,
             fileName: sql`excluded.file_name`,
             picked: sql`excluded.picked`,
             done: sql`excluded.done`,
             title: sql`excluded.title`,
+            heading: sql`excluded.heading`,
             lastSeenAt: sql`now()`,
             goneAt: null,
             // Back from gone: `seen` for a moment, then the state its jobs say (restoreStatus)
@@ -74,9 +81,9 @@ export async function xvRecordScan(db: Db, orgId: string, files: readonly XvSeen
             or ${xvClips.status} = 'gone'
             or ${xvClips.lastSeenAt} < now() - interval '${sql.raw(SEEN_REFRESH)}'`,
         })
-        .returning({ id: xvClips.id, picked: xvClips.picked, status: xvClips.status, inserted: sql<boolean>`xmax = 0` });
+        .returning({ id: xvClips.id, status: xvClips.status, inserted: sql<boolean>`xmax = 0` });
       inserted += rows.filter((r) => r.inserted).length;
-      toQueue.push(...rows.filter((r) => r.picked && r.status === "seen").map((r) => r.id));
+      toQueue.push(...rows.filter((r) => r.status === "seen").map((r) => r.id));
     }
     const queued = await queueStep(tx, toQueue, "probe");
     await restoreStatus(tx, toQueue);
@@ -105,7 +112,7 @@ async function queueStep(tx: Executor, clipIds: readonly string[], step: XvStep)
 }
 
 /**
- * A picked clip still `seen` that already has jobs (it came back from `gone`) takes the state its jobs say: failed,
+ * A clip still `seen` that already has jobs (it came back from `gone`) takes the state its jobs say: failed,
  * ready (`new`, every step done) or `reading`
  */
 async function restoreStatus(tx: Executor, clipIds: readonly string[]): Promise<void> {
@@ -141,6 +148,52 @@ export async function xvMarkGone(db: Db, orgId: string, dayFolder: readonly stri
     )
     .returning({ id: xvClips.id });
   return rows.length;
+}
+
+/**
+ * Marks `gone` the clips of a month folder whose whole day folder has left the share (all of them when `dayNames` is
+ * empty: the month folder itself is gone). Only call it after the month folder was listed in full.
+ */
+export async function xvMarkGoneDays(db: Db, orgId: string, monthFolder: readonly string[], dayNames: readonly string[]): Promise<number> {
+  if (monthFolder.length !== 2) throw new Error("xvMarkGoneDays needs the year and month folder");
+  const rows = await db
+    .update(xvClips)
+    .set({ status: "gone", goneAt: sql`now()`, updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(xvClips.orgId, orgId),
+        sql`array_to_string(${xvClips.folder}[1:2], '/') = ${monthFolder.join("/")}`,
+        sql`${xvClips.status} <> 'gone'`,
+        dayNames.length ? sql`not (${xvClips.folder}[3] = any(${sql.param([...dayNames])}::text[]))` : sql`true`,
+      ),
+    )
+    .returning({ id: xvClips.id });
+  return rows.length;
+}
+
+/**
+ * The month folders (["2026", "November 2026"], as on the share) that still have clips on the desk: the watcher keeps
+ * checking them until every clip in them is gone, also after the month has ended
+ */
+export async function xvLiveMonths(db: Db, orgId: string): Promise<[string, string][]> {
+  const rows = await db.execute<{ y: string; m: string }>(sql`
+    select distinct folder[1] as y, folder[2] as m from xvideos.clip
+    where org_id = ${orgId} and status <> 'gone' and folder[1] is not null and folder[2] is not null`);
+  return rows.rows.map((r) => [r.y, r.m]);
+}
+
+/** The desk's Refresh: walk this day folder now. A second press before the watcher took it only moves its time. */
+export async function xvRequestScan(db: Db, orgId: string, day: string): Promise<void> {
+  await db
+    .insert(xvScanRequests)
+    .values({ orgId, day })
+    .onConflictDoUpdate({ target: [xvScanRequests.orgId, xvScanRequests.day], set: { requestedAt: sql`now()` } });
+}
+
+/** Takes (and removes) the Refresh requests waiting, oldest first */
+export async function xvTakeScanRequests(db: Db, orgId: string): Promise<string[]> {
+  const rows = await db.delete(xvScanRequests).where(eq(xvScanRequests.orgId, orgId)).returning({ day: xvScanRequests.day, at: xvScanRequests.requestedAt });
+  return rows.sort((a, b) => a.at.getTime() - b.at.getTime()).map((r) => r.day);
 }
 
 /** A claimed job: finish / fail / defer it with this object, which carries the lease it holds */
@@ -262,25 +315,52 @@ export async function xvSaveEvidence(db: Db, clipId: string, evidence: XvEvidenc
 // ─── reads for the API ───────────────────────────────────────────────────────
 
 export interface XvListOptions {
+  /** One day folder's clips, "2026-11-27" */
+  day: string;
   statuses?: readonly XvClipStatus[];
-  /** Only clips first seen at or after this time */
-  since?: Date;
-  /** Picked (x) clips only; default true */
-  pickedOnly?: boolean;
   limit?: number;
 }
 
-export async function xvListClips(db: Db, orgId: string, opts: XvListOptions = {}): Promise<XvClipRow[]> {
-  const where = [eq(xvClips.orgId, orgId)];
+/** One day folder's clips, every video (x-marked or not), newest file first */
+export async function xvListClips(db: Db, orgId: string, opts: XvListOptions): Promise<XvClipRow[]> {
+  const where = [eq(xvClips.orgId, orgId), eq(xvClips.day, opts.day)];
   if (opts.statuses?.length) where.push(inArray(xvClips.status, [...opts.statuses]));
-  if (opts.since) where.push(sql`${xvClips.firstSeenAt} >= ${opts.since}`);
-  if (opts.pickedOnly ?? true) where.push(eq(xvClips.picked, true));
   return db
     .select()
     .from(xvClips)
     .where(and(...where))
     .orderBy(desc(xvClips.mtime))
-    .limit(Math.min(opts.limit ?? 200, 500));
+    .limit(Math.min(opts.limit ?? 500, 1000));
+}
+
+export interface XvDayCount {
+  /** "2026-11-27" */
+  day: string;
+  /** Videos on the share */
+  clips: number;
+  /** Of them, x-marked */
+  picked: number;
+  /** Of them, marked done */
+  done: number;
+}
+
+/**
+ * The day folders that hold videos now, newest first: the desk's month / day selector. A file cleared from the share
+ * is gone for good, so a day whose files are all gone is not listed.
+ */
+export async function xvListDays(db: Db, orgId: string): Promise<XvDayCount[]> {
+  const rows = await db
+    .select({
+      day: xvClips.day,
+      clips: sql<number>`count(*)::int`,
+      picked: sql<number>`(count(*) filter (where ${xvClips.picked}))::int`,
+      done: sql<number>`(count(*) filter (where ${xvClips.done}))::int`,
+    })
+    .from(xvClips)
+    .where(and(eq(xvClips.orgId, orgId), ne(xvClips.status, "gone"), isNotNull(xvClips.day)))
+    .groupBy(xvClips.day)
+    .orderBy(desc(xvClips.day));
+  return rows.filter((r): r is XvDayCount => r.day !== null);
 }
 
 export async function xvGetClip(db: Db, orgId: string, id: string): Promise<{ clip: XvClipRow; evidence: XvEvidence | null } | null> {

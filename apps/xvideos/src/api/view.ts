@@ -1,6 +1,7 @@
 // A clip row (+ what the media service read) → the shape the X Videos desk uses (frontend src/data/xVideosData.ts,
 // XvClip). Field names match the frontend's so its demo data swaps for these answers with no screen changes.
-// Headline, place, tags and mentions are the headline steps' work: empty until then.
+// The suggested headline is the file's name when the name is a heading; the screen read (step 4) fills the rest.
+// Place, tags and mentions are the directory's work (step 5): empty until then.
 
 import type { XvClipRow, XvEvidence } from "../db/schema";
 
@@ -18,6 +19,18 @@ export interface XvWireClip {
   poster?: string;
   /** Folder parts under the month folder: ["24-11-2026", "Convert 3 pm to-----------"] */
   folder: string[];
+  /** The folders inside the day folder, joined: "Convert 3 pm to----------- / New folder", "" for a file loose in the day */
+  innerFolder: string;
+  /** The day folder's date, "2026-11-24" */
+  day: string | null;
+  /** The desk x-marked the file for X */
+  picked: boolean;
+  /** The desk marked it done (posted) */
+  done: boolean;
+  /** Where suggestedHeadline came from: the file's name, or nothing yet (the screen read will find it) */
+  headlineSource: "file_name" | null;
+  /** The file has left the share: its row is kept, its video cannot play */
+  gone: boolean;
   receivedAt: string;
   duration: number;
   size: number;
@@ -64,6 +77,12 @@ export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTra
     src: api(clip.id, "video"),
     poster: clip.posterKey ? api(clip.id, "poster") : undefined,
     folder: clip.folder.slice(2),
+    innerFolder: clip.folder.slice(3).join(" / "),
+    day: clip.day,
+    picked: clip.picked,
+    done: clip.done,
+    headlineSource: clip.heading ? "file_name" : null,
+    gone: clip.status === "gone",
     receivedAt: clip.mtime.toISOString(),
     duration: clip.durationS ?? 0,
     size: clip.size,
@@ -71,7 +90,7 @@ export function xvWireClip(clip: XvClipRow, evidence: XvEvidence | null, withTra
     height: clip.height ?? undefined,
     kind: "clip",
     district: "",
-    suggestedHeadline: null,
+    suggestedHeadline: clip.heading,
     readingProgress: reading ? (clip.progress ?? 0) : undefined,
     transcript: withTranscript && evidence ? evidence.transcript.map((l) => ({ at: l.at, text: l.text })) : [],
     screenText: [],

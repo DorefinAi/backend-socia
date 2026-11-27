@@ -13,7 +13,7 @@ import { loadXvConfig } from "./config";
 import { XvProbeStep } from "./probe";
 import { XvMediaClient, XvReadStep } from "./read";
 import { XvShareReader } from "./share";
-import { XvWatcher } from "./watch";
+import { XV_WATCH_TIMING, XvWatcher } from "./watch";
 
 const log = pino({ base: { service: "socia-xvideos-worker" }, level: process.env.LOG_LEVEL ?? "info" });
 process.on("unhandledRejection", (reason) => {
@@ -36,8 +36,13 @@ const share = new XvShareReader(config.shareRoot);
 const loops = new Loops();
 
 if (config.roles.includes("watch")) {
-  const watcher = new XvWatcher(db, config.orgId, share, log.child({ role: "watch" }));
-  loops.start({ name: "xv-watch", tick: () => watcher.tick(), idleMs: config.scanSeconds * 1000, log });
+  const watcher = new XvWatcher(db, config.orgId, share, log.child({ role: "watch" }), undefined, {
+    ...XV_WATCH_TIMING,
+    todayMs: config.scanSeconds * 1000,
+    monthMs: config.monthScanSeconds * 1000,
+  });
+  // A short idle: each tick walks only what is due, and a Refresh from the desk is picked up within seconds
+  loops.start({ name: "xv-watch", tick: () => watcher.tick(), idleMs: 3000, log });
 }
 if (config.roles.includes("probe")) {
   const probe = new XvProbeStep(db, share, config.cacheDir, { ffprobe: config.ffprobe, ffmpeg: config.ffmpeg }, log.child({ role: "probe" }), config.speech ? "read" : null);

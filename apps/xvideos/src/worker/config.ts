@@ -21,7 +21,10 @@ export interface XvWorkerConfig {
   /** The media service (services/xvideos-media) and the key it requires; only used with speech on */
   mediaUrl: string;
   mediaKey: string;
+  /** Today's day folder is walked this often */
   scanSeconds: number;
+  /** Every day folder of the month is walked this often */
+  monthScanSeconds: number;
   ffprobe: string;
   ffmpeg: string;
 }
@@ -59,6 +62,7 @@ export function loadXvConfig(): XvWorkerConfig {
     mediaUrl: (process.env.XVIDEOS_MEDIA_URL ?? "http://127.0.0.1:8300").replace(/\/+$/, ""),
     mediaKey: speech ? need("XVIDEOS_MEDIA_KEY") : "",
     scanSeconds: num("XVIDEOS_SCAN_SECONDS", 30, 5),
+    monthScanSeconds: num("XVIDEOS_MONTH_SCAN_SECONDS", 600, 30),
     ffprobe: process.env.XVIDEOS_FFPROBE ?? "ffprobe",
     ffmpeg: process.env.XVIDEOS_FFMPEG ?? "ffmpeg",
   };

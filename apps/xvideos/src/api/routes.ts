@@ -1,6 +1,7 @@
 // The X Videos desk's routes, as a Fastify plugin the api mounts with one line (apps/api/src/app.ts, only when
-// XVIDEOS=true). Read only for now: the clips found on the video share, one clip, its video (streamed from the share,
-// with seeking), its poster and its stills (from the local cache). The api hands in its own sign-in check and error
+// XVIDEOS=true): one day folder's clips, the day folders for the desk's selector, the Refresh button (asks the
+// watcher to walk a day now), one clip, its video (streamed from the share, with seeking), its poster and its stills
+// (from the local cache). The api hands in its own sign-in check and error
 // type, so this folder needs nothing else from the api.
 
 import { createReadStream } from "node:fs";
@@ -9,9 +10,29 @@ import { extname, resolve, sep } from "node:path";
 import { Type, type FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { Db } from "@socia/db";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { xvGetClip, xvListClips } from "../db/clips";
+import { xvGetClip, xvListClips, xvListDays, xvRequestScan, type XvDayCount } from "../db/clips";
 import { XV_CLIP_STATUSES, type XvClipStatus } from "../db/schema";
+import { xvDayDate, xvToday } from "../share/rules";
 import { xvWireClip } from "./view";
+
+const DAY_PATTERN = "^\\d{4}-\\d{2}-\\d{2}$";
+
+/** "2026-11-27" names a real date (not "2026-02-31") */
+const isRealDay = (day: string) => xvDayDate(day.split("-").reverse().join("-")) === day;
+
+/** Days (newest first) grouped by month ("2026-11"), with today added in its place when it has no videos yet */
+export function xvGroupDays(today: string, counts: readonly XvDayCount[]): { month: string; days: XvDayCount[] }[] {
+  const days = counts.some((c) => c.day === today) ? [...counts] : [...counts, { day: today, clips: 0, picked: 0, done: 0 }];
+  days.sort((a, b) => b.day.localeCompare(a.day));
+  const months: { month: string; days: XvDayCount[] }[] = [];
+  for (const d of days) {
+    const month = d.day.slice(0, 7);
+    const last = months[months.length - 1];
+    if (last?.month === month) last.days.push(d);
+    else months.push({ month, days: [d] });
+  }
+  return months;
+}
 
 export interface XvRouteOptions {
   db: Db;
@@ -70,28 +91,53 @@ export const xvideosRoutes: FastifyPluginAsyncTypebox<XvRouteOptions> = async (a
   const cacheDir = opts.cacheDir ?? process.env.XVIDEOS_CACHE ?? "";
   if (!shareRoot || !cacheDir) throw new Error("X Videos routes need XVIDEOS_SHARE and XVIDEOS_CACHE");
 
+  // One day folder's videos, all of them (x-marked or not). Without `day`: today's (IST) only, never yesterday's.
   app.get(
     "/xvideos/clips",
     {
       schema: {
         querystring: Type.Object({
+          day: Type.Optional(Type.String({ pattern: DAY_PATTERN })),
           status: Type.Optional(Type.String({ maxLength: 80 })),
-          since: Type.Optional(Type.String({ format: "date-time" })),
-          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
         }),
       },
     },
     async (req) => {
       const user = viewer(req);
+      const day = req.query.day ?? xvToday(new Date());
+      if (!isRealDay(day)) throw httpError(400, "invalid", `Not a date: ${day}.`);
       const statuses = req.query.status?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
       const bad = statuses.filter((s) => !XV_CLIP_STATUSES.includes(s as XvClipStatus));
       if (bad.length) throw httpError(400, "invalid", `Unknown status: ${bad.join(", ")}.`);
       const rows = await xvListClips(db, user.orgId, {
+        day,
         statuses: statuses.length ? (statuses as XvClipStatus[]) : ["seen", "reading", "new", "failed"],
-        since: req.query.since ? new Date(req.query.since) : new Date(Date.now() - 48 * 3600_000),
         limit: req.query.limit,
       });
-      return { clips: rows.map((c) => xvWireClip(c, null, false)) };
+      return { day, clips: rows.map((c) => xvWireClip(c, null, false)) };
+    },
+  );
+
+  // The desk's month / day selector: the day folders that hold videos now, and today (always, even before its folder
+  // exists), newest first, grouped by month
+  app.get("/xvideos/folders", async (req) => {
+    const user = viewer(req);
+    const today = xvToday(new Date());
+    return { today, months: xvGroupDays(today, await xvListDays(db, user.orgId)) };
+  });
+
+  // The desk's Refresh button: the watcher walks this day folder (?day=, default today) within seconds, then once more so
+  // new files settle. No body. The list itself is read as usual (GET /xvideos/clips).
+  app.post(
+    "/xvideos/rescan",
+    { schema: { querystring: Type.Object({ day: Type.Optional(Type.String({ pattern: DAY_PATTERN })) }) } },
+    async (req) => {
+      const user = viewer(req);
+      const day = req.query.day ?? xvToday(new Date());
+      if (!isRealDay(day)) throw httpError(400, "invalid", `Not a date: ${day}.`);
+      await xvRequestScan(db, user.orgId, day);
+      return { day, requested: true };
     },
   );
 

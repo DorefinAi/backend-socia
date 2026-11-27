@@ -1,138 +1,248 @@
-# X Videos backend: architecture
+# X Videos backend
 
-Branch `xvideos` (worktree `backend-xvideos`), folder `apps/xvideos`. The video desk ("X Videos", shown on the desk as X Clips) is kept apart
-from the X post desk (breaking news, `main`): every file, table, route, process and setting of it is named `xvideos`.
-The product side (what the desk shows, composer rules, the headline steps H1–H3) is in the frontend repo:
-`docs/xvideos/BACKEND-PLAN.md`. This file is how it is built. Steps 1–3 below are built; 4–7 are not.
+The X Videos desk turns the desk's video exports on the office share into ready X video posts: title, `#FINVideo`, place,
+hashtags and @handles. Editors check, copy and post by hand. This file is the whole design: what each folder holds, what
+happens to one clip, where the models live, and what is built.
 
-## 1. The rule this design follows
+Branch `xvideos`, built in the worktree `digital\backend-xvideos`, merged to `main` when done. Everything X Videos is in
+`apps/xvideos` and is named `xvideos` (tables, routes, processes, settings), so it stays apart from the breaking-news
+desk.
 
-**The live desk is never touched.** The live api (`:8200`) and worker run from `backend` on `main` and are not restarted
-for this work. X Videos runs as **its own processes**, from this worktree, in **its own Postgres schema** (`xvideos`) with
-**its own migrations**. It is built on a **test database** (now `socia_phase1_e2e`, a copy of the desk's data, schema `xvideos` only) and moved to `socia` only when done:
-the migration script and the worker both refuse `socia` until told otherwise (`XVIDEOS_MIGRATE_LIVE=yes`,
-`XVIDEOS_LIVE_DB=yes`).
+---
+
+## 1. Rules this design keeps
+
+1. **The live desk is never touched.** X Videos runs in its own processes, its own Postgres schema (`xvideos`) and its own
+   migrations. Until it is moved over, it runs on the test database.
+2. **The share is read only.** Nothing writes, renames or deletes there. The desk renames files by hand.
+3. **Code goes in git. Models, the Python environment and caches do not.** They live in `digital\x-requirements` (§2),
+   which a setup script rebuilds from pinned versions.
+4. **One place per job.** Rules are pure functions in `src/`, GPU work is in `media/`, tags and handles are in
+   `directory/`. A reader should be able to find any step from §3.
+5. **The model never posts on its own.** It suggests a headline and topic tags. Fixed parts (brand, `#FINVideo`, place,
+   police handles) come from rules.
+
+---
+
+## 2. Folders
 
 ```
-                 \\10.1.1.20\fin_data\EXPORT FOR YOUTUBE   (read only)
-                                │
-   ┌────────────────────────────┼──────────────────────────────────────┐
-   │ X Videos (branch xvideos)  ▼                                      │
-   │  xvideos-worker   watch ─► probe ─► read ──► xvideos-media (GPU)  │
-   │  (Node)                              ▲        127.0.0.1:8300      │
-   │                                      └─ transcript, cuts, stills  │
-   │  api with XVIDEOS=true  :8210   /xvideos/clips …  video by range  │
-   └───────────────┬────────────────────────────────────────────────────┘
-                   ▼ schema xvideos                ▲ X Videos desk (frontend xvideos,
-     Postgres  socia_phase1_e2e (test) → socia        NEXT_PUBLIC_XVIDEOS_SOURCE=api)
-     live api :8200 + live worker (main): unchanged
+digital\
+  backend\apps\xvideos\              in git (this folder)
+    README.md                        this file
+    .env.example                     every setting, with defaults
+    src\share\rules.ts               the share layout, x / done marks, the title left in a file name (pure)
+    src\worker\                      its own process: watch, probe, title, screen read, compose, learn
+    src\db\  migrations\             schema "xvideos", own migrations
+    src\api\                         the desk's routes (mounted by apps/api when XVIDEOS=true)
+    test\                            vitest
+    media\                           the Python GPU service
+      media.py                       HTTP service on 127.0.0.1:8300: /health, /read, /headline
+      headline.py                    screen reading: frames, OCR, bar lines, the model's headline
+      requirements.txt               pinned versions of everything the service needs
+      setup.ps1                      builds digital\x-requirements on a new machine (§9)
+    directory\                       the X video tag and handle directory (§5)
+      format.json tags.json handles.json     built files, read by the composer
+      build.py eval.py collect.py            build it, test it, collect new #FINVideo posts
+      data\finvideo-posts.jsonl              the desk's published #FINVideo posts
+
+  x-requirements\                    NOT in git (it sits beside the backend and frontend repos, in neither): the heavy, machine-specific files
+    env\                             Python 3.12 venv for media\ (GPU Paddle, faster-whisper)
+    models\paddle\                   PaddleOCR detection + Devanagari recognition (about 0.1 GB)
+    models\whisper\                  faster-whisper medium and large-v3 (about 4.3 GB)
+    cache\                           posters, stills, frames, evidence per clip
+
+dev-docs\xvideos-trials\             trial scripts and results (trials 1-5, day-2 check), for the record
 ```
 
-## 2. One folder
+qwen3:14b stays in Ollama's own store (other tools on this PC use the same Ollama). The settings only name the model.
 
-Everything X Videos is in `apps/xvideos` (workspace package `@socia/xvideos`). The rest of the backend is not changed
-for it; the only link is **routing**: `apps/api/src/app.ts` mounts this folder's routes when `XVIDEOS=true`, handing in
-the api's own sign-in check and error type (and `apps/api/package.json` lists the package).
+---
 
-| Where | What |
+## 3. One clip, step by step
+
+```
+ share (read only)
+  \\10.1.1.20\fin_data\EXPORT FOR YOUTUBE\<year>\<MONTH year>\<dd-mm-yyyy>\<any inner folders>\<file>.mp4
+        │
+        ▼
+ 1 watch ──► 2 probe ──► 3 title from the file name ──┬── heading found ─────────────┐
+   (worker)    (worker)    (worker, no GPU)            │                              ▼
+                                                       └── no heading ──► 4 screen read ──► 5 compose ──► 6 desk ──► 7 learn
+                                                                          (media service,    (worker)     (api +      (worker)
+                                                                           GPU)                            frontend)
+```
+
+| # | Step | What it does | Where | State |
+|---|---|---|---|---|
+| 1 | Watch | Walks **today's day folder every 30 s** and **every day folder of the month every 10 min**, and the day the desk asks for with **Refresh** at once. It takes **every video at any depth inside a day folder** (the inner folders follow no fixed pattern: shift folders, desk folders, loose files); the `x` mark is kept as a flag, not a filter. Each day shows what its folder holds: the same video copied into two days is a clip in each. A file is recorded once two scans see the same size and time. A known size + time under a new name is the same clip renamed (`x` → `x…done`). The month and day follow the IST date: a new day folder is picked up when it appears, a new month folder on the 1st. | `src/worker/watch.ts` | Built (`XVIDEOS_SCAN_SECONDS`, `XVIDEOS_MONTH_SCAN_SECONDS`) |
+| 2 | Probe | ffprobe (length, size, codec, sound) and a poster still. | `src/worker/probe.ts` | Built |
+| 3 | Title from the file name | The name without the `x` / `done` marks and the extension. It is a heading when it has 5+ words and 8+ Devanagari letters. Windows does not allow `\|` in a name, so two or more spaces stand for ` \| `: the posted title comes back with its suffix. | `src/share/rules.ts` (`xvHeading`), stored as `clip.heading` | Built |
+| 4 | Screen read | Only when step 3 finds no heading. `POST /headline` on the media service (§6). | `media/headline.py` | Tested (trials 4-5), **to move in** |
+| 5 | Compose | Brand tag first, `#FINVideo` second, place tag, then tags and handles from the directory (§5). Emit or suggest per part. | `src/worker/compose.ts` | **To build** |
+| 6 | Desk | Shows **every video in the chosen day folder**, with its inner folder and its `x` / done mark shown on the row. Opens on **today's day folder only** (IST), not yesterday's. A month / day selector outside the clip list picks another day. Edit, hold, Copy & Mark Posted, undo, reject (§8). | `src/api/` + frontend | List built (last 48 h); today-only + selector **next**; actions **to build** |
+| 7 | Learn | A posted clip's final title, tags and handles go into the directory counts and become examples. | `src/worker/learn.ts` + `directory/build.py` | **To build** |
+
+**Files are cleared from the share after about 6 days. A file not on the share is gone for good:** the desk no longer lists
+it or its day, and nothing is archived. Its row stays only as `gone` (no video is copied), so a file that comes back is
+the same clip. Last month's folders are checked until all their clips are gone.
+
+---
+
+## 4. The headline
+
+### 4.1 From the file name first (measured 27 Nov 2026)
+
+- All 29 videos the desk posted on X that day (11:57-14:05 IST) have their heading as a file name on the share: 26 within
+  0.75 letter similarity, 3 the same heading with a longer suffix. **22 of the 29 files had no `x` mark.**
+- X-marked files 22-27 Nov: 130 of 230 names hold a full heading. The rest are a word or two ("KOTAA", "JDR Hadsa",
+  "cs v srinivas"). Those go to step 4.
+
+### 4.2 Screen read when the name has no heading
+
+Chosen after trials 4-5 (27 Nov 2026, scripts and numbers in `dev-docs\xvideos-trials`):
+
+1. ffmpeg: one frame every 3 s over the first 75 s, scaled to 1280 wide.
+2. Frames grouped by the picture of the red headline bar (one group per bar line).
+3. PaddleOCR 3.x on the GPU (`PP-OCRv5_mobile_det` + `devanagari_PP-OCRv5_mobile_rec`), fixed screen regions only: the bar
+   in every frame, the place tag and the right panel once per group.
+4. Bar lines: the words of the bar joined left to right, logo bits dropped, the most typical reading of each line kept (vote),
+   half-drawn and repeated lines removed.
+5. Speech only as a fallback: when fewer than 2 bar lines were read (vertical shorts).
+6. qwen3:14b (Ollama, `think: false`, JSON) writes the headline, the place and topic hashtags.
+
+| Measured on | Clips | Median time | Word match with the desk | Place suffix right |
+|---|---|---|---|---|
+| 21 Nov (tuned on) | 26 | 2.8 s | 0.46 (was 0.39 at 68 s) | 15/26 |
+| 27 Nov (held out) | 29 | 3.6 s (1080p) | 0.37: normal news 0.45, election clips 0.23 | 8/29 exact, 15/29 place named |
+
+**Known fix before it goes in (day-2 check):** on election days a programme bar ("गांव की पंचायत") repeats the same 4 general
+lines on every clip, and the clip's own result is only in the right panel. `headline.py` will (A) treat a bar line seen on 3+
+of the day's clips as programme filler and (C) drop the programme name stuck to the front of each bar line.
+
+---
+
+## 5. Tags and handles: the directory
+
+`#FINVideo` is the identifier: a post is an X video post exactly when it carries it. The directory is built from the desk's
+own `#FINVideo` posts on X (427 posts over 11 days, 9 Sep-27 Nov 2026, more from `collect.py`).
+
+It is a **layer on top of the breaking desk's directory** (`apps/worker/config/*.json`), not a copy:
+
+| The breaking desk's directory keeps | The video directory adds |
 |---|---|
-| `src/share/rules.ts` | The share's layout (year / month / day folders, month case not fixed), the `x` and `done` marks (`x...`, `X..`, `x......done......`, `x..doneकांग्रेस…`, `GEHLOT...done`, the typo `dpone`), the title left in a name, the size+time fingerprint. Pure. |
-| `src/db/` | `schema.ts` (pgSchema `xvideos`), `clips.ts` (record a scan, mark gone, the job queue, reads for the API), `migrate.ts`. Uses only `createDb`, `orgs` and the `Db` type from `@socia/db`. |
-| `migrations/`, `drizzle.config.ts`, `scripts/migrate.ts` | Own migrations, journal `xvideos.__migrations`. `pnpm --filter @socia/xvideos generate` / `migrate`. |
-| `src/worker/` | Its own process (`main.ts`): `watch.ts`, `probe.ts`, `read.ts` (speech, off by default), `share.ts` (read-only share reader with timeouts), `config.ts`, `loop.ts` (a copy of the worker's loop). |
-| `src/api/` | `routes.ts` (a Fastify plugin, exported as `@socia/xvideos/api`), `view.ts` (a clip → the desk's `XvClip` shape). |
-| `media/` | `media.py`: speech, scene cuts and stills on the GPU (only with `XVIDEOS_SPEECH=on`). |
-| `test/` | `rules`, `worker`, `view` tests (`pnpm --filter @socia/xvideos test`). |
-| `.env` (not committed), `.env.example` | Settings for the worker, the migration, the media service and the api's X Videos routes. |
+| Who a handle is, its type, its Hindi and English names and keywords | Which tags and handles the desk uses **on video posts**, how often and how recently |
+| District police and collectors, parties, offices, campaigns | The video post's layout (`format.json`): brand first, `#FINVideo` second (since 21 Nov 2026), place tag form, title suffix forms |
+| | Video-only tags (`#PanchayatElectionsResult`) and handles the breaking directory lacks (`needs_keywords`) |
+| | Emit or suggest per tag and handle, from how often the desk used it |
 
-Names exported from here are prefixed `xv` / `Xv` / `XV_`.
+One fix to a handle or keyword in the breaking directory fixes both desks.
 
-## 3. Database: schema `xvideos`
-
-| Table | Holds |
+| File | Holds |
 |---|---|
-| `xvideos.clip` | One row per settled video file: folder parts and name as found (updated on rename), size, mtime, `fingerprint` (size:mtime, unique per org), `picked` / `done` marks, `title` from the name, `status` (`seen`, `reading`, `new`, `failed`, `gone`), `progress`, ffprobe fields, `poster_key`, `error`, seen / gone times |
-| `xvideos.clip_job` | The work queue: `probe` then `read` per picked clip; attempts, lease, next attempt, last error. Claimed with `FOR UPDATE SKIP LOCKED`; an expired lease is taken again; 3 failures fail the clip. |
-| `xvideos.clip_evidence` | What the media service read: transcript with times, cut times, stills (cache keys), contact sheet, version, time taken |
+| `format.json` | Identifier, layout, tag order now, brand rule, `#RajasthanNews` share, place tag form, title suffix forms, file-name title rule |
+| `tags.json` | Per tag: kind (identifier, brand, state, place, person, party, campaign, topic), uses, last seen, rule (emit / suggest), keywords copied from the breaking directory with their source, or `needs_keywords` with example titles and proposed words |
+| `handles.json` | Per handle: kind (person, party, police, collector, institution, reporter, unknown), uses, last seen, rule, names and keywords from the breaking directory, or `needs_keywords` |
 
-The only link to the X post desk's tables is `org_id → public.orgs`. Drafts, holds, posts and training examples come with
-the headline steps (5–6).
+Rules: police handle is emitted when the district is known and the title is about a crime; everything else is suggested.
+Reporter handles are never added from the title or the district (they are not in a video's title).
 
-## 4. One clip, step by step
+**Test** (`eval.py`, built from posts up to 13 Nov, tested on the 55 posts of 21 and 27 Nov, title only):
+`#FINVideo` 100 %, brand 96 %, place tag found 83 %, collector 92 %, police 62 %, people / parties / offices 37 %, topic
+tags 4 % (797 of 1,039 tags were used once: the model suggests those). To be re-run once `collect.py` has gathered a few
+more days of live posts.
 
-| Step | Who | What |
-|---|---|---|
-| watch | worker, every `XVIDEOS_SCAN_SECONDS` (30) | Lists today's and yesterday's day folders (IST) and the shift folders under them (3 deep), read only, 20 s timeout per call. A file is recorded once two scans in a row see the same size and time (the copy has finished). A known fingerprint under a new name is the same clip renamed (`x` → `x…done`). Only `x` files get a `probe` job. A day folder listed completely marks its missing clips `gone`; a partial listing never does. |
-| probe | worker | `ffprobe` (length, size, codec, sound) and a poster still at 10 % (max 8 s) into `XVIDEOS_CACHE/posters/`. With speech off (the default) the clip is now ready on the desk (`new`); with `XVIDEOS_SPEECH=on` it queues `read`. |
-| read (only with `XVIDEOS_SPEECH=on`; off by default) | worker → `POST 127.0.0.1:8300/read` | The media service decodes the audio with ffmpeg, runs Whisper large-v3 batched (8 s chunks, about 6 s for a 3 min clip), finds scene cuts, writes a still every 2 s (spread wider past 10 min) and a 4×3 contact sheet into `XVIDEOS_CACHE/frames/<clip>/`. One clip at a time holds the GPU. The worker saves the evidence and the clip turns `new`. If the service is down, the clip waits in `reading` and is asked again every minute; it is never failed for that. |
+---
 
-The share is never written, renamed or deleted: the reader only lists and stats, ffmpeg and ffprobe only read, and the
-media service refuses paths outside `XVIDEOS_SHARE` and writes only inside `XVIDEOS_CACHE`.
+## 6. Media service (`media/`, Python, the GPU)
 
-## 5. API (`XVIDEOS=true`, same sign-in as the desk, needs "Post Studio: X")
+One process holds the GPU. It reads only under the share and writes only under `x-requirements\cache`.
 
 | Route | Does |
 |---|---|
-| `GET /xvideos/clips?status=&since=&limit=` | The picked clips of the last 48 h (default), newest first, without transcripts |
-| `GET /xvideos/clips/:id` | One clip with its transcript, stills and cut times |
-| `GET /xvideos/clips/:id/video` | The video, streamed from the share, with byte ranges (seeking) |
-| `GET /xvideos/clips/:id/poster` | The poster still |
-| `GET /xvideos/clips/:id/frames/:name` | A still or the contact sheet (`name` checked; paths never leave the cache) |
+| `GET /health` | Models loaded or not |
+| `POST /read` | Speech (Whisper large-v3, batched 16, 8 s chunks), scene cuts, stills (built; off unless `XVIDEOS_SPEECH=on`) |
+| `POST /headline` | Step 4 (§4.2): bar lines, other screen text, speech fallback, the model's headline, place and topic tags, timings |
 
-Answers use the frontend's `XvClip` field names (`view.ts`). A clip marked done on the share is `posted` (the desk posted
-it by hand). Headline, place, tags and mentions stay empty until the headline steps.
+Settings that matter:
+- Whisper's CUDA libraries (ctranslate2) load **before** Paddle's, or Whisper fails with `WinError 127`. Whisper only finds
+  cuBLAS after Paddle has loaded, so the service ships `nvidia-cublas-cu12` itself.
+- `av==15.1.0` (PyAV 19 breaks faster-whisper 1.2.1).
+- The speech fallback uses the batched Whisper already loaded for `/read` (one clip took 17-20 s with the unbatched
+  medium model in the trial).
 
-## 6. Frontend link (frontend branch `xvideos`)
+---
 
-`NEXT_PUBLIC_XVIDEOS_SOURCE=api` switches the X Videos desk from its demo clips to `/xvideos/clips` (polled every 15 s and on
-Refresh; the transcript is fetched when the editor opens a clip). `src/lib/xvideos/` holds the client and the mapping;
-the desk's own actions (post, reject) still stay in the tab until step 6. Default stays `demo`.
+## 7. Database: schema `xvideos`
 
-## 7. Running it on the test database
-
-`apps/xvideos/.env` (not committed; see `.env.example`):
-
-```
-DATABASE_URL=postgresql://socia:…@localhost:5432/socia_phase1_e2e
-ORG_ID=…                                   same org as the desk
-XVIDEOS_SHARE=\\10.1.1.20\fin_data\EXPORT FOR YOUTUBE
-XVIDEOS_CACHE=C:\vartmaan\data\xvideos-cache
-XVIDEOS_MEDIA_URL=http://127.0.0.1:8300
-XVIDEOS=true
-PORT=8210
-```
-
-From PowerShell (a Git Bash shell cannot see the share), in the backend folder:
-
-```
-pnpm --filter @socia/xvideos migrate                                       the xvideos schema
-pnpm --filter @socia/xvideos worker                                        watch + probe (UV_THREADPOOL_SIZE=16)
-node --env-file=apps/xvideos/.env --import tsx apps/api/src/index.ts       the api, X Videos routes on (XVIDEOS=true)
-python -I apps/xvideos/media/media.py                                      only with XVIDEOS_SPEECH=on
-```
-
-Moving to `socia` when done: back up `socia`, run the X Videos migrations with `XVIDEOS_MIGRATE_LIVE=yes`, point
-`apps/xvideos/.env` at `socia` with `XVIDEOS_LIVE_DB=yes`. Nothing in `public` changes.
-
-## 8. When things go wrong
-
-| What | What happens |
-|---|---|
-| Share unreachable | Logged once, then hourly; clips already found stay; the video route says the file is not on the share |
-| Listing cut short | Nothing is marked gone; logged as incomplete |
-| File renamed or moved mid-step | The step waits for the next scan, which finds it under its new name |
-| Media service down or loading | Clips wait in `reading`, asked again every minute |
-| A step fails 3 times | The clip is `failed` with the reason, shown on the desk |
-| X Videos processes stop | The live desk is unaffected; leases bring each clip back to its step on restart |
-
-## 9. Build order
-
-| # | Piece | State |
+| Table | Holds | State |
 |---|---|---|
-| 1 | Schema, migrations, share rules, watcher, probe | Built |
-| 2 | API routes, frontend switch to live clips | Built |
-| 3 | Media service: speech, cuts, stills | Built, switched off (`XVIDEOS_SPEECH=on` turns it on); the desk only loads clips for now |
-| 4 | Screen text (headline bar, slug, name strip) | Needs the vision model download (approval) |
-| 5 | Headline from rules (H1), scored on the 26 posted clips | Next |
-| 6 | Desk actions saved (edit, hold, post, undo, reject), training examples | |
-| 7 | Model headline (H2), then LoRA (H3) | Only when each beats the step before |
+| `clip` | One row per video file: folder parts and name as found, day folder's date (`day`), size, modified time, fingerprint (size:mtime), marks, title from the name, the heading when the name is one (`heading`), status (`seen`, `reading`, `new`, `failed`, `gone`), probe fields | Built |
+| `clip_job` | Work queue (probe, read, headline), lease, attempts | Built (headline job to add) |
+| `clip_evidence` | What the media service read: transcript, cuts, stills, bar lines, screen text | Built (bar lines to add) |
+| `clip_draft` | Headline, its source (file name / screen read), suffix, tags and handles (value, emit or suggest, source) | To build |
+| `clip_post` | Posted text, by whom, when, X link, undone | To build |
+| `scan_request` | The desk's Refresh requests (one per day), taken by the watcher | Built |
+
+---
+
+## 8. API (`XVIDEOS=true`, same sign-in as the desk)
+
+| Route | Does | State |
+|---|---|---|
+| `GET /xvideos/clips?day=&status=` | Every video of one day folder; without `day`, **today's (IST) only** | Built |
+| `GET /xvideos/folders` | Today and every day whose folder holds videos, grouped by month, with counts (videos, x-marked, done), for the desk's month / day selector | Built |
+| `POST /xvideos/rescan?day=` | The desk's Refresh: the watcher walks that day (default today) within seconds, and again 10 s later so new files settle | Built |
+| `GET /xvideos/clips/:id` · `/video` · `/poster` · `/frames/:name` | One clip, the video with byte ranges, stills | Built |
+| `PATCH /xvideos/clips/:id` | Save the editor's draft | To build |
+| `POST /xvideos/clips/:id/hold` · `posted` · `undo` · `reject` | Desk actions | To build |
+
+---
+
+## 9. A new machine
+
+```
+git clone … ; cd digital\backend ; corepack pnpm install
+powershell -File apps\xvideos\media\setup.ps1      builds digital\x-requirements: venv, pinned models, ollama pull qwen3:14b,
+                                                   then reads one clip to check the GPU, OCR and model work
+copy apps\xvideos\.env.example to .env.xvideos     fill DATABASE_URL, ORG_ID, keys
+pnpm --filter @socia/xvideos migrate
+```
+
+Running (PowerShell; Git Bash cannot see the share):
+
+```
+pnpm --filter @socia/xvideos worker                watch, probe, title, compose
+..\x-requirements\env\Scripts\python.exe -I apps\xvideos\media\media.py
+node --env-file=… --import tsx apps/api/src/index.ts    the api with XVIDEOS=true
+```
+
+---
+
+## 10. Build order
+
+One commit per step, each reviewed before it moves on. Nothing reaches `main` until the whole flow passes on the test
+database.
+
+| # | Step | What is done | Starts | State |
+|---|---|---|---|---|
+| 1 | Base | Schema, share rules, watcher (today + yesterday), probe, list API, desk list | | Built |
+| 2 | Collector | `directory/collect.py`: every hour, reads @1stIndiaNews' new posts, keeps the `#FINVideo` ones in `data/finvideo-posts.jsonl`. | Later, when the directory needs fresh posts | Left for later (27 Nov 2026) |
+| 3 | Day folder + file-name title | Month + day scan at any depth, all videos, IST date; `GET /xvideos/folders`; `GET /xvideos/clips?day=` (today by default); title from the file name; desk: month / day selector, `x` mark and inner folder on each row | Next | |
+| 4 | Screen read | `x-requirements` + `setup.ps1`; `headline.py` (trial flow + programme-bar fix A, C); `/headline`; headline job only for clips whose name has no heading | After 3 | |
+| 5 | Tags and handles | Build the directory from the 427 saved `#FINVideo` posts (9 Sep-27 Nov 2026), finish tuning with `eval.py`; `compose.ts` builds `clip_draft`: brand, `#FINVideo`, place, tags, handles (emit / suggest) | After 4 | |
+| 6 | Desk actions + learn | Edit, hold, Copy & Mark Posted, undo, reject; `clip_post`; posted text feeds the directory counts | After 5 | |
+| 7 | Main | Whole flow on the test database, reviews, move to the live database, merge to `main` | Last | |
+
+## 11. Decided
+
+- The desk shows **every video in the day folder**, at any depth; the `x` mark is shown, not used as a filter (27 Nov 2026).
+- A file not on the share is gone: not shown, not archived. A video in two day folders shows in both (27 Nov 2026).
+- Today walked every 30 s, the month every 10 min, plus a Refresh button: fewer share reads, so fewer chances of a hang
+  (27 Nov 2026). A share that stops answering stops the walk at once and is logged as down.
+- Share root: `\\10.1.1.20\fin_data\EXPORT FOR YOUTUBE`.
+- Tags and handles are part of this build (step 5), not later.
+
+## 12. Open
+
+- Direct posting through the X API: later, not in this build.

@@ -1,15 +1,18 @@
-// Reads the video share, never writes it: lists a day folder and the desk's shift folders under it, and stats the
-// video files. Every call has a timeout (an SMB hang can last minutes); a listing cut short says so, so the caller
-// never takes clips off the desk on a partial scan.
+// Reads the video share, never writes it: lists a month's day folders, walks a day folder and every folder under it,
+// and stats the video files. Every call has a timeout (an SMB hang can last minutes); a listing cut short says so, so
+// the caller never takes clips off the desk on a partial scan.
 
 import { promises as fsp } from "node:fs";
 import { join } from "node:path";
-import { xvIsVideo, xvMatchFolder, type XvDay } from "../share/rules";
+import { xvDayDate, xvIsVideo, xvMatchFolder, type XvMonth } from "../share/rules";
 
 /** A share call slower than this counts as the share being down */
 export const XV_SHARE_TIMEOUT_MS = 20_000;
-/** Shift folders nest at most this deep under the day folder ("Convert 3 pm to\New folder") */
-const MAX_DEPTH = 3;
+/**
+ * Folders under a day folder are walked this deep. The desk's own folders follow no pattern ("Convert 3 pm to\New
+ * folder\…"); the limit only stops a folder loop.
+ */
+const MAX_DEPTH = 8;
 /** Stats at once: low enough that a hung share cannot fill Node's thread pool (UV_THREADPOOL_SIZE=16) */
 const STAT_CONCURRENCY = 8;
 
@@ -24,7 +27,7 @@ const realFs: XvShareFs = {
 };
 
 export interface XvFoundFile {
-  /** Folder parts under the share root: year, month (as on the share), day, shift folders */
+  /** Folder parts under the share root: year, month (as on the share), day, the folders inside the day */
   folder: string[];
   fileName: string;
   size: number;
@@ -32,11 +35,16 @@ export interface XvFoundFile {
 }
 
 export interface XvDayListing {
-  /** The day folder's parts, or null when the share has no folder for that day yet */
-  dayFolder: string[] | null;
   files: XvFoundFile[];
   /** Every folder under the day was listed and every file stated: safe to mark the missing ones gone */
   complete: boolean;
+}
+
+export interface XvMonthListing {
+  /** The month folder's parts as on the share (["2026", "November 2026"]), or null when the share has none yet */
+  monthFolder: string[] | null;
+  /** Its day folders, newest first: the date ("2026-11-27"), the folder's name and its parts; non-date folders are left out */
+  days: { folder: [string, string, string]; name: string; day: string }[];
 }
 
 export class XvShareUnreachable extends Error {
@@ -74,19 +82,31 @@ export class XvShareReader {
     return xvMatchFolder(entries.filter((e) => e.isDirectory()).map((e) => e.name), name);
   }
 
-  /** The video files of one day. Throws XvShareUnreachable when the root cannot be read at all. */
-  async listDay(day: XvDay): Promise<XvDayListing> {
-    let dayFolder: string[];
+  /** A month's day folders. Throws XvShareUnreachable when the share cannot be read. */
+  async listMonth(month: XvMonth): Promise<XvMonthListing> {
     try {
-      const year = await this.child([], day.year);
-      const month = year && (await this.child([year], day.month));
-      const dayName = month && (await this.child([year, month], day.day));
-      if (!year || !month || !dayName) return { dayFolder: null, files: [], complete: true };
-      dayFolder = [year, month, dayName];
+      const year = await this.child([], month.year);
+      const name = year && (await this.child([year], month.month));
+      if (!year || !name) return { monthFolder: null, days: [] };
+      const days = (await this.readdir([year, name]))
+        .filter((e) => e.isDirectory())
+        .flatMap((e) => {
+          const day = xvDayDate(e.name);
+          return day ? [{ folder: [year, name, e.name] as [string, string, string], name: e.name, day }] : [];
+        })
+        .sort((a, b) => b.day.localeCompare(a.day));
+      return { monthFolder: [year, name], days };
     } catch (err) {
       throw new XvShareUnreachable(codeOf(err));
     }
+  }
 
+  /**
+   * The video files of one day folder, at any depth under it. A day folder deleted from the share lists as empty and
+   * complete (its clips are gone). Throws XvShareUnreachable when the day folder cannot be read, so a hung share
+   * stops the scan at the first folder instead of waiting out every day of the month.
+   */
+  async listDay(dayFolder: readonly string[]): Promise<XvDayListing> {
     const found: { folder: string[]; name: string }[] = [];
     let complete = true;
     const walk = async (parts: string[], depth: number): Promise<void> => {
@@ -94,8 +114,12 @@ export class XvShareReader {
       try {
         entries = await this.readdir(parts);
       } catch (err) {
-        // A shift folder removed mid-scan is simply not there; anything else leaves the listing incomplete
-        if (!isMissing(err)) complete = false;
+        if (depth === 0) {
+          if (isMissing(err)) return;
+          throw new XvShareUnreachable(codeOf(err));
+        }
+        // A folder inside the day that cannot be read, or was renamed mid-scan: nothing may be marked gone this time
+        complete = false;
         return;
       }
       for (const e of entries) {
@@ -103,7 +127,7 @@ export class XvShareReader {
         else if (e.isDirectory() && depth < MAX_DEPTH) await walk([...parts, e.name], depth + 1);
       }
     };
-    await walk(dayFolder, 0);
+    await walk([...dayFolder], 0);
 
     const files: XvFoundFile[] = [];
     for (let i = 0; i < found.length; i += STAT_CONCURRENCY) {
@@ -111,11 +135,13 @@ export class XvShareReader {
       const stats = await Promise.allSettled(batch.map((f) => withTimeout(this.fs.stat(join(this.root, ...f.folder, f.name)), this.timeoutMs)));
       stats.forEach((s, j) => {
         const f = batch[j]!;
+        // A file listed but gone by its stat was most likely renamed (x → x…done) between the two calls: incomplete, so
+        // the clip is not taken off the desk while the new name settles
         if (s.status === "fulfilled") files.push({ folder: f.folder, fileName: f.name, size: s.value.size, mtime: s.value.mtime });
-        else if (!isMissing(s.reason)) complete = false;
+        else complete = false;
       });
     }
-    return { dayFolder, files, complete };
+    return { files, complete };
   }
 
   /** The file's full path on the share */

@@ -1,0 +1,13 @@
+# The training environment (train_lora.py), apart from the media service's: x-requirements\train-env, Python 3.12,
+# NVIDIA GPU with CUDA 12. Install:
+#   py -3.12 -m venv ..\..\..\..\x-requirements\train-env
+#   x-requirements\train-env\Scripts\python.exe -m pip install -r requirements-train.txt
+# Versions to pin once a first run has worked on this PC (unsloth moves fast; Windows support needs triton-windows).
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch
+unsloth
+triton-windows
+datasets
+trl
+peft
+bitsandbytes

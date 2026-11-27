@@ -26,7 +26,6 @@ import { statusRoutes } from "./routes/status";
 import { templateRoutes } from "./routes/templates";
 import { trendRoutes } from "./routes/trends";
 import { setSuggestionLogger } from "./suggestions";
-import { xvideosRoutes } from "@socia/xvideos/api";
 
 export interface AppDeps {
   db: Db;
@@ -173,6 +172,8 @@ export async function buildApp(deps: AppDeps, logger: FastifyServerOptions["logg
   if (ownerKey) await app.register(ownerRoutes, { ...deps, ownerKey });
   // X Videos (apps/xvideos): its routes only where XVIDEOS=true; everywhere else every /xvideos path is a 404
   if (process.env.XVIDEOS === "true") {
+    // Loaded only here: with X Videos off, its code is never loaded, so a deploy without apps/xvideos still starts
+    const { xvideosRoutes } = await import("@socia/xvideos/api");
     await app.register(xvideosRoutes, {
       db: deps.db,
       viewer: (req, need) => {

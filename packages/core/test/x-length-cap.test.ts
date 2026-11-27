@@ -51,11 +51,14 @@ describe("P2: the draft fits X's 280", () => {
     // Lines 1-2 as laid out without the cap: nothing more was cut
     expect(d.bodyText).toBe(uncapped.bodyText);
     expect(d.headlineCut).toBe(false);
-    // Exactly what the desk posted on X: "#RajasthanWithFirstIndia #RajasthanPanchayatElection2026 #Congress #BJP"
-    expect(d.mentions).toEqual([]);
-    // The second party named goes first, then the first, then the collector; offered first in the list, reason "length"
-    expect(lengthMoves(d)).toEqual(["suggest:@BJP4Rajasthan", "suggest:@INCRajasthan", "suggest:@Dmsirohi"]);
-    expect(d.handleSuggestions.slice(0, 3).map((h) => h.handle)).toEqual(["BJP4Rajasthan", "INCRajasthan", "Dmsirohi"]);
+    // Line 2 is whole points since 27 Nov 2026 (shorter than the old 130 cut): only the second party handle has to go
+    expect(d.mentions).toEqual(["@Dmsirohi", "@INCRajasthan"]);
+    expect(lengthMoves(d)).toEqual(["suggest:@BJP4Rajasthan"]);
+    // Tighter: the second party named goes first, then the first, then the collector; offered first, reason "length"
+    const tight = draft(SIROHI_FILE, SIROHI, SIROHI_AT, { xLimit: 250 });
+    expect(xLen(post(tight))).toBeLessThanOrEqual(250);
+    expect(lengthMoves(tight)).toEqual(["suggest:@BJP4Rajasthan", "suggest:@INCRajasthan", "suggest:@Dmsirohi"]);
+    expect(tight.handleSuggestions.slice(0, 3).map((h) => h.handle)).toEqual(["BJP4Rajasthan", "INCRajasthan", "Dmsirohi"]);
     // The hashtags the desk kept on X stay on the post
     expect(d.hashtags).toEqual(uncapped.hashtags);
     expect(d.hashtags).toContain("#RajasthanPanchayatElection2026");
@@ -110,17 +113,22 @@ describe("P2: the draft fits X's 280", () => {
     const at = "2026-11-20T14:10:49Z";
     const uncapped = draft(name, lines, at, { xLimit: BREAKING_POST_MAX });
     expect(uncapped.mentions).toContain("@jaipur_police");
-    expect(xLen(post(uncapped))).toBeGreaterThan(280);
+    // Whole-point line 2 (27 Nov 2026): this post now fits 280 as it is, police included
     const d = draft(name, lines, at);
     expect(xLen(post(d))).toBeLessThanOrEqual(280);
     expect(d.mentions).toContain("@jaipur_police");
-    const line2 = d.bodyText.split("\n\n")[1]!;
-    expect(xLen(line2)).toBeGreaterThanOrEqual(BREAKING_BODY_FLOOR);
-    expect(xLen(line2)).toBeLessThan(xLen(uncapped.bodyText.split("\n\n")[1]!));
+    expect(lengthMoves(d)).toEqual([]);
+    // Line 2 cannot shrink inside a point: when only dropping it makes room, it goes and the police handle stays (it never
+    // loses both: a handle moved off comes back once line 2 has gone)
+    const tight = draft(name, lines, at, { xLimit: 230 });
+    expect(xLen(post(tight))).toBeLessThanOrEqual(230);
+    expect(tight.mentions).toContain("@jaipur_police");
+    expect(tight.bodyText.split("\n\n")[1]).toBeUndefined();
+    expect(lengthMoves(tight)).toEqual([]);
   });
 
   it("a handle moved for length carries movedFor and logs reason 'length' (the desk's suggestion reason too)", () => {
-    const d = draft(SIROHI_FILE, SIROHI, SIROHI_AT);
+    const d = draft(SIROHI_FILE, SIROHI, SIROHI_AT, { xLimit: 250 });
     const moved = d.handleSuggestions.filter((h) => h.movedFor === "length");
     expect(moved.map((h) => h.handle)).toEqual(["BJP4Rajasthan", "INCRajasthan", "Dmsirohi"]);
     for (const h of moved) expect(handleProposal(h, "suggest")).toMatchObject({ layer: "suggest", reason: "length" });

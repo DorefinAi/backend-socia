@@ -32,8 +32,8 @@ describe("F10: a leading party tag does not fill the district slot", () => {
   });
 
   it("the district from the text goes in the tag line, not line 1 (no reporter rule); the party tag stays as written", () => {
-    // Vikas carries no desk rule (Naresh, used here before, got one on 23 Nov 2026)
-    const d = draft(fileFor("VIKAS"), ["#BJP: कोटा में प्रदेश कार्यसमिति की बैठक", "संगठन चुनाव पर चर्चा"]);
+    // Dimple carries no desk rule (Naresh, then Vikas, used here before, got one on 23 and 26 Nov 2026)
+    const d = draft(fileFor("DIMPLE"), ["#BJP: कोटा में प्रदेश कार्यसमिति की बैठक", "संगठन चुनाव पर चर्चा"]);
     expect(line1(d)).toBe("#BJP: कोटा में प्रदेश कार्यसमिति की बैठक");
     expect(d.hashtags).toContain("#Kota");
     expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing" });

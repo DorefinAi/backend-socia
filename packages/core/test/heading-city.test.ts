@@ -76,7 +76,7 @@ describe("rule 3: line 1 never names its city twice", () => {
 
 describe("rule 1: every post carries a city hashtag", () => {
   it("no place, no reporter rule, no file code: NO city tag (owner, 24 Nov 2026: no #Jaipur fallback); flagged, #Jaipur only offered", () => {
-    const d = draft(fileFor("VIKAS"), ["सरकार ने जारी किए नए दिशा-निर्देश", "सभी विभागों को भेजे गए आदेश"]);
+    const d = draft(fileFor("DIMPLE"), ["सरकार ने जारी किए नए दिशा-निर्देश", "सभी विभागों को भेजे गए आदेश"]);
     expect(line1(d).startsWith("#")).toBe(false);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
     expect(d.noCity).toBe(true);
@@ -88,7 +88,7 @@ describe("rule 1: every post carries a city hashtag", () => {
   });
 
   it("the owner's case of 24 Nov: a Delhi story from the Rajasthan desk gets no #Jaipur, on the post or the card", () => {
-    const d = draft(fileFor("VIKAS"), ["दिल्लीः केंद्रीय कैबिनेट की कल बैठक होगी", "कल सुबह 11 बजे कैबिनेट की बैठक"]);
+    const d = draft(fileFor("DIMPLE"), ["दिल्लीः केंद्रीय कैबिनेट की कल बैठक होगी", "कल सुबह 11 बजे कैबिनेट की बैठक"]);
     expect(allTags(d)).not.toContain("Jaipur");
     expect(d.bodyText).not.toMatch(/^#Jaipur/);
     expect(d.headingPlace.card).not.toBe("Jaipur");
@@ -96,7 +96,7 @@ describe("rule 1: every post carries a city hashtag", () => {
 
   it("the district the copy names comes before the head office, in the tag line, and picks no police", () => {
     expect(CITY_FROM_COPY_TEXT).toBe(true);
-    const d = draft(fileFor("VIKAS"), ["कोटा के बोरखेड़ा क्षेत्र में बेकाबू कार ने मारी टक्कर", ...POINTS]);
+    const d = draft(fileFor("DIMPLE"), ["कोटा के बोरखेड़ा क्षेत्र में बेकाबू कार ने मारी टक्कर", ...POINTS]);
     expect(line1(d).startsWith("कोटा के बोरखेड़ा")).toBe(true);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`, "#Kota"]);
     expect(d.headingPlace).toMatchObject({ source: "inferred", placement: "trailing" });
@@ -104,14 +104,14 @@ describe("rule 1: every post carries a city hashtag", () => {
   });
 
   it("a place hashtag the desk wrote anywhere is the city: nothing is added", () => {
-    const d = draft(fileFor("VIKAS"), ["सरकार ने जारी किए नए दिशा-निर्देश", "जयपुर में होगी बैठक #Jaipur"]);
+    const d = draft(fileFor("DIMPLE"), ["सरकार ने जारी किए नए दिशा-निर्देश", "जयपुर में होगी बैठक #Jaipur"]);
     expect(d.hashtags).toEqual([`#${BRAND_RAJASTHAN}`]);
     expect(d.headingPlace).toMatchObject({ source: "copy", placement: "copy" });
   });
 
   it("#Didwana (the desk's spelling of Didwana-Kuchaman) counts as a city; the typo #Didiwana is corrected to it", () => {
     for (const tag of ["#Didwana", "#Didiwana"]) {
-      const d = draft(fileFor("VIKAS"), [`${tag}: रहमान गेट क्षेत्र में चोरी`, ...POINTS]);
+      const d = draft(fileFor("DIMPLE"), [`${tag}: रहमान गेट क्षेत्र में चोरी`, ...POINTS]);
       expect(line1(d).startsWith("#Didwana: ")).toBe(true);
       expect(allTags(d)).not.toContain("Jaipur");
     }
@@ -122,7 +122,7 @@ describe("rule 1: every post carries a city hashtag", () => {
     expect(line1(d).startsWith("#")).toBe(false);
     expect(d.headingPlace.placement).toBe("trailing");
     expect(hasCity(d)).toBe(true);
-    const none = draft(fileFor("VIKAS"), ["कोचिंग छात्रों के लिए नई गाइडलाइन जारी | Rajasthan News", ...POINTS]);
+    const none = draft(fileFor("DIMPLE"), ["कोचिंग छात्रों के लिए नई गाइडलाइन जारी | Rajasthan News", ...POINTS]);
     expect(none.noCity).toBe(true);
     expect(allTags(none)).not.toContain("Jaipur");
   });
@@ -202,24 +202,24 @@ describe("headingPlace: one decision for line 1 and the card", () => {
 
 describe("review fixes and owner decisions of 23 Nov 2026", () => {
   it("B1: the desk's own tag run with a stated district: no #Alwar on the post, none logged, none in headingPlace", () => {
-    const d = draft(fileFor("VIKAS"), ["अलवर", "#आकोला: खेत में मिला शव", ...POINTS]);
+    const d = draft(fileFor("DIMPLE"), ["अलवर", "#आकोला: खेत में मिला शव", ...POINTS]);
     expect(line1(d)).toBe("#आकोला: खेत में मिला शव");
     expect(allTags(d)).not.toContain("Alwar");
     expect(d.proposals.some((p) => p.item === "#Alwar")).toBe(false);
     expect(d.headingPlace).toMatchObject({ placement: "copy", source: "copy", tags: [], card: "आकोला", cardHeadline: "आकोला: खेत में मिला शव" });
     // The same with the district from the file code
-    const coded = draft(fileFor("VIKAS", "ALW"), ["#आकोला: खेत में मिला शव", ...POINTS]);
+    const coded = draft(fileFor("DIMPLE", "ALW"), ["#आकोला: खेत में मिला शव", ...POINTS]);
     expect(coded.proposals.some((p) => p.item === "#Alwar")).toBe(false);
   });
 
   it("B2 + Q2: a place the desk wrote is the city (a prefix, a known place tag, an unknown word leading line 1's run): no #Jaipur", () => {
     for (const lines of [["रामपुरा खुर्द: खेत में मिला शव", ...POINTS], ["खेत में मिला शव", "#नैनवा गांव की घटना"], ["#सियोल: मुख्य सचिव का दौरा", ...POINTS]]) {
-      const d = draft(fileFor("VIKAS"), lines);
+      const d = draft(fileFor("DIMPLE"), lines);
       expect(allTags(d), lines[0]).not.toContain("Jaipur");
       expect(d.headingPlace.placement, lines[0]).toBe("copy");
     }
     // The prefix the desk wrote stays in line 1
-    expect(line1(draft(fileFor("VIKAS"), ["रामपुरा खुर्द: खेत में मिला शव", ...POINTS]))).toBe("रामपुरा खुर्द: खेत में मिला शव");
+    expect(line1(draft(fileFor("DIMPLE"), ["रामपुरा खुर्द: खेत में मिला शव", ...POINTS]))).toBe("रामपुरा खुर्द: खेत में मिला शव");
   });
 
   it("B3: the district said twice behind a town tag moves to the tag line, with the town (as D3)", () => {
@@ -267,15 +267,15 @@ describe("review fixes and owner decisions of 23 Nov 2026", () => {
     const coded = draft(fileFor("NAVIN", "JPR"), ["ACB ने रिश्वत लेते अधिकारी को दबोचा", ...POINTS]);
     expect(line1(coded).startsWith("#Jaipur: ")).toBe(true);
     expect(coded.headingPlace.source).toBe("file_code");
-    const text = draft(fileFor("VIKAS"), ["सीकर के खाटूश्यामजी मेले की तैयारी पूरी", ...POINTS]);
+    const text = draft(fileFor("DIMPLE"), ["सीकर के खाटूश्यामजी मेले की तैयारी पूरी", ...POINTS]);
     expect(text.headingPlace).toMatchObject({ source: "inferred", placement: "trailing" });
     expect(allTags(text)).not.toContain("Jaipur");
   });
 
   it("noCity is false whenever a city was found; true on a Rajasthan story naming no place (24 Nov 2026)", () => {
-    expect(draft(fileFor("VIKAS"), ["टोंक", "टोंक में हादसा", ...POINTS]).noCity).toBe(false);
+    expect(draft(fileFor("DIMPLE"), ["टोंक", "टोंक में हादसा", ...POINTS]).noCity).toBe(false);
     expect(draft(fileFor("RITURAJ"), ["सरकार ने जारी किए नए दिशा-निर्देश", ...POINTS]).noCity).toBe(false);
-    expect(draft(fileFor("VIKAS"), ["सरकार ने जारी किए नए दिशा-निर्देश", ...POINTS]).noCity).toBe(true);
+    expect(draft(fileFor("DIMPLE"), ["सरकार ने जारी किए नए दिशा-निर्देश", ...POINTS]).noCity).toBe(true);
   });
 });
 
@@ -342,15 +342,15 @@ describe("round 3 (owner, 23 Nov 2026 evening): R1–R8, Q1, Q2", () => {
   });
 
   it("Q2: a party, topic or label hashtag is not a city: the chain goes on, and a national story is flagged no_city", () => {
-    const bjp = draft(fileFor("VIKAS"), ["#भाजपा: प्रदेश कार्यसमिति की बैठक आज", ...POINTS]);
+    const bjp = draft(fileFor("DIMPLE"), ["#भाजपा: प्रदेश कार्यसमिति की बैठक आज", ...POINTS]);
     expect(bjp.headingPlace.placement).not.toBe("copy");
     expect(bjp.noCity).toBe(true);
     expect(allTags(bjp)).not.toContain("Jaipur");
     const sc = composeBreaking({ headline: "यमुना प्रदूषण पर सख्ती #सुप्रीमकोर्ट", points: ["सरकार से मांगा जवाब"], district: null, town: null, rajasthan: false, leaderPost: false }, rules, book, opts);
     expect(sc.noCity).toBe(true);
     // An unknown single word leading line 1's run is the desk's place; a known town in any spelling counts anywhere
-    expect(draft(fileFor("VIKAS"), ["#आकोला: खेत में मिला शव", ...POINTS]).headingPlace.placement).toBe("copy");
-    expect(draft(fileFor("VIKAS"), ["खेत में मिला शव", "#बून्दी जिले की घटना"]).headingPlace.placement).toBe("copy");
+    expect(draft(fileFor("DIMPLE"), ["#आकोला: खेत में मिला शव", ...POINTS]).headingPlace.placement).toBe("copy");
+    expect(draft(fileFor("DIMPLE"), ["खेत में मिला शव", "#बून्दी जिले की घटना"]).headingPlace.placement).toBe("copy");
     expect(deskPlaceTag(book, "भाजपा", true)).toBe(false);
     expect(deskPlaceTag(book, "सुप्रीमकोर्ट", true)).toBe(false);
     expect(deskPlaceTag(book, "आकोला", true)).toBe(true);

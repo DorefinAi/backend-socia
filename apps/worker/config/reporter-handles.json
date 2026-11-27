@@ -168,6 +168,8 @@
       "names_en": ["vikas", "ml_vikas", "vikash"],
       "districts": ["Jaipur"],
       "beats": ["government"],
+      "policy": { "district_when_missing": "Jaipur", "always": true, "handles_always": ["@RajGovOfficial"] },
+      "_policy_note": "Owner, 26 Nov 2026 (Vikas Sharma; every 'Vikas' token in the file names is him): '#Jaipur:' at the start of the heading and 'Jaipur:' on the card when no place is written at the start (a place only in the text, like Chhabra, still gets it; a place the desk wrote at the start leads instead), even when the headline opens with जयपुर; always @RajGovOfficial (before: only offered), and a post that cannot fit 280 with it is fitted to 300; never on a national story; files he shares with another reporter keep no reporter rule.",
       "prior": { "computed_at": "2026-11-13", "source": "corpus-2669, 7 days incl. 12 Nov (institution handles only; tagged-reporter sample, upper bound). k 28/41: smoothed 0.49", "n": 41, "handles": { "RajGovOfficial": 0.6829 }, "hashtags": {} },
       "verified": true,
       "source": "@1stIndiaNews timeline, 11 posts",

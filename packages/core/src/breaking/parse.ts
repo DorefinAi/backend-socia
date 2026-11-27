@@ -6,7 +6,7 @@
 import { fold } from "../fold";
 import { fileTags, fromNationalDesk, isNationalFlash, type FileTags } from "./filename";
 import type { DistrictInfo, Place, PlaceBook } from "./places";
-import { openingPlaceLength, placeWordInCompound } from "./place-match";
+import { openingPlaceLength, placeMatchKey, placeWordInCompound } from "./place-match";
 import { RAJASTHAN_DISTRICTS } from "../rajasthan";
 
 /**
@@ -91,6 +91,10 @@ const NOTE_START = /^(?:नोट|note)\s*[-:–—ः]+/iu;
 const NOTE_START_SPACED = /^(?:नोट|note)\s*[-:–—ः]+(?:\s|$)/iu;
 /** What every desk note asks for (all 340 stored ones); "नोट-बंदी के बाद बाजार में रौनक" asks for nothing: news */
 const DESK_INSTRUCTION = /फोटो|फुल\s*स्क्रीन|full\s*screen|विजुअल|visual|करावें|कराएं|करवाएं|चलाएं|चलावें/iu;
+/** The TV control room's full-screen label line: "FULL_<file number>_<copy of a line below>" (any case) */
+const FULL_LABEL = /^full_\d+_\s*(.*)$/iu;
+/** A FULL_ label's text counts as a copy of a line below only when it is at least this long (letters, placeMatchKey) */
+const FULL_COPY_MIN_LETTERS = 4;
 /**
  * A section label line above the headline that the desk never posts: "बर्थ-डे" (birthday files; their posts lead with
  * "<name> का जन्मदिन आज"). Taken off on purpose. Labels the desk DOES post ("सियासी गपशप !") stay as the headline.
@@ -401,6 +405,43 @@ function resolvePlace(book: PlaceBook, phrase: string, hint: string | null, allo
   return null;
 }
 
+/** Edit distance between two short strings (code points) */
+function editDistance(a: string, b: string): number {
+  const x = [...a];
+  const y = [...b];
+  let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= y.length; j++) cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (x[i - 1] === y[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[y.length]!;
+}
+
+/** A misspelt dateline town is corrected only when it is at least this long (letters, as placeMatchKey keys them) */
+const MISSPELT_MIN_LETTERS = 4;
+
+/** The same letters, in any order ("कुमाचन" and "कुचामन") */
+const sameLetters = (a: string, b: string) => [...a].sort().join("") === [...b].sort().join("");
+
+/**
+ * The headline's spelling of an unknown dateline town, held tight (owner, 25 Nov 2026: no town may be guessed wrong). Only
+ * a known TOWN that the headline OPENS with, starting with the same letter, and either the same letters reordered ("कुमाचन"
+ * over "कुचामन पंचायत समिति…") or one letter off. Anything else, a district or a place further in the headline: null, and the
+ * desk's word stands as written.
+ */
+function headlineSpelling(book: PlaceBook, town: string, headline: string): string | null {
+  const key = placeMatchKey(town);
+  const letters = [...key];
+  if (letters.length < MISSPELT_MIN_LETTERS) return null;
+  const first = book.find(headline)[0];
+  const place = first?.entry.data;
+  if (!place || place.kind !== "town" || !openingPlaceLength(headline, [place.hi])) return null;
+  const k = placeMatchKey(place.hi);
+  if (k === key || [...k][0] !== letters[0]) return null;
+  return sameLetters(k, key) || editDistance(k, key) === 1 ? place.hi : null;
+}
+
 /** "रेनवाल (जयपुर)" reads town then district; turn it into [_, district, town] */
 function swap(m: RegExpExecArray | null): [string, string, string] | null {
   return m ? [m[0], m[2]!, m[1]!] : null;
@@ -514,6 +555,20 @@ function placeInText(book: PlaceBook, text: string, hint: string | null): { dist
 }
 
 /**
+ * The Prime Minister or the union cabinet as a story's subject (owner, 25 Nov 2026). A Rajasthan leader who is a union
+ * minister (शेखावत, मेघवाल) is caught by rajasthanSignal first, so their stories stay Rajasthan.
+ */
+const UNION_LEADER =
+  /(?<![\p{L}\p{M}])(?:(?:PM|पीएम|प्रधानमंत्री)\s*(?:नरेंद्र\s*|नरेन्द्र\s*)?मोदी|नरेंद्र\s*मोदी|नरेन्द्र\s*मोदी|(?:केंद्रीय|केन्द्रीय)\s*(?:कैबिनेट|मंत्रिमंडल))(?![\p{L}\p{M}])/u;
+/** The Centre in general ("केंद्र सरकार", "मोदी सरकार", "केंद्रीय मंत्री"): national only on a file no Rajasthan reporter filed */
+const UNION_BODY = /(?<![\p{L}\p{M}])(?:मोदी\s*सरकार|(?:केंद्र|केन्द्र)\s*सरकार|(?:केंद्रीय|केन्द्रीय)\s*(?:मंत्री|सरकार))(?![\p{L}\p{M}])/u;
+/** The file names a reporter who is not known to work only outside Rajasthan (no roster: a reporter counts as Rajasthan's) */
+function rajasthanReporter(tags: FileTags, book: PlaceBook, reporterDistricts: readonly string[] | undefined): boolean {
+  if (!tags.reporter) return false;
+  return !reporterDistricts?.length || reporterDistricts.some((d) => book.district(d)?.rajasthan !== false);
+}
+
+/**
  * A story no district was found for: is it national news (#FirstIndiaNews)? Files from the NWS desk are. The
  * national flash (nat_flash_rj_..., owner 17 Nov 2026, rule b: "#RajasthanWithFirstIndia unless the story is about
  * Delhi or another state"), checked on 16 Nov's 116 flash posts:
@@ -538,6 +593,15 @@ export function nationalWithoutPlace(tags: FileTags | null | undefined, text: St
   // Rule 2 for EVERY file: the headline or the first point names a place outside Rajasthan ("यूपी चुनाव को लेकर बड़ी खबर",
   // "बिहार के वैशाली में PM मोदी"). A place named only further down never flips a story (as before 25 Nov)
   if (outsideInLead(book, lines)) return true;
+  // The Centre is the subject of the headline, and nothing in the story is Rajasthan's ("कैबिनेट फैसलों
+  // पर PM मोदी का X पर पोस्ट" about an airport in Assam, owner 25 Nov 2026): national, like the desk posts it. The Prime
+  // Minister or the union cabinet always; the plain Centre ("केंद्र सरकार", "केंद्रीय मंत्री") only on a file no Rajasthan
+  // reporter filed, since a village story may name the Centre's scheme and no place we know
+  // The HEADLINE only: the Prime Minister named in a point is often a guest of a Rajasthan story ("DGP Conference… प्रधानमंत्री
+  // नरेंद्र मोदी, गृह मंत्री अमित शाह…" went out #Jaipur on 23 Nov)
+  const head = lines[0] ?? "";
+  if (UNION_LEADER.test(head)) return true;
+  if (UNION_BODY.test(head) && !rajasthanReporter(tags, book, reporterDistricts)) return true;
   if (isNationalFlash(tags)) {
     // The flash keeps its own rule 2 on the whole text (17 Nov 2026)
     if (placeInText(book, lines.join(" । "), null)?.national) return true;
@@ -626,6 +690,17 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
   // Separator rows (----, ****) and stray keystrokes ("ब्") carry nothing; a one-letter word ("है", "ॐ") is text
   for (const l of lines) if (isSeparator(l)) removed.push(l);
   lines = lines.filter((l) => !isSeparator(l));
+  // "FULL_1041_कोटा से खबर" (the TV control room's full-screen re-save, from 25 Nov 2026): "FULL_", the file number, then a
+  // copy of a line below. The label goes; its words stay only when none of the next lines carries them (owner, 26 Nov 2026)
+  const full = lines[0] ? FULL_LABEL.exec(lines[0]) : null;
+  if (full) {
+    const rest = full[1]!.trim();
+    const key = placeMatchKey(rest);
+    // A label with no text goes; one of a letter or two ("FULL_5_ए") is no copy of anything: its words stay
+    const repeated = !key || ([...key].length >= FULL_COPY_MIN_LETTERS && lines.slice(1, 4).some((l) => placeMatchKey(l).includes(key)));
+    removed.push(repeated ? lines[0]! : lines[0]!.slice(0, lines[0]!.length - rest.length));
+    lines = repeated ? lines.slice(1) : [rest, ...lines.slice(1)];
+  }
 
   const notes = lines.filter(isDeskNote);
   for (const l of notes) removed.push(l);
@@ -706,6 +781,13 @@ export function parseBreaking(text: string, fileName: string, book: PlaceBook): 
     } else if (!where.town && prefix.place.town && prefix.place.district?.name === where.district.name) {
       where.town = prefix.place.town;
     }
+  }
+  // A dateline town the places file doesn't know that is a misspelling of a known place the headline names ("नागौर के
+  // कुमाचन से खबर" over "कुचामन पंचायत समिति…"): the headline's spelling is the town, so line 1 and the card never carry
+  // the name twice, two ways (owner, 25 Nov 2026)
+  if (where?.town && !book.lookup(where.town)) {
+    const fixed = headlineSpelling(book, where.town, headline);
+    if (fixed) where = { ...where, town: fixed };
   }
   const points = lines.slice(1).map((l) => l.replace(BULLET, "")).filter(Boolean);
 

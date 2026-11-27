@@ -57,7 +57,16 @@ export interface ReporterHandleEntry {
    */
   beats_source?: "desk" | "observed";
   /** A standing desk rule for this reporter (reporter-prior brief §4). Absent for almost everyone. */
-  policy?: { district_when_missing?: string };
+  policy?: {
+    district_when_missing?: string;
+    /**
+     * When the district_when_missing rule leads line 1 (no place written at the start), it leads even a headline opening
+     * with that city's name, and the card keeps it (owner, 26 Nov 2026: @ml_vikas's "#Jaipur: जयपुर डिस्कॉम…")
+     */
+    always?: boolean;
+    /** Handles tagged on every Rajasthan post of this reporter, not offered (owner, 26 Nov 2026: @ml_vikas's @RajGovOfficial) */
+    handles_always?: string[];
+  };
   /** A bureau reporter whatever `districts` lists: the file code is never the story's district (ReporterMatch.bureau) */
   bureau?: boolean;
   /** Measured rates for the reporter-routing prior (§3.3): seeded from the corpus, refreshed from the decision log */
@@ -110,6 +119,10 @@ export interface ReporterProfile {
   beatsSource: "desk" | "observed" | null;
   /** The district a post with none gets, as a line-1 hashtag only (§4) */
   districtWhenMissing: string | null;
+  /** districtWhenMissing leads line 1 even over a headline opening with that city (policy.always) */
+  districtAlways: boolean;
+  /** Handles without the @, tagged on every Rajasthan post (policy.handles_always) */
+  handlesAlways: string[];
   prior: { n: number; handles: Record<string, number>; hashtags: Record<string, number>; source: string | null } | null;
 }
 
@@ -232,9 +245,21 @@ function parseProfile(e: ReporterHandleEntry, handle: string, name: string, wher
     problem(`${where}: beats_source "${String(e.beats_source)}" is neither "desk" nor "observed"; its beats offer nothing`);
   }
   const dwm = e.policy?.district_when_missing;
+  const districtWhenMissing = typeof dwm === "string" && dwm.trim() ? dwm.trim() : null;
+  // "always" needs the district it applies: without one it means nothing, and the file says so
+  if (e.policy?.always === true && districtWhenMissing === null) problem(`${where}: policy.always needs a district_when_missing; ignored`);
+  const handlesAlways: string[] = [];
+  for (const raw of strings(e.policy?.handles_always)) {
+    const h = raw.trim().replace(/^@+/, "");
+    if (/^\w{1,15}$/.test(h)) handlesAlways.push(h);
+    else problem(`${where}: policy.handles_always "${raw}" is not an X handle; skipped`);
+  }
   return {
     handle, name, beats: strings(e.beats), beatsSource: e.beats_source === "desk" || e.beats_source === "observed" ? e.beats_source : null,
-    districtWhenMissing: typeof dwm === "string" && dwm.trim() ? dwm.trim() : null, prior,
+    districtWhenMissing,
+    districtAlways: e.policy?.always === true && districtWhenMissing !== null,
+    handlesAlways,
+    prior,
   };
 }
 
@@ -380,8 +405,15 @@ export function parseReporterHandles(json: unknown, problem: (message: string) =
     const entryProblems: string[] = [];
     for (const k of FILE_LEVEL_KEYS) if (k in e) entryProblems.push(`"${k}" belongs at the top of the file, not inside an entry`);
     const pol = (e as { policy?: unknown }).policy;
-    if (pol !== undefined && (!pol || typeof pol !== "object" || Array.isArray(pol) || ((pol as { district_when_missing?: unknown }).district_when_missing !== undefined && typeof (pol as { district_when_missing?: unknown }).district_when_missing !== "string"))) {
-      entryProblems.push(`"policy" must be { "district_when_missing": "<District>" }`);
+    const p = pol as { district_when_missing?: unknown; always?: unknown; handles_always?: unknown } | null;
+    if (
+      pol !== undefined &&
+      (!p || typeof p !== "object" || Array.isArray(p) ||
+        (p.district_when_missing !== undefined && typeof p.district_when_missing !== "string") ||
+        (p.always !== undefined && typeof p.always !== "boolean") ||
+        (p.handles_always !== undefined && (!Array.isArray(p.handles_always) || p.handles_always.some((h) => typeof h !== "string"))))
+    ) {
+      entryProblems.push(`"policy" must be { "district_when_missing": "<District>", "always"?: true|false, "handles_always"?: ["@handle"] }`);
     }
     const bureau = (e as { bureau?: unknown }).bureau;
     if (bureau !== undefined && typeof bureau !== "boolean") entryProblems.push(`"bureau" must be true or false`);
